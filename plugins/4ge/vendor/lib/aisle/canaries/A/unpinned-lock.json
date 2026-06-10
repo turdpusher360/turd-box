@@ -1,0 +1,38 @@
+{
+  "name": "canary-unpinned",
+  "version": "1.0.0",
+  "description": "AISLE canary: lockfile fragment with unpinned (range) versions",
+  "lockfileVersion": 3,
+  "requires": true,
+  "packages": {
+    "": {
+      "name": "canary-unpinned",
+      "version": "1.0.0",
+      "dependencies": {
+        "lodash": "^4.17.21",
+        "express": "~4.18.0",
+        "chalk": ">=4.0.0"
+      }
+    },
+    "node_modules/lodash": {
+      "version": "^4.17.21",
+      "resolved": "https://registry.npmjs.org/lodash/-/lodash-4.17.21.tgz",
+      "integrity": "sha512-v2kDEe57lecTulaDIuureF566ugFzVHeZiGFpMDXEe2pxQCM8NN3Y9gm0DRXHpb++ykUq/NHUE5V/Kx3Q6O3A=="
+    },
+    "node_modules/express": {
+      "version": "~4.18.0",
+      "resolved": "https://registry.npmjs.org/express/-/express-4.18.2.tgz",
+      "integrity": "sha512-ab2oPkjPo2mX3bSuMuAm3sBsUOTDJAhCj0Zul5w6eE3K/X7J7gL21iqO0qzGcRyY9KhDCjS6cKFRJ1TLXgqQ=="
+    },
+    "node_modules/chalk": {
+      "version": ">=4.0.0",
+      "resolved": "https://registry.npmjs.org/chalk/-/chalk-5.3.0.tgz",
+      "integrity": "sha512-dLitG79d+GV1Nb/VYcCDFivJeK1hiukt9QjkfgZVD5Wuv26vEuCb7hLXnCBgV4tnJQDorITqSzKJ8hIV/OjQ=="
+    }
+  },
+  "_aisle_canary": {
+    "id": "A-unpinned",
+    "expectedFindings": ["unpinned-dependency"],
+    "expectedTier": "WARN"
+  }
+}

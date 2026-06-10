@@ -1,0 +1,64 @@
+name: install-smoke
+
+# Proves a stranger can add the marketplace and install the plugin, then
+# asserts the installed cache contains the expected agents/commands/skills.
+# No version of this plugin has been installation-proven since 1.30.0; this
+# gate structurally closes the v1.27.0 empty-install class on every change.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  install-smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Claude Code CLI
+        run: |
+          curl -fsSL https://claude.ai/install.sh | bash || npm install -g @anthropic-ai/claude-code
+          claude --version || true
+
+      - name: Add marketplace from this checkout
+        env:
+          MARKETPLACE_DIR: ${{ github.workspace }}
+        run: |
+          claude plugin marketplace add "$MARKETPLACE_DIR"
+
+      - name: Install plugin
+        run: |
+          claude plugin install 4ge@turd-box
+
+      - name: Assert installed counts
+        run: |
+          CACHE="$HOME/.claude/plugins/cache/turd-box/4ge"
+          INSTALLED="$(find "$HOME/.claude/plugins" -type d -name '4ge' -path '*turd-box*' 2>/dev/null | head -1)"
+          if [ -z "$INSTALLED" ]; then
+            echo "Installed plugin dir not found under ~/.claude/plugins"; exit 1
+          fi
+          echo "Installed at: $INSTALLED"
+          AGENTS=$(find "$INSTALLED" -path '*/agents/*.md' | wc -l)
+          COMMANDS=$(find "$INSTALLED" -path '*/commands/*.md' | wc -l)
+          SKILLS=$(find "$INSTALLED" -path '*/skills/*/SKILL.md' | wc -l)
+          echo "agents=$AGENTS commands=$COMMANDS skills=$SKILLS"
+          FAIL=0
+          [ "$AGENTS" -ge 17 ] || { echo "FAIL agents < 17"; FAIL=1; }
+          [ "$COMMANDS" -ge 37 ] || { echo "FAIL commands < 37"; FAIL=1; }
+          [ "$SKILLS" -ge 40 ] || { echo "FAIL skills < 40"; FAIL=1; }
+          exit $FAIL
+
+      - name: Fallback structural assertion (if CLI install path differs)
+        if: failure()
+        run: node .github/scripts/manifest-integrity.cjs

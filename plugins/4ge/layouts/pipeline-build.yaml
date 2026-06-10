@@ -1,0 +1,19 @@
+name: pipeline-build
+topology: pipeline
+teammates:
+  - name: implementer
+    agent: sonnet-execute
+    isolation: worktree
+    scope:
+      - src/
+      - lib/
+  - name: tester
+    agent: sonnet-execute
+    scope:
+      - src/
+      - lib/
+  - name: reviewer
+    agent: opus-review
+    scope:
+      - src/
+      - lib/

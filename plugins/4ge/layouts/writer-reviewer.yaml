@@ -1,0 +1,14 @@
+name: writer-reviewer
+topology: paired
+teammates:
+  - name: writer
+    agent: sonnet-execute
+    isolation: worktree
+    scope:
+      - src/
+      - lib/
+  - name: reviewer
+    agent: opus-review
+    scope:
+      - src/
+      - lib/

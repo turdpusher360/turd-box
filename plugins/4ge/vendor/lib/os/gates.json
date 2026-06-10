@@ -1,0 +1,9 @@
+{
+  "process-supervisor": true,
+  "ipc-heartbeat": false,
+  "dag-conditional-edges": false,
+  "cost-tracking": true,
+  "shared-workspace": false,
+  "conditional-dag": false,
+  "boot-unification": false
+}

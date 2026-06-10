@@ -1,0 +1,36 @@
+# gitleaks configuration for the public turd-box repository.
+#
+# Extends the default gitleaks ruleset and adds allowlist entries for the
+# KNOWN SYNTHETIC fixtures shipped by the 4ge plugin. Every entry below is a
+# secret-DETECTION regex definition or an intentional canary fixture — none is
+# a live credential. Enumerated during publish-tree preparation and
+# re-verified against the extraction tree.
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Synthetic secret-detection fixtures and regex definitions (no live credentials)"
+
+# Paths whose entire content is detection-rule definitions or canary fixtures.
+paths = [
+  # AISLE Scanner E credential-egress canaries (vendored) — intentional fake tokens
+  '''plugins/4ge/vendor/lib/aisle/canaries/E/curl-secrets\.sh''',
+  '''plugins/4ge/vendor/lib/aisle/canaries/E/mcp-egress\.json''',
+  # AISLE secret-pattern definition table (regexes, not values)
+  '''plugins/4ge/vendor/lib/aisle/data/secret-patterns\.json''',
+  # DFE security scanner — regex definitions for detecting secrets
+  '''plugins/4ge/lib/dfe/security-scanner\.cjs''',
+  # /secret command redaction hook — token-prefix regex definitions
+  '''plugins/4ge/hooks/secret-redact\.cjs''',
+  # Plugin test suites carry synthetic fixtures for the detection logic
+  '''plugins/4ge/__tests__/.*''',
+  # Plugin sanitization test builds personal-data/secret patterns dynamically
+  '''plugins/4ge/__tests__/sanitize\.test\.js''',
+]
+
+# Belt-and-suspenders: the literal synthetic token shapes used in fixtures.
+regexes = [
+  # "fakekey" canary value used in Scanner E egress fixtures
+  '''sk-ant-api03-fakekey[0-9a-f]+''',
+]

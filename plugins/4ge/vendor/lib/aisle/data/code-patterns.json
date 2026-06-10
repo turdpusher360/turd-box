@@ -1,0 +1,112 @@
+{
+  "version": "1.0.0",
+  "description": "Scanner B (code-patterns) pattern database",
+  "patterns": [
+    {
+      "id": "eval-direct",
+      "pattern": "\\beval\\s*\\(",
+      "severity": "HIGH",
+      "tier": "BLOCK",
+      "reference": "CWE-95",
+      "description": "Direct eval() call — executes arbitrary code"
+    },
+    {
+      "id": "eval-indirect",
+      "pattern": "\\(0,\\s*eval\\)\\s*\\(",
+      "severity": "HIGH",
+      "tier": "BLOCK",
+      "reference": "CWE-95",
+      "description": "Indirect eval via (0,eval)() — bypasses strict-mode scope"
+    },
+    {
+      "id": "eval-globalthis",
+      "pattern": "globalThis\\.eval\\s*\\(",
+      "severity": "HIGH",
+      "tier": "BLOCK",
+      "reference": "CWE-95",
+      "description": "eval() via globalThis — avoids direct reference for obfuscation"
+    },
+    {
+      "id": "eval-bracket",
+      "pattern": "\\[['\"](eval)['\"]\\]\\s*\\(",
+      "severity": "HIGH",
+      "tier": "BLOCK",
+      "reference": "CWE-95",
+      "description": "eval() via bracket notation — obfuscated access"
+    },
+    {
+      "id": "eval-reflect",
+      "pattern": "Reflect\\.apply\\s*\\(\\s*eval",
+      "severity": "HIGH",
+      "tier": "BLOCK",
+      "reference": "CWE-95",
+      "description": "eval() via Reflect.apply — reflective code execution"
+    },
+    {
+      "id": "function-constructor",
+      "pattern": "new\\s+Function\\s*\\(",
+      "severity": "HIGH",
+      "tier": "BLOCK",
+      "reference": "CWE-95",
+      "description": "Function constructor — equivalent to eval(), executes arbitrary code"
+    },
+    {
+      "id": "child-process-exec",
+      "pattern": "child_process\\.\\s*(exec|spawn)\\s*\\(",
+      "severity": "HIGH",
+      "tier": "BLOCK",
+      "reference": "CWE-78",
+      "description": "child_process.exec/spawn — OS command injection vector"
+    },
+    {
+      "id": "sensitive-path-read",
+      "pattern": "fs\\.readFile.*(?:\\/etc\\/|~\\/.ssh|~\\/.aws)",
+      "severity": "CRITICAL",
+      "tier": "BLOCK",
+      "reference": "CWE-22",
+      "description": "Reading sensitive system paths (/etc/, ~/.ssh, ~/.aws)"
+    },
+    {
+      "id": "dynamic-require",
+      "pattern": "require\\s*\\(\\s*(?!['\"`])",
+      "severity": "MEDIUM",
+      "tier": "WARN",
+      "reference": "CWE-94",
+      "description": "Dynamic require() with non-literal argument — arbitrary module load"
+    },
+    {
+      "id": "process-env-access",
+      "pattern": "process\\.env\\b",
+      "severity": "LOW",
+      "tier": "LOG",
+      "reference": "CWE-526",
+      "description": "process.env access — potential secret exposure"
+    },
+    {
+      "id": "base64-blob",
+      "pattern": "Buffer\\.from\\s*\\(\\s*['\"][A-Za-z0-9+/=]{20,}['\"]",
+      "severity": "MEDIUM",
+      "tier": "WARN",
+      "reference": "CWE-506",
+      "description": "Large Base64-encoded blob — potential obfuscated payload"
+    },
+    {
+      "id": "fetch-call",
+      "pattern": "fetch\\s*\\(",
+      "severity": "LOW",
+      "tier": "LOG",
+      "reference": "CWE-918",
+      "description": "fetch() call — potential SSRF or data exfiltration"
+    },
+    {
+      "id": "homoglyph-identifier",
+      "pattern": "[a-zA-Z]\\u0430|[a-zA-Z]\\u0435",
+      "severity": "HIGH",
+      "tier": "BLOCK",
+      "reference": "CWE-1007",
+      "description": "Homoglyph characters (Cyrillic mixed with Latin) — visual spoofing attack"
+    }
+  ],
+  "entropyThreshold": 4.5,
+  "entropyMinLength": 20
+}

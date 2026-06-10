@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>4ge — /4ge:audit dashboard</title>
+<style>
+  body { margin: 0; padding: 40px; background: #0a0a0a; }
+  .window {
+    background: #161412; border: 1px solid #2a2a2a; border-radius: 12px;
+    overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,.6); max-width: 860px;
+  }
+  .titlebar {
+    display: flex; align-items: center; gap: 8px;
+    padding: 14px 18px; border-bottom: 1px solid #262626; background: #1c1c1c;
+  }
+  .dot { width: 12px; height: 12px; border-radius: 50%; }
+  .r { background: #ff5f57; } .y { background: #febc2e; } .g { background: #28c840; }
+  .title {
+    margin-left: 12px; font-family: 'JetBrains Mono', 'Consolas', monospace;
+    font-size: 11px; letter-spacing: .25em; color: #8a8a8a;
+  }
+  pre {
+    font-family: 'DejaVu Sans Mono', monospace;
+    font-size: 13px; line-height: 1.55; margin: 0; padding: 22px 26px;
+    white-space: pre; background: #161412; color: #cfcfcf;
+  }
+</style></head><body>
+<div class="window">
+  <div class="titlebar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="title">CLAUDE CODE · /AUDIT DASHBOARD</span></div>
+<pre>/4ge:audit — implementation quality
+  Scope: src/ (24 modules, 3,891 lines)
+
+  Health: 93  A  [===================-]
+
+  Security         19/20  A  PASS  [===================-]   1 findings
+  Dependencies     18/20  A  PASS  [==================--]   1 findings
+  Dead Code        20/20  A  PASS  [====================]   0 findings
+  Complexity       17/20  B  PASS  [=================---]   2 findings
+  Test Coverage    18/20  A  PASS  [==================--]   1 findings
+  Hook Hygiene     20/20  A  PASS  [====================]   0 findings
+  Config           19/20  A  PASS  [===================-]   0 findings
+  Documentation    17/20  B  PASS  [=================---]   1 findings
+
+  6 findings total   0 P0   0 P1   3 P2   3 P3
+  Grade A   Scan: 12s   Categories: 8/8 PASS
+</pre>
+</div>
+</body></html>

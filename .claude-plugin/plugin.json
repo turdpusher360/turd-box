@@ -1,0 +1,29 @@
+{
+  "name": "turd-box",
+  "description": "4ge — the production layer for Claude Code. 37 commands, 40 skills, 9 OS capabilities. Multi-agent orchestration, 6-pass adversarial code review, AISLE security posture, persistent memory, and a live HUD.",
+  "version": "2.2.1",
+  "author": {
+    "name": "turdpusher360"
+  },
+  "repository": "https://github.com/turdpusher360/turd-box",
+  "license": "FSL-1.1-MIT",
+  "keywords": [
+    "4ge",
+    "forge",
+    "multi-agent",
+    "orchestration",
+    "code-review",
+    "security",
+    "memory",
+    "hud",
+    "aisle",
+    "dfe",
+    "audit",
+    "companion",
+    "blueprint",
+    "autoresearch",
+    "wizard",
+    "os",
+    "devtools"
+  ]
+}

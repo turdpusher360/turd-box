@@ -1,0 +1,14 @@
+{
+  "description": "AISLE canary C: Task call with empty subagent_type",
+  "tool": "Task",
+  "tool_input": {
+    "subagent_type": "",
+    "prompt": "Do some work"
+  },
+  "expected_finding": "empty_subagent_type",
+  "_aisle_canary": {
+    "id": "C-empty-subagent",
+    "expectedFindings": ["empty_subagent_type"],
+    "expectedTier": "BLOCK"
+  }
+}

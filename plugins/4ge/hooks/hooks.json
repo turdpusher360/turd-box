@@ -1,0 +1,166 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT}/hooks/sync-to-data.cjs\"",
+            "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_DATA}/hooks/os-boot.cjs\"",
+            "timeout": 15
+          },
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_DATA}/hooks/file-integrity-guard.cjs\" boot",
+            "timeout": 15
+          },
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_DATA}/hooks/whats-new.cjs\"",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_DATA}/hooks/telemetry-session.cjs\"",
+            "timeout": 3
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_DATA}/hooks/telemetry-session.cjs\"",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_DATA}/hooks/checkpoint-buddy.cjs\"",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_DATA}/hooks/hud-state-clear.cjs\"",
+            "timeout": 3
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_DATA}/hooks/forge-prompt-lint.cjs\"",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_DATA}/hooks/forge-scope-check.cjs\"",
+            "timeout": 3
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_DATA}/hooks/rubber-duck-debugger.cjs\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_DATA}/hooks/secret-redact.cjs\"",
+            "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_DATA}/hooks/prompt-scaffolder.cjs\"",
+            "timeout": 3
+          },
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_DATA}/hooks/hud-message-refresh.cjs\"",
+            "timeout": 2
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_DATA}/hooks/forge-heartbeat.cjs\"",
+            "timeout": 3
+          },
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_DATA}/hooks/os-accounting.cjs\"",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_DATA}/hooks/file-integrity-guard.cjs\"",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_DATA}/hooks/dfe-post-edit.cjs\"",
+            "timeout": 3
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_DATA}/hooks/file-integrity-guard.cjs\"",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "Write|Edit|Bash|Agent|Task|Read|Grep|Glob",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_DATA}/hooks/hud-reactive.cjs\"",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}

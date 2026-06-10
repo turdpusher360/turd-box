@@ -1,0 +1,67 @@
+{
+  "version": "1.0.0",
+  "name": "devops",
+  "description": "DevOps/Infrastructure vertical — tuned for Docker, Terraform, CI/CD, and supply chain security",
+  "categories": {
+    "dependencies": {
+      "weight": 2.0,
+      "deep_dive_threshold": 40
+    },
+    "security": {
+      "weight": 2.0,
+      "deep_dive_threshold": 35
+    },
+    "config": {
+      "weight": 1.5
+    },
+    "dead_code": {
+      "weight": 0.5
+    },
+    "docs": {
+      "weight": 0.4
+    }
+  },
+  "scan_exclude": [
+    "node_modules/",
+    "_archive/",
+    "_quarantine/",
+    ".vite/",
+    ".terraform/",
+    "vendor/"
+  ],
+  "thresholds": {
+    "overrides": {
+      "dependencies": {
+        "critical_vuln": { "points": -5, "max": -20 }
+      },
+      "security": {
+        "dockerfile_unpinned": {
+          "id": "dockerfile_unpinned",
+          "points": -3,
+          "max": -9,
+          "description": "Dockerfile FROM without pinned digest or exact tag"
+        },
+        "terraform_drift": {
+          "id": "terraform_drift",
+          "points": -4,
+          "max": -12,
+          "description": "Terraform state drift detected between plan and apply"
+        },
+        "secret_in_env_file": {
+          "id": "secret_in_env_file",
+          "points": -5,
+          "max": -5,
+          "description": "Secret value found in .env or docker-compose env_file"
+        }
+      }
+    }
+  },
+  "research": {
+    "depth": "standard",
+    "sources": ["memory", "codebase", "web", "osv"],
+    "overrides": {
+      "dependencies": { "depth": "deep" },
+      "security": { "depth": "deep" }
+    }
+  }
+}

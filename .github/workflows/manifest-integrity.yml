@@ -1,0 +1,28 @@
+name: manifest-integrity
+
+# Asserts agents/commands/skills counts match disk truth AND manifest claims.
+# Catches the v1.27.0 empty-agents packaging class (CC auto-discovers agents/,
+# so no manifest declares them — only a count gate can catch an empty dir) and
+# the description count-drift class.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  counts:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Verify manifest integrity (counts vs disk)
+        run: node .github/scripts/manifest-integrity.cjs

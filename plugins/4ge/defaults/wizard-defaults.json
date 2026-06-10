@@ -1,0 +1,180 @@
+{
+  "version": "1.2.0",
+  "execution_tiers": {
+    "auto": {
+      "badge": "(auto)",
+      "description": "Safe operations run immediately without confirmation"
+    },
+    "guided": {
+      "badge": "(guided)",
+      "description": "Show plan and ask for confirmation before executing"
+    },
+    "manual": {
+      "badge": "(manual)",
+      "description": "User must act — agent prepares but does not execute"
+    },
+    "noted": {
+      "badge": "(noted)",
+      "description": "Logged for awareness but no action taken"
+    },
+    "queued": {
+      "badge": "(queued)",
+      "description": "Deferred to next session"
+    }
+  },
+  "manual_base_set": [
+    "major version bumps",
+    "structural deletions",
+    "capability removal",
+    "security config changes"
+  ],
+  "hud": {
+    "enabled": true,
+    "default_view": 1,
+    "collapsed": true,
+    "expanded_default": false,
+    "debounce_ms": 300,
+    "context_warning_threshold": 70,
+    "context_critical_threshold": 85,
+    "cache_ttl_heartbeat_ms": 5000,
+    "cache_ttl_hub_health_ms": 60000,
+    "cache_ttl_compact_ms": 10000,
+    "agent_stale_seconds": 300
+  },
+  "scan_exclude": [
+    "node_modules/",
+    "_archive/",
+    "_quarantine/",
+    ".vite/"
+  ],
+  "thresholds": {
+    "source": "plugins/4ge/skills/wizard-engine/references/threshold-defaults.json",
+    "pass_threshold": 80,
+    "overrides": {}
+  },
+  "dfe": {
+    "solo_confidence_penalty": {
+      "tp": -10,
+      "likely_tp": -15,
+      "uncertain": -10
+    },
+    "default_review_context": "solo"
+  },
+  "respawn": {
+    "importance_threshold": 0.3,
+    "top_n": 10,
+    "decay": {
+      "session_floor": 0.1,
+      "session_days": 4,
+      "project_floor": 0.3,
+      "project_days": 14
+    }
+  },
+  "categories": {
+    "branches": {
+      "enabled": true,
+      "stale_days": 30,
+      "pass_threshold": 80,
+      "deep_dive_threshold": 50,
+      "weight": 1.0
+    },
+    "dependencies": {
+      "enabled": true,
+      "pass_threshold": 80,
+      "deep_dive_threshold": 50,
+      "weight": 1.2,
+      "held_majors": []
+    },
+    "agents": {
+      "enabled": true,
+      "staleness_days": 14,
+      "pass_threshold": 80,
+      "deep_dive_threshold": 50,
+      "weight": 0.8
+    },
+    "hooks": {
+      "enabled": true,
+      "perf_budget_ms": 100,
+      "chain_budget_ms": 3000,
+      "pass_threshold": 80,
+      "deep_dive_threshold": 50,
+      "weight": 1.0
+    },
+    "tests": {
+      "enabled": true,
+      "pass_threshold": 80,
+      "deep_dive_threshold": 50,
+      "weight": 1.0,
+      "baseline_file": ".outhouse-baseline.json"
+    },
+    "config": {
+      "enabled": true,
+      "pass_threshold": 80,
+      "deep_dive_threshold": 50,
+      "weight": 1.0,
+      "version_sync_files": []
+    },
+    "dead_code": {
+      "enabled": true,
+      "todo_threshold": 5,
+      "pass_threshold": 80,
+      "deep_dive_threshold": 50,
+      "weight": 0.8
+    },
+    "docs": {
+      "enabled": true,
+      "handoff_stale_days": 7,
+      "pass_threshold": 80,
+      "deep_dive_threshold": 50,
+      "weight": 0.6
+    },
+    "security": {
+      "enabled": true,
+      "pass_threshold": 80,
+      "deep_dive_threshold": 40,
+      "weight": 1.5
+    }
+  },
+  "security_floors": {
+    "_comment": "Non-overridable minimums enforced at config load time",
+    "min_pass_threshold": 30,
+    "enabled_locked": true,
+    "suppress_wildcard_blocked": true,
+    "auto_promote_max_tier": "suggested"
+  },
+  "research": {
+    "depth": "standard",
+    "confidence_threshold": 0.80,
+    "sources": ["memory", "codebase"],
+    "max_results_per_category": 5
+  },
+  "suppress": [],
+  "inbox": {
+    "auto_capture": false,
+    "sources": ["hook-failure", "verify-failure", "session-audit"],
+    "max_age_days": 30,
+    "auto_promote_threshold": 3,
+    "sanitize_errors": true,
+    "max_error_length": 200
+  },
+  "verification": {
+    "commands": [
+      "npx tsc --noEmit",
+      "npx eslint .",
+      "npx vitest run"
+    ]
+  },
+  "ship": {
+    "auto_commit_message": true,
+    "report_path": "_runs/outhouse-{date}.md",
+    "history_path": "_runs/outhouse/history.jsonl"
+  },
+  "ci": {
+    "score_threshold": 70,
+    "output_format": "json"
+  },
+  "context_budget": {
+    "warn_threshold_tokens": 80000,
+    "auto_safe_forced_depth": "quick"
+  }
+}

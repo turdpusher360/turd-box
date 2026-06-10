@@ -1,0 +1,26 @@
+name: star-audit
+topology: star
+teammates:
+  - name: security
+    agent: opus-audit
+    skill: audit-security
+    scope:
+      - .claude/hooks/
+      - lib/
+  - name: config
+    agent: opus-audit
+    skill: audit-config
+    scope:
+      - .claude/
+      - components/configs/
+  - name: implementation
+    agent: opus-audit
+    skill: audit-implementation
+    scope:
+      - lib/
+      - plugins/
+  - name: integration
+    agent: opus-audit
+    skill: audit-integration
+    scope:
+      - lib/os/

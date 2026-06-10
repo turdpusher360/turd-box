@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>4ge HUD — StatusLine</title>
+<style>
+  body { margin: 0; padding: 40px; background: #0a0a0a; }
+  .window {
+    background: #161412; border: 1px solid #2a2a2a; border-radius: 12px;
+    overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,.6); max-width: 980px;
+  }
+  .titlebar {
+    display: flex; align-items: center; gap: 8px;
+    padding: 14px 18px; border-bottom: 1px solid #262626; background: #1c1c1c;
+  }
+  .dot { width: 12px; height: 12px; border-radius: 50%; }
+  .r { background: #ff5f57; } .y { background: #febc2e; } .g { background: #28c840; }
+  .title {
+    margin-left: 12px; font-family: 'JetBrains Mono', 'Consolas', monospace;
+    font-size: 11px; letter-spacing: .25em; color: #8a8a8a;
+  }
+  pre {
+    font-family: 'DejaVu Sans Mono', monospace;
+    font-size: 15px; line-height: 1.6; margin: 0; padding: 26px 28px;
+    white-space: pre; background: #161412; color: #c0c0c0;
+  }
+</style></head><body>
+<div class="window">
+  <div class="titlebar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="title">CLAUDE CODE · 4GE STATUSLINE</span></div>
+<pre><span style="color:rgb(95,95,255)">[</span><span style="color:rgb(0,175,255)">█</span> <span style="color:rgb(95,95,255)">▆</span><span style="color:rgb(0,175,255)">]</span>   <span style="color:rgb(135,175,135)">my-app</span> <span style="color:rgb(58,58,58)">·</span> <span style="color:rgb(135,215,255)">opus 4</span>  <span style="color:rgb(58,58,58)">·</span>  <span style="color:rgb(95,135,175)">9/9</span>  <span style="color:rgb(58,58,58)">·</span>  <span style="color:rgb(95,175,255);font-weight:700">◈</span> <span style="color:rgb(95,175,255)">19%</span>  <span style="color:rgb(58,58,58)">·</span>  <span style="color:rgb(95,135,175)">5h:38%</span> <span style="color:rgb(95,135,215)">↻2h47m</span>
+⠀<span style="color:rgb(0,175,255)">⣴</span><span style="color:rgb(95,95,255)">⡔</span><span style="color:rgb(0,175,255)">⣆</span>    <span style="color:rgb(0,175,255)">main</span>  <span style="color:rgb(58,58,58)">·</span>  <span style="color:rgb(95,95,255);font-weight:700">Σ</span> <span style="color:rgb(95,95,255)">~19h</span>  <span style="color:rgb(58,58,58)">·</span>  <span style="color:rgb(175,215,255)">73m</span>  <span style="color:rgb(58,58,58)">·</span>  <span style="color:rgb(95,135,255);font-weight:700">⊥</span> <span style="color:rgb(95,135,255)">368</span>  <span style="color:rgb(58,58,58)">·</span>  <span style="color:rgb(135,135,215)">7d:54%</span> <span style="color:rgb(95,135,215)">↻3d11h</span>
+⠀<span style="color:rgb(95,95,255)">⢸</span><span style="color:rgb(0,175,255)">⠯</span><span style="color:rgb(95,95,255)">⠧</span>    <span style="color:rgb(0,175,255);font-weight:700">$</span> <span style="color:rgb(0,175,255)">4.87</span>  <span style="color:rgb(58,58,58)">·</span>  <span style="color:rgb(95,135,175)">1.98M</span>  <span style="color:rgb(58,58,58)">·</span>  <span style="color:rgb(98,98,98)">feat(pricing): hero section + CSS grid pricing</span>
+</pre>
+</div>
+</body></html>

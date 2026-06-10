@@ -1,0 +1,12 @@
+{
+  "defaultModel": "qwen3:4b",
+  "ollamaHost": null,
+  "timeout_ms": 30000,
+  "num_ctx": 4096,
+  "async_output_dir": "_runs/llm",
+  "summary_line_threshold": 300,
+  "models": {
+    "qwen3:4b": { "context": 4096, "use": "default" },
+    "qwen3:30b-a3b": { "context": 4096, "use": "capability" }
+  }
+}

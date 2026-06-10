@@ -1,0 +1,216 @@
+{
+  "$schema": "threshold-defaults.schema.json",
+  "version": "1.0.0",
+  "categories": {
+    "branches": {
+      "thresholds": [
+        {
+          "id": "merged_not_deleted",
+          "points": -2,
+          "max": -10,
+          "description": "Merged local branch not deleted"
+        },
+        {
+          "id": "gone_remote",
+          "points": -2,
+          "max": -6,
+          "description": "Gone remote tracking branch"
+        },
+        {
+          "id": "stale_30d",
+          "points": -2,
+          "max": -4,
+          "description": "Branch older than 30 days with no recent commits"
+        }
+      ]
+    },
+    "dependencies": {
+      "thresholds": [
+        {
+          "id": "high_vuln",
+          "points": -3,
+          "max": -9,
+          "description": "High severity vulnerability"
+        },
+        {
+          "id": "critical_vuln",
+          "points": -5,
+          "max": -15,
+          "description": "Critical severity vulnerability"
+        },
+        {
+          "id": "major_outdated",
+          "points": -2,
+          "max": -10,
+          "description": "Package more than 2 major versions behind"
+        }
+      ]
+    },
+    "agents": {
+      "thresholds": [
+        {
+          "id": "stale_verified",
+          "points": -2,
+          "max": -10,
+          "stale_days": 14,
+          "description": "Agent last-verified older than stale_days"
+        },
+        {
+          "id": "missing_maxturns",
+          "points": -2,
+          "max": -6,
+          "description": "Agent missing maxTurns in frontmatter"
+        },
+        {
+          "id": "placeholder_values",
+          "points": -3,
+          "max": -6,
+          "description": "Agent file contains {{PLACEHOLDER}} values"
+        }
+      ]
+    },
+    "hooks": {
+      "thresholds": [
+        {
+          "id": "file_missing",
+          "points": -4,
+          "max": -8,
+          "description": "Hook wired in settings.json but file missing from disk"
+        },
+        {
+          "id": "unwired",
+          "points": -2,
+          "max": -6,
+          "description": "Hook file exists on disk but not wired in settings.json"
+        },
+        {
+          "id": "bad_exit",
+          "points": -3,
+          "max": -6,
+          "description": "PostToolUse hook using exit(2) instead of exit(0)"
+        }
+      ]
+    },
+    "tests": {
+      "thresholds": [
+        {
+          "id": "new_failures",
+          "points": -3,
+          "max": -12,
+          "description": "New test failures vs baseline"
+        },
+        {
+          "id": "count_decrease",
+          "points": -2,
+          "per": 10,
+          "max": -6,
+          "description": "Test count decrease per 10 tests lost from last run"
+        },
+        {
+          "id": "missing_imports",
+          "points": -1,
+          "max": -4,
+          "description": "Test file missing explicit vitest import declarations"
+        }
+      ]
+    },
+    "config": {
+      "thresholds": [
+        {
+          "id": "version_mismatch",
+          "points": -3,
+          "max": -9,
+          "description": "Version mismatch across manifest files"
+        },
+        {
+          "id": "schema_error",
+          "points": -3,
+          "max": -9,
+          "description": "JSON schema validation error"
+        },
+        {
+          "id": "env_missing",
+          "points": -2,
+          "max": -6,
+          "description": "Required env key documented in repo docs but missing from tracked env templates"
+        }
+      ]
+    },
+    "dead_code": {
+      "thresholds": [
+        {
+          "id": "todo_density",
+          "points": -1,
+          "per": 5,
+          "max": -8,
+          "description": "TODO/FIXME/HACK/XXX comment count per 5 occurrences"
+        },
+        {
+          "id": "dead_modules",
+          "points": -2,
+          "max": -6,
+          "description": "File with no exports (dead module)"
+        },
+        {
+          "id": "console_log",
+          "points": -1,
+          "per": 3,
+          "max": -6,
+          "description": "console.log in production module per 3 occurrences"
+        }
+      ]
+    },
+    "docs": {
+      "thresholds": [
+        {
+          "id": "stale_handoff",
+          "points": -2,
+          "max": -6,
+          "description": "Handoff file older than 7 days with no follow-up"
+        },
+        {
+          "id": "hooks_contract_drift",
+          "points": -3,
+          "max": -6,
+          "description": "hooks-contract.md out of sync with settings.json"
+        },
+        {
+          "id": "claude_md_stale",
+          "points": -4,
+          "max": -8,
+          "description": "CLAUDE.md architecture section stale"
+        }
+      ]
+    },
+    "security": {
+      "security_floor": true,
+      "thresholds": [
+        {
+          "id": "pin_mismatch",
+          "points": -3,
+          "max": -9,
+          "description": "Docker image pin manifest mismatch"
+        },
+        {
+          "id": "env_tracked",
+          "points": -5,
+          "max": -5,
+          "description": ".env file tracked by git (immediate FAIL)"
+        },
+        {
+          "id": "gitignore_gap",
+          "points": -2,
+          "max": -6,
+          "description": "Gitignore missing common sensitive file patterns"
+        },
+        {
+          "id": "wizard_file_tracked",
+          "points": -3,
+          "max": -6,
+          "description": "Wizard runtime files (.4ge-wizard-inbox.jsonl, .outhouse-session.json) tracked by git"
+        }
+      ]
+    }
+  },
+  "pass_threshold": 80
+}

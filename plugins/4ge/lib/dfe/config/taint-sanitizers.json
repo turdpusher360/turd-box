@@ -1,0 +1,104 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Recognized sanitizer functions for taint analysis. If tainted data passes through any of these, the taint is considered cleaned for the specified risk categories.",
+  "sanitizers": [
+    {
+      "function": "escapeHtml",
+      "cleans": [
+        "dom_injection"
+      ],
+      "description": "HTML entity encoding"
+    },
+    {
+      "function": "encodeURIComponent",
+      "cleans": [
+        "ssrf",
+        "dom_injection"
+      ],
+      "description": "URL encoding"
+    },
+    {
+      "function": "encodeURI",
+      "cleans": [
+        "ssrf"
+      ],
+      "description": "URL encoding (less strict)"
+    },
+    {
+      "function": "sanitize",
+      "cleans": [
+        "dom_injection",
+        "sql_injection"
+      ],
+      "description": "Generic sanitize function (common convention)"
+    },
+    {
+      "function": "escape",
+      "cleans": [
+        "sql_injection"
+      ],
+      "description": "SQL escape (common in query builders)"
+    },
+    {
+      "function": "parameterize",
+      "cleans": [
+        "sql_injection"
+      ],
+      "description": "Parameterized query builder"
+    },
+    {
+      "function": "parseInt",
+      "cleans": [
+        "sql_injection",
+        "shell_execution",
+        "ssrf"
+      ],
+      "description": "Numeric coercion removes string payloads"
+    },
+    {
+      "function": "Number",
+      "cleans": [
+        "sql_injection",
+        "shell_execution",
+        "ssrf"
+      ],
+      "description": "Numeric coercion"
+    },
+    {
+      "function": "validate",
+      "cleans": [
+        "shell_execution",
+        "sql_injection",
+        "ssrf",
+        "file_system"
+      ],
+      "description": "Generic validation function (convention — Zod, Joi, etc.)"
+    },
+    {
+      "function": "createHash",
+      "cleans": [
+        "shell_execution",
+        "sql_injection",
+        "dom_injection"
+      ],
+      "description": "Crypto hashing destroys original payload structure",
+      "module": "crypto"
+    },
+    {
+      "function": "execFileSync",
+      "cleans": [
+        "shell_execution"
+      ],
+      "description": "execFileSync with args array prevents shell injection (when used correctly)",
+      "condition": "args_array_pattern"
+    },
+    {
+      "function": "basename",
+      "cleans": [
+        "file_system"
+      ],
+      "description": "Path basename strips directory traversal",
+      "module": "path"
+    }
+  ]
+}

@@ -1,0 +1,2 @@
+This is a canary file for invisible unicode testing.‍
+The following text contains hidden characters: Hello‌World‮.

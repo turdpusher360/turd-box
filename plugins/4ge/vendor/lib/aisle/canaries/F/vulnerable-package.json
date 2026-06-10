@@ -1,0 +1,10 @@
+{
+  "name": "canary-vulnerable-package",
+  "version": "1.0.0",
+  "dependencies": {
+    "lodash": "4.17.20",
+    "minimist": "0.2.1",
+    "node-fetch": "2.6.0"
+  },
+  "_comment": "AISLE Scanner F canary fixture. These versions have known CVEs."
+}

@@ -1,0 +1,15 @@
+{
+  "name": "canary-typosquat",
+  "version": "1.0.0",
+  "description": "AISLE canary: package.json with a known typosquat dependency",
+  "dependencies": {
+    "lodsah": "4.17.21",
+    "expres": "4.18.2",
+    "requets": "2.88.2"
+  },
+  "_aisle_canary": {
+    "id": "A-typosquat",
+    "expectedFindings": ["typosquat"],
+    "expectedTier": "BLOCK"
+  }
+}

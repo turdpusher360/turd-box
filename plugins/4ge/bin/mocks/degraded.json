@@ -1,0 +1,38 @@
+{
+  "terminal": { "cols": 120, "rows": 40 },
+  "session": {
+    "id": "session-mock-degraded",
+    "model": "opus",
+    "contextPct": 73,
+    "rateLimits": { "fiveHour": 62, "sevenDay": 38 },
+    "uptime": 14400000
+  },
+  "os": {
+    "overallHealth": "degraded",
+    "bootTime": 2450,
+    "capabilities": {
+      "memory":           { "ok": false, "status": "degraded", "init_ms": 0, "reason": "hub:8091 unreachable" },
+      "git":              { "ok": true, "status": "ready", "init_ms": 45 },
+      "file-integrity":   { "ok": false, "status": "degraded", "init_ms": 0, "reason": "not initialized" },
+      "process-health":   { "ok": false, "status": "degraded", "init_ms": 0, "reason": "not initialized" },
+      "infra":            { "ok": false, "status": "degraded", "init_ms": 0, "reason": "docker not responding" },
+      "workflow-engine":  { "ok": true, "status": "ready", "init_ms": 89, "active": 2 },
+      "audit":            { "ok": false, "status": "degraded", "init_ms": 0, "reason": "not initialized" },
+      "forge":            { "ok": true, "status": "ready", "init_ms": 33, "active_session": true },
+      "autoresearch":     { "ok": false, "status": "degraded", "init_ms": 0, "reason": "not initialized" },
+      "aisle":            { "ok": false, "status": "degraded", "init_ms": 0, "reason": "not initialized" }
+    }
+  },
+  "forge": {
+    "active": true,
+    "phase": "execute",
+    "teammates": [
+      { "id": "impl-1", "agent": "sonnet-execute", "status": "active", "file": "lib/os/kernel/boot.cjs" },
+      { "id": "impl-2", "agent": "sonnet-execute", "status": "idle", "file": "lib/os/services/ipc.cjs" }
+    ],
+    "scope": "hud-engine-phase1"
+  },
+  "context": { "trigger": "command", "event": null, "zone": null },
+  "theme": { "name": "dark-ansi" },
+  "mode": "full"
+}

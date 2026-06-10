@@ -1,0 +1,20 @@
+{
+  "version": "1.0.0",
+  "description": "Indicators of Compromise for egress monitoring. Migrated from guard-dns-exfil.cjs.",
+  "domains": [
+    { "domain": "burpcollaborator.net", "category": "pentest-tool", "source": "guard-dns-exfil" },
+    { "domain": "ngrok.io", "category": "tunnel-service", "source": "guard-dns-exfil" },
+    { "domain": "ngrok.app", "category": "tunnel-service", "source": "guard-dns-exfil" },
+    { "domain": "interact.sh", "category": "pentest-tool", "source": "guard-dns-exfil" },
+    { "domain": "oast.fun", "category": "pentest-tool", "source": "guard-dns-exfil" },
+    { "domain": "oast.me", "category": "pentest-tool", "source": "guard-dns-exfil" },
+    { "domain": "oast.live", "category": "pentest-tool", "source": "guard-dns-exfil" },
+    { "domain": "canarytokens.com", "category": "canary-service", "source": "guard-dns-exfil" },
+    { "domain": "requestbin.net", "category": "data-capture", "source": "guard-dns-exfil" },
+    { "domain": "pipedream.net", "category": "data-capture", "source": "guard-dns-exfil" },
+    { "domain": "sfrclak.com", "category": "supply-chain-c2", "source": "guard-dns-exfil (2026-03 axios campaign)" },
+    { "domain": "freefan.net", "category": "supply-chain-c2", "source": "guard-dns-exfil (SANDWORM_MODE)" },
+    { "domain": "fanfree.net", "category": "supply-chain-c2", "source": "guard-dns-exfil (SANDWORM_MODE)" },
+    { "domain": "pkg-metrics.official334.workers.dev", "category": "supply-chain-exfil", "source": "guard-dns-exfil (SANDWORM_MODE)" }
+  ]
+}

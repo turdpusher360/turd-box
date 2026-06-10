@@ -1,0 +1,8 @@
+{
+  "payload": {
+    "content": "Normal memory content for burst test",
+    "tags": ["test"],
+    "importance": 0.5
+  },
+  "calls": 15
+}

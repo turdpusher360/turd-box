@@ -1,0 +1,6 @@
+{
+  "services": ["ollama", "mcp-server", "docker"],
+  "backgroundTtlMs": 300000,
+  "hookTtlMs": 30000,
+  "agentDefaultTtlMs": 5400000
+}

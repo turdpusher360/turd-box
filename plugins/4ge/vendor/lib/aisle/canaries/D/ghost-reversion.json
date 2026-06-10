@@ -1,0 +1,11 @@
+{
+  "_aisle_canary": {
+    "id": "D-ghost-reversion",
+    "description": "Simulates a file that reverted to an old git state (ghost reversion attack)",
+    "expectedFindings": ["hash-mismatch"],
+    "expectedTier": "BLOCK",
+    "scenario": "CC file cache resync bug: CC caches at Read time, resyncs after Bash, overwrites edits with stale cache"
+  },
+  "version": "0.0.1-REVERTED",
+  "content": "This file represents the OLD version of a hook that was reverted by the ghost reversion attack (anthropics/claude-code#42383). The current baseline should differ from this stale content."
+}

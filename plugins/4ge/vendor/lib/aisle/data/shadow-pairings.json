@@ -1,0 +1,60 @@
+{
+  "version": "1.0.0",
+  "description": "Shadow mode pairings: old hooks mapped to AISLE scanners for parallel execution. Used during migration to verify AISLE produces equivalent or stricter decisions.",
+  "pairings": [
+    {
+      "phase": 1,
+      "oldHook": "blueprint-quarantine.cjs",
+      "event": "PreToolUse:Bash",
+      "scanner": "A",
+      "scannerName": "supply-chain",
+      "direction": "E is stricter",
+      "notes": "Scanner A subsumes blueprint quarantine via lockfile integrity checks"
+    },
+    {
+      "phase": 1,
+      "oldHook": "pre-write-check.cjs",
+      "event": "PreToolUse:Write|Edit",
+      "scanner": "D",
+      "scannerName": "integrity",
+      "direction": "D is stricter",
+      "notes": "Scanner D protects more paths than pre-write-check"
+    },
+    {
+      "phase": 2,
+      "oldHook": "secret-guard.cjs",
+      "event": "UserPromptSubmit",
+      "scanner": "E",
+      "scannerName": "egress",
+      "direction": "E is stricter (18 vs 13 patterns)",
+      "notes": "Scanner E covers PreToolUse only — UserPromptSubmit gap needs aisle-prompt-guard.cjs post-cutover"
+    },
+    {
+      "phase": 2,
+      "oldHook": "guard-dns-exfil.cjs",
+      "event": "PreToolUse:Bash",
+      "scanner": "E",
+      "scannerName": "egress",
+      "direction": "E is stricter (general egress monitoring)",
+      "notes": "Scanner E adds DNS exfil detection (hex, base32, split-label) beyond simple pattern matching"
+    },
+    {
+      "phase": 2,
+      "oldHook": "token-guard.cjs",
+      "event": "PostToolUse:Write|Edit",
+      "scanner": "E",
+      "scannerName": "egress",
+      "direction": "E absorbs (5 patterns merged into 18)",
+      "notes": "All token-guard patterns are included in secret-patterns.json consumed by Scanner E"
+    },
+    {
+      "phase": 2,
+      "oldHook": "memory-protocol-check.cjs",
+      "event": "PreToolUse:Bash",
+      "scanner": "I",
+      "scannerName": "memory-integrity",
+      "direction": "I is stricter (poisoning + anomaly detection)",
+      "notes": "Scanner I adds instruction-override detection and rapid-write anomaly. memory-protocol-check only warns on missing memory_store before commit"
+    }
+  ]
+}

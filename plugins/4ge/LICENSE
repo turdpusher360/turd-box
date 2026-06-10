@@ -1,0 +1,112 @@
+# Functional Source License, Version 1.1, MIT Future License
+
+## Abbreviation
+
+FSL-1.1-MIT
+
+## Notice
+
+Copyright 2026 Turdpusher360
+
+## Terms and Conditions
+
+### Licensor ("We")
+
+Turdpusher360
+
+### The Software
+
+4ge Plugin — unified CLI for the 4ge ecosystem, including all source code,
+documentation, and associated files under the `plugins/4ge/` directory of
+the turd-box repository (https://github.com/turdpusher360/turd-box).
+
+### License Grant
+
+Subject to the conditions below, we hereby grant you a non-exclusive,
+royalty-free, worldwide, non-sublicensable, non-transferable license to use,
+copy, modify, and distribute the Software, solely for your internal business
+or personal purposes.
+
+### Limitations
+
+You must not use the Software in a manner that constitutes Competing Use.
+"Competing Use" means making the Software available to third parties as a
+commercial Claude Code plugin, AI coding assistant plugin, AI development
+orchestration product, or AI code review product, or using the Software to
+provide any such products or services to third parties.
+
+You must not remove or obscure any licensing, copyright, or other notices
+from the Software.
+
+### Change Date
+
+2028-04-10 (April 10, 2028)
+
+### Change License
+
+MIT License
+
+### Patents
+
+The Licensor grants you a license, under any patent claims the Licensor can
+license or becomes able to license, to make, have made, use, sell, offer to
+sell, import, and have imported the Software, in each case subject to the
+limitations and conditions in this license. This patent license does not
+cover any patent claims that you cause to be infringed by modifications or
+additions to the Software.
+
+### Fair Use and Other Rights
+
+Nothing in this license restricts your rights under fair use, fair dealing,
+or any other applicable exception or limitation to copyright.
+
+### No Warranty
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
+IN THE SOFTWARE.
+
+---
+
+## After the Change Date
+
+On 2028-04-10, this license automatically and irrevocably converts to the
+MIT License. From that date forward, the Software is governed by the
+following terms:
+
+MIT License
+
+Copyright 2026 Turdpusher360
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to
+deal in the Software without restriction, including without limitation the
+rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
+sell copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+---
+
+## Blueprint Output Exception
+
+Files installed by the 4ge Blueprint installer into target repositories
+(including but not limited to hooks, agents, rules, and skills copied to
+a target project's `.claude/` directory) are licensed under the MIT License
+upon installation, regardless of this FSL license on the installer itself.
+See `LICENSES/BLUEPRINT-OUTPUT-MIT.md` for the full MIT license text
+applicable to installed files.

@@ -1,0 +1,29 @@
+{
+  "terminal": { "cols": 120, "rows": 40 },
+  "session": {
+    "id": "session-mock-healthy",
+    "model": "opus",
+    "contextPct": 32,
+    "rateLimits": { "fiveHour": 18, "sevenDay": 9 },
+    "uptime": 3600000
+  },
+  "os": {
+    "overallHealth": "ready",
+    "bootTime": 1819,
+    "capabilities": {
+      "memory":           { "ok": true, "status": "ready", "init_ms": 228 },
+      "git":              { "ok": true, "status": "ready", "init_ms": 45 },
+      "file-integrity":   { "ok": true, "status": "ready", "init_ms": 312 },
+      "process-health":   { "ok": true, "status": "ready", "init_ms": 67 },
+      "infra":            { "ok": true, "status": "ready", "init_ms": 1819 },
+      "workflow-engine":  { "ok": true, "status": "ready", "init_ms": 89, "active": 0 },
+      "audit":            { "ok": true, "status": "ready", "init_ms": 15 },
+      "forge":            { "ok": true, "status": "ready", "init_ms": 33, "active_session": false },
+      "autoresearch":     { "ok": true, "status": "ready", "init_ms": 44 }
+    }
+  },
+  "forge": { "active": false, "phase": null, "teammates": [], "scope": null },
+  "context": { "trigger": "command", "event": null, "zone": null },
+  "theme": { "name": "dark-ansi" },
+  "mode": "full"
+}

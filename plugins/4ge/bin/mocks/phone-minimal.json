@@ -1,0 +1,25 @@
+{
+  "terminal": { "cols": 48, "rows": 28 },
+  "session": {
+    "id": "session-mock-phone",
+    "model": "opus",
+    "contextPct": 45,
+    "rateLimits": { "fiveHour": 38, "sevenDay": 22 },
+    "uptime": 7200000
+  },
+  "os": {
+    "overallHealth": "degraded",
+    "bootTime": 1200,
+    "capabilities": {
+      "memory":           { "ok": false, "status": "degraded", "init_ms": 0, "reason": "hub:8091 unreachable" },
+      "git":              { "ok": true, "status": "ready", "init_ms": 45 },
+      "workflow-engine":  { "ok": true, "status": "ready", "init_ms": 89, "active": 0 },
+      "forge":            { "ok": true, "status": "ready", "init_ms": 33, "active_session": false },
+      "aisle":            { "ok": false, "status": "degraded", "init_ms": 0, "reason": "not initialized" }
+    }
+  },
+  "forge": { "active": false, "phase": null, "teammates": [], "scope": null },
+  "context": { "trigger": "command", "event": null, "zone": null },
+  "theme": { "name": "dark-ansi" },
+  "mode": "full"
+}

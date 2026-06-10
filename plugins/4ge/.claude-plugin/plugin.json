@@ -1,0 +1,264 @@
+{
+  "name": "4ge",
+  "version": "2.2.1",
+  "description": "The production layer for Claude Code. 37 commands and 40 skills across 9 OS capabilities: multi-agent forge orchestration, 6-pass adversarial code review, AISLE security posture, persistent memory, systematic debugging, live HUD, and more.",
+  "author": {
+    "name": "turdpusher360"
+  },
+  "repository": "https://github.com/turdpusher360/turd-box",
+  "license": "FSL-1.1-MIT",
+  "homepage": "https://github.com/turdpusher360/turd-box/tree/main/plugins/4ge#readme",
+  "screenshots": [
+    "../../../.claude-plugin/screenshots/statusline.png",
+    "../../../.claude-plugin/screenshots/forge-session.png",
+    "../../../.claude-plugin/screenshots/dfe-review.png",
+    "../../../.claude-plugin/screenshots/audit-dashboard.png"
+  ],
+  "readme": "plugins/4ge/README.md",
+  "categories": [
+    "developer-tools",
+    "productivity",
+    "code-quality",
+    "ai-assistant"
+  ],
+  "keywords": [
+    "4ge",
+    "forge",
+    "multi-agent",
+    "orchestration",
+    "code-review",
+    "security",
+    "memory",
+    "hud",
+    "aisle",
+    "dfe",
+    "audit",
+    "companion",
+    "blueprint",
+    "autoresearch",
+    "debugging",
+    "devtools",
+    "portfolio",
+    "os"
+  ],
+  "commands": {
+    "forge": {
+      "source": "./commands/forge.md",
+      "model": "opus",
+      "description": "Multi-teammate orchestrator. Use /forge <task>, /forge resume, or /forge park.",
+      "argumentHint": "task description, 'resume', or 'park'"
+    },
+    "dfe": {
+      "source": "./commands/dfe.md",
+      "model": "opus",
+      "description": "AI code review — 6-pass DFE analysis (5 Sonnet + 1 Opus adversarial).",
+      "argumentHint": "[file path | all | --staged | --unstaged]"
+    },
+    "audit": {
+      "source": "./commands/audit.md",
+      "model": "opus",
+      "description": "Run code quality audit — 70 checks across 10 domains.",
+      "argumentHint": "[quick] [full] [<domain>] or no args for interactive"
+    },
+    "aisle": {
+      "source": "./commands/aisle.md",
+      "model": "opus",
+      "description": "[AISLE] AI Security Learning Environment — security posture, scanning, and threat management.",
+      "argumentHint": "'scan', 'report', 'health', 'quarantine', 'config', 'learn', or empty for posture summary"
+    },
+    "blueprint": {
+      "source": "./commands/blueprint.md",
+      "model": "opus",
+      "description": "Bootstrap or update a Claude Code environment.",
+      "argumentHint": "setup | update | status"
+    },
+    "help": {
+      "source": "./commands/help.md",
+      "model": "sonnet",
+      "description": "4ge plugin glossary, command index, and usage guide.",
+      "argumentHint": "[command-name | hooks | skills] or empty for full index"
+    },
+    "recall": {
+      "source": "./commands/recall.md",
+      "model": "sonnet",
+      "description": "Guided Knowledge hub: memory search, repo map, context budget, respawn, decisions. Use /recall for the menu or /recall <query> for dev-memory search.",
+      "argumentHint": "[query | --map | --budget | --deep | (empty for menu)]"
+    },
+    "map": {
+      "source": "./commands/map.md",
+      "model": "sonnet",
+      "description": "[REDIRECT] Use /recall --map instead — repository architecture map."
+    },
+    "infra": {
+      "source": "./commands/infra.md",
+      "model": "sonnet",
+      "description": "Docker container health monitoring.",
+      "argumentHint": "'check', 'heal <container>', or empty for health check"
+    },
+    "secret": {
+      "source": "./commands/secret.md",
+      "model": "sonnet",
+      "description": "Capture a secret to .env without crossing model context.",
+      "argumentHint": "<KEY=value> | <KEY> <value> | <token-with-recognized-prefix>"
+    },
+    "superdupersecret": {
+      "source": "./commands/superdupersecret.md",
+      "model": "sonnet",
+      "description": "Alias of /secret for secret capture without model-context exposure.",
+      "argumentHint": "<KEY=value> | <KEY> <value> | <token-with-recognized-prefix>"
+    },
+    "commit": {
+      "source": "./commands/commit.md",
+      "model": "sonnet",
+      "description": "Redirects to /ship. Use /ship --no-push to commit without pushing.",
+      "argumentHint": ""
+    },
+    "ship": {
+      "source": "./commands/ship.md",
+      "model": "sonnet",
+      "description": "Verify, commit, and push — full delivery pipeline.",
+      "argumentHint": "<message>"
+    },
+    "pr": {
+      "source": "./commands/pr.md",
+      "model": "sonnet",
+      "description": "Verify, commit, push, and open a PR.",
+      "argumentHint": "<title>"
+    },
+    "fix": {
+      "source": "./commands/fix.md",
+      "model": "sonnet",
+      "description": "Inline issue collector. Capture maintenance issues without interrupting workflow.",
+      "argumentHint": "<description>"
+    },
+    "maintain": {
+      "source": "./commands/maintain.md",
+      "model": "sonnet",
+      "description": "Redirects to /outhouse. Use /outhouse for repository maintenance.",
+      "argumentHint": "[flags]"
+    },
+    "outhouse": {
+      "source": "./commands/outhouse.md",
+      "model": "sonnet",
+      "description": "Repository maintenance hub: health wizard, fix-collector, evolve, lint, blueprint, wizard suite. Use /outhouse for the menu or --quick for a fast score.",
+      "argumentHint": "[--quick] [--ci] [--auto-safe] [--preflight] [--report] [--dry-run] [--show-suppressed] [--research-depth <quick|standard|deep>] [--category <name>]"
+    },
+    "hud": {
+      "source": "./commands/hud.md",
+      "model": "sonnet",
+      "description": "Toggle or configure the OS HUD pane.",
+      "argumentHint": "[off | on | status | theme <name>]"
+    },
+    "wizard": {
+      "source": "./commands/wizard.md",
+      "model": "sonnet",
+      "description": "Wizard suite launcher.",
+      "argumentHint": "[list | <mode>] [flags]"
+    },
+    "autoresearch": {
+      "source": "./commands/autoresearch.md",
+      "model": "sonnet",
+      "description": "Run autoresearch — self-improving measurement loops.",
+      "argumentHint": "domain name, 'sweep', 'status', or 'heal <domain>'"
+    },
+    "hitchhiker": {
+      "source": "./commands/hitchhiker.md",
+      "model": "sonnet",
+      "description": "[REDIRECT] Use /recall instead. Knowledge search moved to the Guided Knowledge hub.",
+      "argumentHint": ""
+    },
+    "constraint": {
+      "source": "./commands/constraint.md",
+      "model": "sonnet",
+      "description": "Log a constraint/dead-end to the DCD enrichment file.",
+      "argumentHint": "<what blocked you> -- tried <X>, failed because <Y>, workaround <Z>"
+    },
+    "decide": {
+      "source": "./commands/decide.md",
+      "model": "sonnet",
+      "description": "Log a decision to the DCD enrichment file.",
+      "argumentHint": "<what you decided> -- chose <X> over <Y> because <reason>"
+    },
+    "evolve": {
+      "source": "./commands/evolve.md",
+      "model": "sonnet",
+      "description": "Analyze usage telemetry and suggest config changes to evolve your .4ge/config.json."
+    },
+    "export": {
+      "source": "./commands/export.md",
+      "model": "sonnet",
+      "description": "Export session work as a business-ready deliverable (brief, deck, handoff).",
+      "argumentHint": "[session-id] [--bizops] [--format brief|deck|all]"
+    },
+    "lint": {
+      "source": "./commands/lint.md",
+      "model": "sonnet",
+      "description": "Show rule follow-through rates and suggest demotions for under-followed rules."
+    },
+    "lounge": {
+      "source": "./commands/lounge.md",
+      "model": "sonnet",
+      "description": "Lounge mode is now a flag — add --lounge to any command for numbered-option interaction."
+    },
+    "releases": {
+      "source": "./commands/releases.md",
+      "model": "sonnet",
+      "description": "Show recent release notes from shipped sessions.",
+      "argumentHint": "session number (e.g. S186) or 'all' for full list"
+    },
+    "respawn": {
+      "source": "./commands/respawn.md",
+      "model": "sonnet",
+      "description": "Extract decision chain and prepare a fresh Claude instance with full context.",
+      "argumentHint": "optional: 'dry-run' to preview DCD without writing"
+    },
+    "studio": {
+      "source": "./commands/studio.md",
+      "model": "sonnet",
+      "description": "Activate Studio Mode — full HUD engine + reactive hooks + badge tracking.",
+      "argumentHint": "[on|off|status]"
+    },
+    "4ge": {
+      "source": "./commands/4ge.md",
+      "model": "sonnet",
+      "description": "4ge ecosystem — forge orchestration + OS operations.",
+      "argumentHint": "run <task> | resume | park | os | eject <type> <name> | adopt <type> <name>"
+    },
+    "substrate": {
+      "source": "./commands/substrate.md",
+      "model": "sonnet",
+      "description": "Substrate composition engine — render text and OS state through Unicode combining marks, Math Alphanumerics, and block elements.",
+      "argumentHint": "os | max <word> | palimpsest <base> <overlay> | alphabets <text> | enclosed <base> <shape> | help"
+    },
+    "debug": {
+      "source": "./commands/debug.md",
+      "model": "sonnet",
+      "description": "Systematic debugging — guided root-cause analysis with memory search, causal mapping, and fix verification.",
+      "argumentHint": "<symptom description> [--trace] [--bisect] [--hypothesis <text>]"
+    },
+    "recon": {
+      "source": "./commands/recon.md",
+      "model": "sonnet",
+      "description": "[REDIRECT] Use /recall instead (memory search, repo map, context budget, deep search).",
+      "argumentHint": ""
+    },
+    "signoff": {
+      "source": "./commands/signoff.md",
+      "model": "sonnet",
+      "description": "Review and enrich the session cartridge before ending.",
+      "argumentHint": "[optional notes to include]"
+    },
+    "resp4wn": {
+      "source": "./commands/resp4wn.md",
+      "model": "sonnet",
+      "description": "Redirects to /respawn. Legacy Context Respawn command spelling.",
+      "argumentHint": "[status|extract|history|clear]"
+    },
+    "tour": {
+      "source": "./commands/tour.md",
+      "model": "sonnet",
+      "description": "5-step guided walkthrough of the highest-value /4ge commands for new users.",
+      "argumentHint": "[--step N]"
+    }
+  }
+}

@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Known dangerous sink functions for taint analysis. Grouped by risk category.",
+  "sinks": {
+    "shell_execution": [
+      { "function": "execSync", "module": "child_process", "risk": "command injection" },
+      { "function": "exec", "module": "child_process", "risk": "command injection" },
+      { "function": "spawn", "module": "child_process", "risk": "command injection (when shell: true)", "condition": "shell_option" },
+      { "function": "execFile", "module": "child_process", "risk": "command injection (when shell option set)", "condition": "shell_option" }
+    ],
+    "code_evaluation": [
+      { "function": "eval", "module": null, "risk": "arbitrary code execution" },
+      { "function": "Function", "module": null, "risk": "arbitrary code execution via constructor" },
+      { "function": "runInNewContext", "module": "vm", "risk": "sandbox escape" },
+      { "function": "runInThisContext", "module": "vm", "risk": "sandbox escape" },
+      { "function": "compileFunction", "module": "vm", "risk": "arbitrary code execution" }
+    ],
+    "dom_injection": [
+      { "function": "innerHTML", "module": null, "risk": "XSS via DOM manipulation", "type": "property" },
+      { "function": "dangerouslySetInnerHTML", "module": null, "risk": "XSS via React", "type": "jsx_prop" },
+      { "function": "document.write", "module": null, "risk": "XSS via document write" }
+    ],
+    "sql_injection": [
+      { "function": "query", "module": null, "risk": "SQL injection via template literal", "condition": "template_literal_arg" },
+      { "function": "raw", "module": null, "risk": "SQL injection via raw query", "condition": "template_literal_arg" }
+    ],
+    "ssrf": [
+      { "function": "request", "module": "http", "risk": "SSRF via dynamic URL" },
+      { "function": "request", "module": "https", "risk": "SSRF via dynamic URL" },
+      { "function": "fetch", "module": null, "risk": "SSRF via dynamic URL", "condition": "dynamic_first_arg" }
+    ],
+    "file_system": [
+      { "function": "writeFileSync", "module": "fs", "risk": "arbitrary file write" },
+      { "function": "writeFile", "module": "fs", "risk": "arbitrary file write" },
+      { "function": "appendFile", "module": "fs", "risk": "arbitrary file append" },
+      { "function": "appendFileSync", "module": "fs", "risk": "arbitrary file append" }
+    ],
+    "module_loading": [
+      { "function": "require", "module": null, "risk": "dynamic require with user input", "condition": "dynamic_arg" }
+    ],
+    "worker_spawning": [
+      { "function": "Worker", "module": null, "risk": "arbitrary code execution via worker", "type": "constructor" }
+    ],
+    "timer_eval": [
+      { "function": "setTimeout", "module": null, "risk": "code execution via string arg", "condition": "string_first_arg" },
+      { "function": "setInterval", "module": null, "risk": "code execution via string arg", "condition": "string_first_arg" }
+    ]
+  }
+}

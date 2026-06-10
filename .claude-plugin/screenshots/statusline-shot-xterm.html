@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>4ge HUD — StatusLine (xterm capture)</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/css/xterm.min.css">
+<script src="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/lib/xterm.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@xterm/addon-canvas@0.7.0/lib/addon-canvas.min.js"></script>
+<style>
+  body { margin: 0; padding: 40px; background: #0a0a0a; }
+  .window {
+    background: #161412; border: 1px solid #2a2a2a; border-radius: 12px;
+    overflow: hidden; box-shadow: 0 20px 60px rgba(0,0,0,.6); width: fit-content;
+  }
+  .titlebar {
+    display: flex; align-items: center; gap: 8px;
+    padding: 14px 18px; border-bottom: 1px solid #262626; background: #1c1c1c;
+  }
+  .dot { width: 12px; height: 12px; border-radius: 50%; }
+  .r { background: #ff5f57; } .y { background: #febc2e; } .g { background: #28c840; }
+  .title {
+    margin-left: 12px; font-family: 'DejaVu Sans Mono', monospace;
+    font-size: 11px; letter-spacing: .25em; color: #8a8a8a;
+  }
+  #term { padding: 22px 24px; }
+  .xterm .xterm-viewport { overflow: hidden !important; }
+</style></head><body>
+<div class="window">
+  <div class="titlebar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="title">CLAUDE CODE · 4GE STATUSLINE</span></div>
+  <div id="term"></div>
+</div>
+<script>
+  fetch('statusline.ansi').then(r => r.text()).then(ansi => {
+    const lines = ansi.replace(/\n$/, '').split('\n');
+    // cols must fit the widest visible line of statusline.ansi (currently 75
+    // chars on row 3 with the 5h/7d trackers + cost slots populated) + margin.
+    const term = new Terminal({
+      cols: 77, rows: lines.length,
+      fontFamily: "'DejaVu Sans Mono', monospace",
+      fontSize: 15, lineHeight: 1.25, letterSpacing: 0,
+      theme: { background: '#161412', foreground: '#c0c0c0' },
+      cursorBlink: false, disableStdin: true, allowTransparency: false, customGlyphs: true
+    });
+    term.open(document.getElementById('term'));
+    term.loadAddon(new CanvasAddon.CanvasAddon());
+    term.write(lines.join('\r\n') + '\x1b[?25l', () => { document.title += ' — READY'; });
+  });
+</script>
+</body></html>

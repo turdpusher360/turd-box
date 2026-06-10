@@ -1,0 +1,411 @@
+{
+  "generatedAt": "2026-06-10T17:02:42.124Z",
+  "sourceHead": "f6aca4947e3cc24ab96c9302c958b6e1a01fdb59",
+  "files": {
+    "lib/aisle/.gitignore": {
+      "sourceSha256": "051f52b7c0fb350f7e8e5cd2e6aceb85e7cf198ff9062f9b52959eac14209671",
+      "vendoredSha256": "051f52b7c0fb350f7e8e5cd2e6aceb85e7cf198ff9062f9b52959eac14209671",
+      "transformed": false
+    },
+    "lib/aisle/aisle-config.schema.json": {
+      "sourceSha256": "08b32a7c62f07975caa21694645e2e20bc4be099c3377f675929ea2dc7b01582",
+      "vendoredSha256": "08b32a7c62f07975caa21694645e2e20bc4be099c3377f675929ea2dc7b01582",
+      "transformed": false
+    },
+    "lib/aisle/canaries/A/hallucinated-package.json": {
+      "sourceSha256": "b5f544b542794b0e1e9d3f75579c55ffd6cd1cea918d56cdb1c9b9240f9cf5d0",
+      "vendoredSha256": "b5f544b542794b0e1e9d3f75579c55ffd6cd1cea918d56cdb1c9b9240f9cf5d0",
+      "transformed": false
+    },
+    "lib/aisle/canaries/A/malicious-package.json": {
+      "sourceSha256": "f4281c3f612eb013b47c1a7063680ac92c3a2be5db0a0254f62a670dcdc94136",
+      "vendoredSha256": "f4281c3f612eb013b47c1a7063680ac92c3a2be5db0a0254f62a670dcdc94136",
+      "transformed": false
+    },
+    "lib/aisle/canaries/A/unpinned-lock.json": {
+      "sourceSha256": "1b409d6cbd753b443de0c55785a7a67a3cff8764602c97b8c2179ad943b20bc7",
+      "vendoredSha256": "1b409d6cbd753b443de0c55785a7a67a3cff8764602c97b8c2179ad943b20bc7",
+      "transformed": false
+    },
+    "lib/aisle/canaries/B/adversarial-eval.js": {
+      "sourceSha256": "875690a2fcdde7e09abf4959a6db85abbfd0d21f8bdc86d69d004c4cb564ee3e",
+      "vendoredSha256": "875690a2fcdde7e09abf4959a6db85abbfd0d21f8bdc86d69d004c4cb564ee3e",
+      "transformed": false
+    },
+    "lib/aisle/canaries/B/eval-injection.js": {
+      "sourceSha256": "7e20efb52507701d6dd7edea0341b23f5ad43e7de84fb759ad0051b7de7fda38",
+      "vendoredSha256": "7e20efb52507701d6dd7edea0341b23f5ad43e7de84fb759ad0051b7de7fda38",
+      "transformed": false
+    },
+    "lib/aisle/canaries/B/obfuscated-payload.js": {
+      "sourceSha256": "ee1d9a91e7238031a84226df9b536e8aaea797f2c4c5fd99f9c55000b6a32d3c",
+      "vendoredSha256": "ee1d9a91e7238031a84226df9b536e8aaea797f2c4c5fd99f9c55000b6a32d3c",
+      "transformed": false
+    },
+    "lib/aisle/canaries/C/contract-violation.json": {
+      "sourceSha256": "b9808b84d3d389f72cd28bcb44a086c34d39674278b9629850924940416bc778",
+      "vendoredSha256": "b9808b84d3d389f72cd28bcb44a086c34d39674278b9629850924940416bc778",
+      "transformed": false
+    },
+    "lib/aisle/canaries/C/empty-subagent.json": {
+      "sourceSha256": "327c1136348a13b8f43e25c8c10c9151ace9467997cdced55a87b8138a137f9a",
+      "vendoredSha256": "327c1136348a13b8f43e25c8c10c9151ace9467997cdced55a87b8138a137f9a",
+      "transformed": false
+    },
+    "lib/aisle/canaries/D/ghost-reversion.json": {
+      "sourceSha256": "28ccc1dbe175705986f82ae1ec99a81d904f7bb8f940a1d148f5ec1b6d240694",
+      "vendoredSha256": "28ccc1dbe175705986f82ae1ec99a81d904f7bb8f940a1d148f5ec1b6d240694",
+      "transformed": false
+    },
+    "lib/aisle/canaries/D/tampered-hook.cjs": {
+      "sourceSha256": "3cb9cbeb4d50b9ad9d4dfb117519ed0097168e89135b17d21c874bd10c4b114c",
+      "vendoredSha256": "3cb9cbeb4d50b9ad9d4dfb117519ed0097168e89135b17d21c874bd10c4b114c",
+      "transformed": false
+    },
+    "lib/aisle/canaries/E/curl-secrets.sh": {
+      "sourceSha256": "69c7c96ce398bec6a3bec3446367be7003a2365e10560f08735ef93f0240a17c",
+      "vendoredSha256": "69c7c96ce398bec6a3bec3446367be7003a2365e10560f08735ef93f0240a17c",
+      "transformed": false
+    },
+    "lib/aisle/canaries/E/dns-exfil.sh": {
+      "sourceSha256": "c494390d9dd107ea2d8b30d9b78c08e6e0e0cdd4a967be13407d186716933d43",
+      "vendoredSha256": "c494390d9dd107ea2d8b30d9b78c08e6e0e0cdd4a967be13407d186716933d43",
+      "transformed": false
+    },
+    "lib/aisle/canaries/E/mcp-egress.json": {
+      "sourceSha256": "d38913723bdd890135168e3d3406c354dacff11ca778755e6c1604d3417a9e93",
+      "vendoredSha256": "d38913723bdd890135168e3d3406c354dacff11ca778755e6c1604d3417a9e93",
+      "transformed": false
+    },
+    "lib/aisle/canaries/F/vulnerable-package.json": {
+      "sourceSha256": "1e82a3c975a553155c15044bfe71bb17bf797d7b89345e5b73d205a0baca4607",
+      "vendoredSha256": "1e82a3c975a553155c15044bfe71bb17bf797d7b89345e5b73d205a0baca4607",
+      "transformed": false
+    },
+    "lib/aisle/canaries/G/injection-pattern.txt": {
+      "sourceSha256": "d7a1b56a535f9065080c7f1b41e199e506e5e21a00e81734492bc6c55228c71d",
+      "vendoredSha256": "d7a1b56a535f9065080c7f1b41e199e506e5e21a00e81734492bc6c55228c71d",
+      "transformed": false
+    },
+    "lib/aisle/canaries/G/invisible-unicode.txt": {
+      "sourceSha256": "09fc488e5249c2cb024701b501712286f1849fd5d353867dd8834b523508943e",
+      "vendoredSha256": "09fc488e5249c2cb024701b501712286f1849fd5d353867dd8834b523508943e",
+      "transformed": false
+    },
+    "lib/aisle/canaries/G/two-message-sequence.json": {
+      "sourceSha256": "d64096d395c9359814aa9db035fab77e7d6ef551f270c604d36bfe0bf1ac11eb",
+      "vendoredSha256": "d64096d395c9359814aa9db035fab77e7d6ef551f270c604d36bfe0bf1ac11eb",
+      "transformed": false
+    },
+    "lib/aisle/canaries/H/magic-mismatch.js": {
+      "sourceSha256": "32c131174a33d96959b16db21c256278950c496e5f71ca309708b9f54831992b",
+      "vendoredSha256": "32c131174a33d96959b16db21c256278950c496e5f71ca309708b9f54831992b",
+      "transformed": false
+    },
+    "lib/aisle/canaries/H/polyglot.pdf": {
+      "sourceSha256": "fa640bccc565a8ee9084e82804126131220effe29f9c55505f5a63c3a298bdf7",
+      "vendoredSha256": "fa640bccc565a8ee9084e82804126131220effe29f9c55505f5a63c3a298bdf7",
+      "transformed": false
+    },
+    "lib/aisle/canaries/H/zipbomb.zip": {
+      "sourceSha256": "7694c4e116610ca87204fd88ba2815c021c11dfcf3d6a5bcc75097ecccaf1b20",
+      "vendoredSha256": "7694c4e116610ca87204fd88ba2815c021c11dfcf3d6a5bcc75097ecccaf1b20",
+      "transformed": false
+    },
+    "lib/aisle/canaries/I/poisoning-attempt.json": {
+      "sourceSha256": "75c077889afe94a6213a523591f9c08aa318090acd9852b887ce7b99df0a5004",
+      "vendoredSha256": "75c077889afe94a6213a523591f9c08aa318090acd9852b887ce7b99df0a5004",
+      "transformed": false
+    },
+    "lib/aisle/canaries/I/rapid-write-burst.json": {
+      "sourceSha256": "a20e535c8cd09404ad153371a95ce30f12b1987d713a16173aaa6549eec4abfc",
+      "vendoredSha256": "a20e535c8cd09404ad153371a95ce30f12b1987d713a16173aaa6549eec4abfc",
+      "transformed": false
+    },
+    "lib/aisle/core/ar-ingest.cjs": {
+      "sourceSha256": "1e9daacb59bd814a7d674355d9344906d2723a62fe70658bb5679f2d30eda685",
+      "vendoredSha256": "1e9daacb59bd814a7d674355d9344906d2723a62fe70658bb5679f2d30eda685",
+      "transformed": false
+    },
+    "lib/aisle/core/boot.cjs": {
+      "sourceSha256": "d171cd4c4c2357aa636f199bb484bec82763f5aa37a32b834713171befb1420b",
+      "vendoredSha256": "797582297a37ae307931ada1b5a8cad549ab76fd8440bc22325d4f9acf3b9b73",
+      "transformed": true
+    },
+    "lib/aisle/core/config.cjs": {
+      "sourceSha256": "846bb20fbc760f4adb3b0e7a5ec1f08b513f14b55080a572f303fa733e8238fa",
+      "vendoredSha256": "650138f5435c19d33c066d7264d91e89d9ee4e496d43be4f5a1822200b34147c",
+      "transformed": true
+    },
+    "lib/aisle/core/gate-evaluator.cjs": {
+      "sourceSha256": "73dd0f98a1081eb55a7e72bd736cb7d832e0fb9abb0e8bafd49835ad9ae7423a",
+      "vendoredSha256": "73dd0f98a1081eb55a7e72bd736cb7d832e0fb9abb0e8bafd49835ad9ae7423a",
+      "transformed": false
+    },
+    "lib/aisle/core/health-monitor.cjs": {
+      "sourceSha256": "c531a874c00139988a34640d2a097aa736d3b0a951268557276f11d990137d69",
+      "vendoredSha256": "c531a874c00139988a34640d2a097aa736d3b0a951268557276f11d990137d69",
+      "transformed": false
+    },
+    "lib/aisle/core/learning.cjs": {
+      "sourceSha256": "f538df066ad770918d520e557877af97769afff1a2beda1b711f95a14e2e74be",
+      "vendoredSha256": "d5fecceb2a7f91f3096571015375087eb29dddf2c2bb95e7eb36a018feb796e9",
+      "transformed": true
+    },
+    "lib/aisle/core/policy-engine.cjs": {
+      "sourceSha256": "c1eb637a12934cbda38c8fd7b5ee7c20feebc4527909392cd49393005aa71444",
+      "vendoredSha256": "c1eb637a12934cbda38c8fd7b5ee7c20feebc4527909392cd49393005aa71444",
+      "transformed": false
+    },
+    "lib/aisle/core/quarantine-manager.cjs": {
+      "sourceSha256": "61b47cfb5b6a95261736d9364ce916de4f90394f31d6e9f2e109558a488f5910",
+      "vendoredSha256": "61b47cfb5b6a95261736d9364ce916de4f90394f31d6e9f2e109558a488f5910",
+      "transformed": false
+    },
+    "lib/aisle/core/scanner-registry.cjs": {
+      "sourceSha256": "c392585b67988b719e5adbe4c6083ff9167dc92b73a6d90c5b96bbfd73e4d2ee",
+      "vendoredSha256": "c392585b67988b719e5adbe4c6083ff9167dc92b73a6d90c5b96bbfd73e4d2ee",
+      "transformed": false
+    },
+    "lib/aisle/core/threat-intel.cjs": {
+      "sourceSha256": "6c382c03032ce9528d21cb3e3cfa4f1a3a756a5e939c3ff357f1804e5cdd5596",
+      "vendoredSha256": "6c382c03032ce9528d21cb3e3cfa4f1a3a756a5e939c3ff357f1804e5cdd5596",
+      "transformed": false
+    },
+    "lib/aisle/data/code-patterns.json": {
+      "sourceSha256": "72d17f0ce620dffacbda8077ce8f7d80ef1def6d9227911b812c3e1d101f267b",
+      "vendoredSha256": "72d17f0ce620dffacbda8077ce8f7d80ef1def6d9227911b812c3e1d101f267b",
+      "transformed": false
+    },
+    "lib/aisle/data/egress-iocs.json": {
+      "sourceSha256": "662d6abab0c7f8146de861a87697abd1aade4ab2ac4de27cd7c9646f6cd603a9",
+      "vendoredSha256": "662d6abab0c7f8146de861a87697abd1aade4ab2ac4de27cd7c9646f6cd603a9",
+      "transformed": false
+    },
+    "lib/aisle/data/secret-patterns.json": {
+      "sourceSha256": "9741f2563e61e07d42e1def96df115cb1cb7be5cd6ed23a48a6d259f3237f896",
+      "vendoredSha256": "9741f2563e61e07d42e1def96df115cb1cb7be5cd6ed23a48a6d259f3237f896",
+      "transformed": false
+    },
+    "lib/aisle/data/shadow-pairings.json": {
+      "sourceSha256": "53a7e892622166cb96974af83d0c4ee1088710fe526c486c3866801176be86d0",
+      "vendoredSha256": "53a7e892622166cb96974af83d0c4ee1088710fe526c486c3866801176be86d0",
+      "transformed": false
+    },
+    "lib/aisle/scanners/code-patterns.cjs": {
+      "sourceSha256": "bfc93bfc0128c063d36bfd2c28af038f93f27d259a7d2d4cb3bfae1661c042a9",
+      "vendoredSha256": "bfc93bfc0128c063d36bfd2c28af038f93f27d259a7d2d4cb3bfae1661c042a9",
+      "transformed": false
+    },
+    "lib/aisle/scanners/cve.cjs": {
+      "sourceSha256": "838d394e14f4ca47245607044f13c53354cc9244156479b62e2f8af8d611d003",
+      "vendoredSha256": "838d394e14f4ca47245607044f13c53354cc9244156479b62e2f8af8d611d003",
+      "transformed": false
+    },
+    "lib/aisle/scanners/egress.cjs": {
+      "sourceSha256": "a038d1c23b7caf5f2090b1404186671b18e241b7aea612630545273bfd969189",
+      "vendoredSha256": "a038d1c23b7caf5f2090b1404186671b18e241b7aea612630545273bfd969189",
+      "transformed": false
+    },
+    "lib/aisle/scanners/event-bus.cjs": {
+      "sourceSha256": "61b1644e14244f8144c1c23df46bc170470d8962591b146af883494a65c1f1a4",
+      "vendoredSha256": "61b1644e14244f8144c1c23df46bc170470d8962591b146af883494a65c1f1a4",
+      "transformed": false
+    },
+    "lib/aisle/scanners/integrity.cjs": {
+      "sourceSha256": "f5b7712c8c2c92ac3f879f99cbdf91a302d2d89f120b0de05f5bf846de47016c",
+      "vendoredSha256": "3757e55138f8001cbafe6943beb28f25fe8cd4981d310a6f63a7614b1318f88f",
+      "transformed": true
+    },
+    "lib/aisle/scanners/memory-integrity.cjs": {
+      "sourceSha256": "5f19470279a80a22116ee8346b8f52baa364f3ff9fc7535a84b2d0e8a9c0afa2",
+      "vendoredSha256": "5f19470279a80a22116ee8346b8f52baa364f3ff9fc7535a84b2d0e8a9c0afa2",
+      "transformed": false
+    },
+    "lib/aisle/scanners/payload.cjs": {
+      "sourceSha256": "d510a7e9777cd403ad9d93a19eb858436352cdbe4701a0773d5cbe713ca19bb1",
+      "vendoredSha256": "d510a7e9777cd403ad9d93a19eb858436352cdbe4701a0773d5cbe713ca19bb1",
+      "transformed": false
+    },
+    "lib/aisle/scanners/privilege.cjs": {
+      "sourceSha256": "432cef067eb0f421b2e2fb55cecc0cb11b3d0ae0d23941241ca25aa427c8e122",
+      "vendoredSha256": "432cef067eb0f421b2e2fb55cecc0cb11b3d0ae0d23941241ca25aa427c8e122",
+      "transformed": false
+    },
+    "lib/aisle/scanners/prompt-safety.cjs": {
+      "sourceSha256": "7909a9be06e6d21408800078205df5736a776655f9939bf8eeb9575b322ebcc8",
+      "vendoredSha256": "7909a9be06e6d21408800078205df5736a776655f9939bf8eeb9575b322ebcc8",
+      "transformed": false
+    },
+    "lib/aisle/scanners/supply-chain.cjs": {
+      "sourceSha256": "ea5aef5be3ae4c65b926542c45bd6bbf2f59208c5572bef7d3d7abf60c020218",
+      "vendoredSha256": "33aa17f59ff3ee389276d0aff5c0cecb6504d20345130e00eceee302ab8dde5b",
+      "transformed": true
+    },
+    "lib/aisle/server.cjs": {
+      "sourceSha256": "5e3a925a1811994e4216eaded4fbf93182bc8a0719d6f49279ee664d937b70c8",
+      "vendoredSha256": "11f86a475377a75c35e8a03ecba572a8fd0ecb7e78deb214acc12a16df2671ac",
+      "transformed": true
+    },
+    "lib/aisle/transforms.cjs": {
+      "sourceSha256": "75b09183f0abb954275850ce511e5689b03d7ec71d8c67578664436be513734e",
+      "vendoredSha256": "2e05a036165871f932d3bdf625a3f61966aa4dacdfd62142b05548041763be68",
+      "transformed": true
+    },
+    "lib/hook-utils.cjs": {
+      "sourceSha256": "8493a771659204eef1c5d32811296f5a8fc06793d36a92b8e2632d9988585d8b",
+      "vendoredSha256": "6e6c73725faf09b8704039ca9c963ea1f65c0901eca87b0645e55a2f2a8a1b14",
+      "transformed": true
+    },
+    "lib/os/capabilities/aisle.cjs": {
+      "sourceSha256": "e8825d0913ca244b50bb0b5dc9a26800b36b1890fc77310846f8be22a6dd6c40",
+      "vendoredSha256": "4244fcc5d800b9121018cd56ea3519d82a094ee34dd553aed4b20ecefff9186c",
+      "transformed": true
+    },
+    "lib/os/capabilities/audit.cjs": {
+      "sourceSha256": "0896842cdc7cbd4f227378fac48ac8bc37a0bf7585b60f05bfcf7835642162df",
+      "vendoredSha256": "573c193c5d598df5b5ce4104aa75fbdd221cf4205a979cea60ad907e2a33d1c0",
+      "transformed": true
+    },
+    "lib/os/capabilities/autoresearch.cjs": {
+      "sourceSha256": "fa9c3e418ab34a2d8ab24d4736adff79e188e4a82cae48d079fd30b63a239d16",
+      "vendoredSha256": "fa9c3e418ab34a2d8ab24d4736adff79e188e4a82cae48d079fd30b63a239d16",
+      "transformed": false
+    },
+    "lib/os/capabilities/file-integrity.cjs": {
+      "sourceSha256": "b39f6206f89bf01dc8b8371f908b4b24541f8ce30657f2118c7068b6e749cfb0",
+      "vendoredSha256": "b39f6206f89bf01dc8b8371f908b4b24541f8ce30657f2118c7068b6e749cfb0",
+      "transformed": false
+    },
+    "lib/os/capabilities/forge-session.cjs": {
+      "sourceSha256": "d3ebd099f1ef79be79a66b74c45adc2549df2cefc04e288dca446b7669beb172",
+      "vendoredSha256": "d3ebd099f1ef79be79a66b74c45adc2549df2cefc04e288dca446b7669beb172",
+      "transformed": false
+    },
+    "lib/os/capabilities/forge.cjs": {
+      "sourceSha256": "450d32e55583537467f410a02525b3416091f1e315a362aaa9b88c1a829b54fc",
+      "vendoredSha256": "450d32e55583537467f410a02525b3416091f1e315a362aaa9b88c1a829b54fc",
+      "transformed": false
+    },
+    "lib/os/capabilities/git.cjs": {
+      "sourceSha256": "cf2f80b67a0bf2bbcc166fae756f05247cc179843464c9f16f3e03ee0441360e",
+      "vendoredSha256": "cf2f80b67a0bf2bbcc166fae756f05247cc179843464c9f16f3e03ee0441360e",
+      "transformed": false
+    },
+    "lib/os/capabilities/infra.cjs": {
+      "sourceSha256": "90f8d168ef966c56651e2acb46e86dd8732ed48cf1626dba65e1dd43b6d790a5",
+      "vendoredSha256": "68ad2fe0d58f668513aec97db82e86f3945f4d44e339fe8451b6145a77954891",
+      "transformed": true
+    },
+    "lib/os/capabilities/process-health.cjs": {
+      "sourceSha256": "ad193e805f862d22707f45cad8d854ab93ec7c530086a234d0413c66c4ba61ea",
+      "vendoredSha256": "ad193e805f862d22707f45cad8d854ab93ec7c530086a234d0413c66c4ba61ea",
+      "transformed": false
+    },
+    "lib/os/capability-registry.cjs": {
+      "sourceSha256": "150d42649250e59eec2e1ed00a870aa3b8795fc9934cd34b93c0de3c64b865d5",
+      "vendoredSha256": "150d42649250e59eec2e1ed00a870aa3b8795fc9934cd34b93c0de3c64b865d5",
+      "transformed": false
+    },
+    "lib/os/config/gates.json": {
+      "sourceSha256": "e8b664d3ec3ad5d11a7bfaadd8171711c93068851aade07ef4903ff137a4c466",
+      "vendoredSha256": "e8b664d3ec3ad5d11a7bfaadd8171711c93068851aade07ef4903ff137a4c466",
+      "transformed": false
+    },
+    "lib/os/config/llm.json": {
+      "sourceSha256": "44c07c1d82a3802d7f0d3aa56490a109120585d3c8e3a9f7b562e460d33c12b6",
+      "vendoredSha256": "050146d2e2ab33432237fbebfa73ba89cec4a728f6840edcf3deaff6e70ff582",
+      "transformed": true
+    },
+    "lib/os/gates.json": {
+      "sourceSha256": "3db3abc68ec16500274e9e5f28989ed1584bb075a96bf2405d7fa241e24bfefd",
+      "vendoredSha256": "3db3abc68ec16500274e9e5f28989ed1584bb075a96bf2405d7fa241e24bfefd",
+      "transformed": false
+    },
+    "lib/os/health-refresh.cjs": {
+      "sourceSha256": "f309c5d1f5b208a0f6eb5e8cef77d4176f9e477872fb14513d5a4ee7f32b7807",
+      "vendoredSha256": "f309c5d1f5b208a0f6eb5e8cef77d4176f9e477872fb14513d5a4ee7f32b7807",
+      "transformed": false
+    },
+    "lib/os/index.cjs": {
+      "sourceSha256": "2c3dc289ac3970a5e3f958e9f8bf2ce3aa4bed8ccfa26163a7109f2b770b7c06",
+      "vendoredSha256": "2c3dc289ac3970a5e3f958e9f8bf2ce3aa4bed8ccfa26163a7109f2b770b7c06",
+      "transformed": false
+    },
+    "lib/os/jsonl-rotate.cjs": {
+      "sourceSha256": "b07d6078dfd6c0b1f998373de1d5c27fa1a15a5d5b61c6b746fcf3d255d44ed8",
+      "vendoredSha256": "b07d6078dfd6c0b1f998373de1d5c27fa1a15a5d5b61c6b746fcf3d255d44ed8",
+      "transformed": false
+    },
+    "lib/os/kernel/boot-sequence.cjs": {
+      "sourceSha256": "8871155c40c320a0bc552a3c87396c24e46e2ad1bfa53783114a29503f07ca45",
+      "vendoredSha256": "8871155c40c320a0bc552a3c87396c24e46e2ad1bfa53783114a29503f07ca45",
+      "transformed": false
+    },
+    "lib/os/kernel/capability-enforcer.cjs": {
+      "sourceSha256": "0c7b0a61de30e92fdc3adcf74b77f0f2e1b194ef4f7c50c67e2a76908033574c",
+      "vendoredSha256": "3cc5b516750dab5089f15fbcd08d78cbdc85ed8bde5c4dada31c9eb5a9997d6c",
+      "transformed": true
+    },
+    "lib/os/kernel/contracts.cjs": {
+      "sourceSha256": "b7fbf13ddd724a4cc7ee29fb8268b238397c89a2e6ac11e0864d4843720d9903",
+      "vendoredSha256": "b7fbf13ddd724a4cc7ee29fb8268b238397c89a2e6ac11e0864d4843720d9903",
+      "transformed": false
+    },
+    "lib/os/kernel/feature-gates.cjs": {
+      "sourceSha256": "e94c3ecbceee52f0c41a0aa332b7a2becf7b643fbe51dc50375a9f999b6ee925",
+      "vendoredSha256": "e94c3ecbceee52f0c41a0aa332b7a2becf7b643fbe51dc50375a9f999b6ee925",
+      "transformed": false
+    },
+    "lib/os/kernel/process-caps.cjs": {
+      "sourceSha256": "a8ea3ae89022ee1b301eb6ca2054c3b5830823fcf2a5ebfdc4efa22cd899630f",
+      "vendoredSha256": "a8ea3ae89022ee1b301eb6ca2054c3b5830823fcf2a5ebfdc4efa22cd899630f",
+      "transformed": false
+    },
+    "lib/os/kernel/process-registry.cjs": {
+      "sourceSha256": "5d021ac3640d56204936545989d19bbe12ab60609bbaaff0bdb62d7412dfc29d",
+      "vendoredSha256": "5d021ac3640d56204936545989d19bbe12ab60609bbaaff0bdb62d7412dfc29d",
+      "transformed": false
+    },
+    "lib/os/kernel/zombie-allowlist.json": {
+      "sourceSha256": "104cc1a004cca51db8b4b57f67035628e2eb1d505da5fd16fc61327ba77874c9",
+      "vendoredSha256": "104cc1a004cca51db8b4b57f67035628e2eb1d505da5fd16fc61327ba77874c9",
+      "transformed": false
+    },
+    "lib/os/package.json": {
+      "sourceSha256": "7ec249f1de40e1dcfd754b503b3babe59cabfcb535b0e2c81f10ff45a47d80ef",
+      "vendoredSha256": "7ec249f1de40e1dcfd754b503b3babe59cabfcb535b0e2c81f10ff45a47d80ef",
+      "transformed": false
+    },
+    "lib/os/scheduler/dag-executor.cjs": {
+      "sourceSha256": "d6a9a99329b47f94edaae66b9f175180eaac9a3995a25856b6e823455e22cbe8",
+      "vendoredSha256": "a1d970f3d550c70dc4633b46708851736f58ab3b68995aabfaa2b838ffe7067e",
+      "transformed": true
+    },
+    "lib/os/scheduler/priority-queue.cjs": {
+      "sourceSha256": "74e7f4317b1aef602773f8f4449760f920fceb5243a9d7babf8ef6b0d9846911",
+      "vendoredSha256": "dc32776e55862b83960687a55ad0502773b54e68c816d41e9eb9fdb63be084dd",
+      "transformed": true
+    },
+    "lib/os/services/ipc.cjs": {
+      "sourceSha256": "e05b4019f806faa7e15a06bedde8416e4d21e06daa6852b8ce37d0b2a36a7611",
+      "vendoredSha256": "e05b4019f806faa7e15a06bedde8416e4d21e06daa6852b8ce37d0b2a36a7611",
+      "transformed": false
+    },
+    "lib/os/services/observability.cjs": {
+      "sourceSha256": "c6cfdfac9a18d8f51e3dace963a503d25c82ab109f65cd54cf04b6076a08201d",
+      "vendoredSha256": "c6cfdfac9a18d8f51e3dace963a503d25c82ab109f65cd54cf04b6076a08201d",
+      "transformed": false
+    },
+    "lib/os/services/work-product-router.cjs": {
+      "sourceSha256": "a2e9fadba032b05e29c4bd4951d26d64f993549f45e8cefab575b00a7b3d594f",
+      "vendoredSha256": "a2e9fadba032b05e29c4bd4951d26d64f993549f45e8cefab575b00a7b3d594f",
+      "transformed": false
+    },
+    "scripts/pin-hooks.cjs": {
+      "sourceSha256": "60bc57164c45529aec166afe8663d51503717c5a6fe34b2cf7a142f215543223",
+      "vendoredSha256": "dd5fd715cbf7043ddbeaba7a3b5adafc302663f03bec2eae46124b82be64c2e4",
+      "transformed": true
+    }
+  }
+}
