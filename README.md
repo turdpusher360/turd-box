@@ -19,6 +19,15 @@ claude plugin marketplace add turdpusher360/turd-box
 claude plugin install 4ge@turd-box
 ```
 
+If your Claude Code build cannot add a remote marketplace directly, use the
+verified checkout install path:
+
+```bash
+git clone https://github.com/turdpusher360/turd-box.git
+claude plugin marketplace add ./turd-box
+claude plugin install 4ge@turd-box
+```
+
 That's it — `/help` will show the full command index once the plugin loads.
 
 ---
