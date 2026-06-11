@@ -18,6 +18,15 @@ claude plugin marketplace add turdpusher360/turd-box
 claude plugin install 4ge@turd-box
 ```
 
+If remote marketplace add fails in your Claude Code build, clone first and add
+the local checkout instead:
+
+```bash
+git clone https://github.com/turdpusher360/turd-box.git
+claude plugin marketplace add ./turd-box
+claude plugin install 4ge@turd-box
+```
+
 ---
 
 ## What It Does

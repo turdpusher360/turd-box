@@ -1,7 +1,9 @@
 name: install-smoke
 
-# Proves a stranger can add the marketplace and install the plugin, then
-# asserts the installed cache contains the expected agents/commands/skills.
+# Proves this checked-out marketplace can install the plugin, then asserts the
+# installed cache contains the expected agents/commands/skills.
+# Remote marketplace add still needs a separate release proof because Claude
+# Code builds can vary in how they resolve remote marketplace shorthand.
 # No version of this plugin has been installation-proven since 1.30.0; this
 # gate structurally closes the v1.27.0 empty-install class on every change.
 
