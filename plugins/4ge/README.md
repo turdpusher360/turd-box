@@ -1,6 +1,6 @@
 # /4ge — Agentic OS for Claude Code
 
-Ship safer code with fewer context switches. The production layer for Claude Code — memory, orchestration, review, and security in one plugin.
+Ship safer code with fewer context switches. The production layer for Claude Code — memory support, orchestration, review, and security in one plugin.
 
 ## Install
 
@@ -26,7 +26,7 @@ claude plugin install 4ge@turd-box
 
 **Security posture where the agent works.** AISLE routes security posture, scans, and threat-management workflows inside Claude Code. The historical fail-closed 9-scanner gate is intentionally shelved until the ADR reactivation criteria are met; active protection currently comes from prompt, scope, file-integrity, and secret-handling guards.
 
-**One plugin, four jobs in one place.** Many teams pay separately for code review, a security-posture tool, persistent dev memory, and multi-agent orchestration — comparable standalone tools commonly run $12–$25/mo each (illustrative list prices, not a guaranteed substitution). 4ge bundles all four into one Claude Code plugin. 4ge Pro: $19/mo. One install.
+**One plugin, four jobs in one place.** Many teams pay separately for code review, a security-posture tool, persistent dev-memory infrastructure, and multi-agent orchestration — comparable standalone tools commonly run $12-$25/mo each (illustrative list prices, not a guaranteed substitution). 4ge bundles those workflows into one Claude Code plugin. 4ge Pro: $19/mo. One install.
 
 ---
 
@@ -98,7 +98,7 @@ Runs 5 domain passes (existence, security, logic, runtime, artifacts) plus 1 adv
 /recall overlay WebSocket auth
 ```
 
-`/recall` runs dev-memory search directly, retrieving stored context from your dev-memory hub. Persistent across sessions — Claude actually remembers your architecture decisions.
+`/recall` runs dev-memory search directly when a dev-memory hub is connected, retrieving stored context across sessions without putting the hub inside the plugin package.
 
 ### Ship your current branch
 
@@ -123,16 +123,15 @@ AISLE reports current security posture and routes scans for supply chain integri
 |  | Free | Pro | Team |
 |--|------|-----|------|
 | **Price** | $0 | $19/mo | $39/seat/mo |
-| **Annual** | — | $190/yr | $390/seat/yr |
 | **Commands** | 25 free commands | + Pro machinery | Everything in Pro |
 | **DFE Review** | — | Full 6-pass adversarial | Full 6-pass adversarial |
 | **Forge Orchestration** | — | 7-phase pipeline | 7-phase pipeline |
 | **AISLE Security** | — | Posture + scans | Posture + scans |
 | **Blueprint** | Single project | Single project | Single project |
-| **Memory** | Local | Local | Local + hosted (shared team namespace) |
+| **Memory** | Local-memory support | Local-memory support | Local + hosted (shared team namespace) |
 | **Support** | Community | Email | Priority SLA |
 
-**Install free. Upgrade when you ship.**
+**Launch window:** install free. All commands are available while checkout is closed; pricing is forward guidance for when paid checkout opens.
 
 Upgrade: `https://3sixtyco.dev/4ge`
 
@@ -165,6 +164,6 @@ See [LICENSE](./LICENSE) for full terms.
 
 ## Links
 
-- [GitHub](https://github.com/Turdpusher360/turd-box)
+- [GitHub](https://github.com/turdpusher360/turd-box)
 - [Changelog](./CHANGELOG.md)
-- [Issues](https://github.com/Turdpusher360/turd-box/issues)
+- [Issues](https://github.com/turdpusher360/turd-box/issues)

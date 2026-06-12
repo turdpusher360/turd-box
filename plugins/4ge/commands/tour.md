@@ -29,7 +29,7 @@ Display the following walkthrough. Use the `--step N` argument to start from a s
 ════════════════════════════════════════════════
 
 Step 1/5 — Know your terrain
-  Run:  /4ge:recon --map
+  Run:  /4ge:recall --map
   Shows your repo organized by semantic category — what's where,
   what depends on what. The first thing to run in any new codebase.
 
@@ -110,8 +110,8 @@ Run /4ge:help to explore the full command index.
 
 ## Notes
 
-- All Free-tier commands shown (`/4ge:recon`, `/4ge:recall`, `/4ge:hud`, `/4ge:help`, `/4ge:debug`) work immediately after `claude plugin install 4ge@turd-box`.
-- `/4ge:recon` is the unified discovery command — it absorbs the older `/map` and `/recall` commands. Use `--map` for the repo dependency map, pass a query for memory search, or `--budget` for the current context budget. Both `/map` and `/recall` still resolve as redirects but the canonical form is `/4ge:recon`.
-- `/4ge:recall` (memory search) requires a running dev-memory hub (local Docker, or the hosted hub on the Team tier). If memory is unavailable, it reports what's missing gracefully — no crash.
+- All Free-tier commands shown (`/4ge:recall`, `/4ge:hud`, `/4ge:help`, `/4ge:debug`) work immediately after `claude plugin install 4ge@turd-box`.
+- `/4ge:recall` is the canonical Knowledge hub. Use `--map` for the repo dependency map, pass a query for memory search, or use `--budget` for the current context budget. `/recon`, `/map`, and `/hitchhiker` still resolve as redirects.
+- `/4ge:recall` memory search requires a running dev-memory hub (local Docker, or the hosted hub on the Team tier). If memory is unavailable, it reports what's missing gracefully — no crash.
 - `/4ge:forge`, `/4ge:dfe`, and `/4ge:audit` require Pro tier. Free users see an upgrade prompt with the cost and upgrade URL. (`/ship`, `/commit`, and `/pr` are now free — the delivery loop runs on every tier.)
 - The `--step N` flag exists for chaining: the first-run onboarding flow uses `--step 1` to begin the tour immediately after setup.

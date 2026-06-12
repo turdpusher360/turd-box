@@ -1,7 +1,7 @@
 {
   "name": "4ge",
   "version": "2.3.0",
-  "description": "The production layer for Claude Code. 37 commands and 40 skills across 9 OS capabilities: multi-agent forge orchestration, 6-pass adversarial code review, AISLE security posture, persistent memory, systematic debugging, live HUD, and more.",
+  "description": "The production layer for Claude Code. 37 commands and 40 skills across 9 OS capabilities: multi-agent forge orchestration, 6-pass adversarial code review, AISLE security posture, persistent-memory support, systematic debugging, live HUD, and more.",
   "author": {
     "name": "turdpusher360"
   },
@@ -51,7 +51,7 @@
     "dfe": {
       "source": "./commands/dfe.md",
       "model": "opus",
-      "description": "AI code review — 6-pass DFE analysis (5 Sonnet + 1 Opus adversarial).",
+      "description": "AI code review — 6-pass DFE analysis (5 domain passes + 1 adversarial pass).",
       "argumentHint": "[file path | all | --staged | --unstaged]"
     },
     "audit": {

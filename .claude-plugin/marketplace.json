@@ -1,7 +1,7 @@
 {
   "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
   "name": "turd-box",
-  "description": "Ship safer code with fewer context switches. Multi-agent orchestration, 6-pass adversarial review, AISLE security posture, persistent memory, and a live HUD — the production layer for Claude Code.",
+  "description": "Ship safer code with fewer context switches. Multi-agent orchestration, 6-pass adversarial review, AISLE security posture, persistent-memory support, and a live HUD — the production layer for Claude Code.",
   "homepage": "https://github.com/turdpusher360/turd-box#readme",
   "screenshots": [
     "screenshots/statusline.png",
@@ -16,7 +16,7 @@
   "plugins": [
     {
       "name": "4ge",
-      "description": "Agentic OS for Claude Code. 37 commands, 40 skills, 9 OS capabilities. /forge dispatches specialized agents across a 7-phase build pipeline. /dfe runs 6-pass adversarial code review (5 Sonnet + 1 Opus). /aisle reports security posture and routes scans while the old fail-closed gate remains shelved. /recall searches persistent cross-session memory. /hud renders live OS state in the statusline. One install, one config.",
+      "description": "Agentic OS for Claude Code. 37 commands, 40 skills, 9 OS capabilities. /forge dispatches specialized agents across a 7-phase build pipeline. /dfe runs 6-pass adversarial code review (5 domain passes + 1 adversarial pass). /aisle reports security posture and routes scans while the old fail-closed gate remains shelved. /recall searches connected cross-session memory. /hud renders live OS state in the statusline. One install, one config.",
       "version": "2.3.0",
       "source": "./plugins/4ge",
       "category": "development",
