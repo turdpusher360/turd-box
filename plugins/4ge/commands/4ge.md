@@ -70,7 +70,7 @@ Do NOT read `output-format.md` — the engine owns its own formatting.
 
 ## Non-render subcommands
 
-For `run`/`resume`/`park`: invoke the `4ge:forge` skill directly.
+For `run`/`resume`/`park`: invoke the `4ge:forge` skill directly. `/4ge` itself is free (front door + first-run), but these three leaves dispatch the forge skill, which is Pro-gated — check `tier-gate.require('pro', 'forge')` semantics before dispatch so the free front door does not become a free side door into forge.
 
 For `eject`/`adopt`: run the CLI wrappers shown in the dispatch table (`node ${CLAUDE_PLUGIN_ROOT}/bin/eject-cli.cjs` / `adopt-cli.cjs`).
 

@@ -108,7 +108,7 @@ describe('first-run', () => {
 
     it('step 1 text contains upgrade URL', () => {
       const steps = fr.getSetupSteps();
-      expect(steps[0].text).toContain('https://4ge.dev/pro');
+      expect(steps[0].text).toContain('https://3sixtyco.dev/4ge');
     });
 
     it('step 1 text uses durable Pro command copy instead of a stale command count', () => {
@@ -123,6 +123,15 @@ describe('first-run', () => {
       expect(steps[1].text).toContain('Local Docker');
       expect(steps[1].text).toContain('Hosted');
       expect(steps[1].text).toContain('Skip');
+    });
+
+    it('step 2 hosted-memory line names Team $39, not Pro $19 (S410 honesty fix)', () => {
+      // Hosted memory is a Team-tier capability (honesty package, S404 B1).
+      // The old copy sold it as "requires Pro, $19/mo" — a live violation in
+      // every new install's setup flow.
+      const steps = fr.getSetupSteps();
+      expect(steps[1].text).not.toContain('requires Pro, $19');
+      expect(steps[1].text).toContain('requires Team, $39/seat/mo');
     });
 
     it('step 3 text includes first commands to try', () => {

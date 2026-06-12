@@ -10,38 +10,32 @@ const os = require('os');
 
 const TIER_ORDER = ['free', 'pro', 'team'];
 
+// 12 entries: multi-agent machinery, professional judgment surfaces,
+// business artifacts, and their redirect stubs. Redirects inherit target tier
+// (maintain -> /outhouse, resp4wn -> /respawn).
 const PRO_GATED = [
-  'forge', 'dfe', 'audit', 'autoresearch', 'outhouse', 'wizard',
-  'export', 'substrate', 'studio', 'blueprint', 'ship', 'commit',
-  'pr', 'aisle', 'hitchhiker', 'evolve', 'lint', 'lounge',
-  'signoff', 'releases', 'respawn', 'decide', 'constraint', 'infra',
+  'forge', 'dfe', 'audit', 'aisle',
+  'outhouse', 'wizard', 'maintain',       // maintain -> /outhouse (redirect inherits)
+  'autoresearch', 'evolve', 'export',
+  'respawn', 'resp4wn',                   // resp4wn -> /respawn (redirect inherits)
 ];
 
+// Upgrade-prompt copy for the 12 gated commands. Keys must equal PRO_GATED
+// members exactly — ungated commands have no entry (require_() falls back to a
+// safe generic string). Tested by tier-gate.test.js.
 const DESCRIPTIONS = {
   forge:       'Forge orchestrates multi-agent teams through a 7-phase pipeline: scope, brainstorm, spec, plan, execute, review, ship.',
   dfe:         'DFE runs 5 domain passes plus 1 adversarial pass on every change, surfacing bugs that single-pass reviewers overlook.',
   audit:       'Audit runs 70 checks across 10 domains to score your codebase against production-readiness criteria.',
-  autoresearch: 'Autoresearch runs self-improving measurement loops that surface gaps and track domain knowledge over time.',
+  aisle:       'AISLE reports security posture and routes scans; the old fail-closed 9-scanner gate is shelved until ADR criteria are met.',
   outhouse:    'Outhouse is the repository maintenance wizard — cleans orphans, resolves conflicts, and reports technical debt.',
   wizard:      'Wizard launches guided configuration suites for complex 4ge setup tasks.',
-  export:      'Export packages session work as a business-ready deliverable: brief, deck, or handoff document.',
-  substrate:   'Substrate renders text and OS state through Unicode combining marks, Math Alphanumerics, and block elements.',
-  studio:      'Studio Mode activates the full HUD engine with reactive hooks and badge tracking.',
-  blueprint:   'Blueprint bootstraps or updates a Claude Code environment from templates.',
-  ship:        'Ship runs tsc + eslint + vitest, commits, and pushes — the full delivery pipeline.',
-  commit:      'Commit redirects to /ship; use /ship --no-push to commit without pushing.',
-  pr:          'PR verifies, commits, pushes, and opens a pull request.',
-  aisle:       'AISLE reports security posture and routes scans; the old fail-closed 9-scanner gate is shelved until ADR criteria are met.',
-  hitchhiker:  'Hitchhiker searches persistent memory and reports hub status; the old seed/update pipeline is retired.',
+  maintain:    'Maintain redirects to /outhouse — the repository maintenance wizard.',
+  autoresearch: 'Autoresearch runs self-improving measurement loops that surface gaps and track domain knowledge over time.',
   evolve:      'Evolve analyzes usage telemetry and suggests config improvements.',
-  lint:        'Lint shows rule follow-through rates and flags under-followed rules for demotion.',
-  lounge:      'Lounge enables mouse-free minimal-effort coding mode — every decision is numbered.',
-  signoff:     'Signoff produces a structured sign-off for completed work.',
-  releases:    'Releases shows recent release notes from shipped sessions.',
+  export:      'Export packages session work as a business-ready deliverable: brief, deck, or handoff document.',
   respawn:     'Respawn extracts the decision chain and prepares a fresh Claude instance with full context.',
-  decide:      'Decide logs a decision to the DCD enrichment file for context continuity.',
-  constraint:  'Constraint logs a dead-end to the DCD enrichment file so future instances avoid the same path.',
-  infra:       'Infra monitors Docker container health and provides one-command healing.',
+  resp4wn:     'Legacy spelling of /respawn — Context Respawn.',
 };
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
@@ -158,7 +152,7 @@ function require_(requiredTier, commandName) {
   process.stderr.write(
     `\n  /${cmd} requires Pro (${price})\n\n` +
     `  ${description}\n\n` +
-    `  Upgrade: https://4ge.dev/pro\n` +
+    `  Upgrade: https://3sixtyco.dev/4ge\n` +
     `  Trial:   FORGE_LICENSE_KEY=trial-xxx (7 days)\n\n`
   );
 
@@ -206,6 +200,7 @@ module.exports = {
   info,
   PRO_GATED,
   // Exported for testing
+  DESCRIPTIONS,
   _resolveTier,
   _readLicense,
 };

@@ -113,5 +113,5 @@ Run /4ge:help to explore the full command index.
 - All Free-tier commands shown (`/4ge:recon`, `/4ge:recall`, `/4ge:hud`, `/4ge:help`, `/4ge:debug`) work immediately after `claude plugin install 4ge@turd-box`.
 - `/4ge:recon` is the unified discovery command — it absorbs the older `/map` and `/recall` commands. Use `--map` for the repo dependency map, pass a query for memory search, or `--budget` for the current context budget. Both `/map` and `/recall` still resolve as redirects but the canonical form is `/4ge:recon`.
 - `/4ge:recall` (memory search) requires a running dev-memory hub (local Docker, or the hosted hub on the Team tier). If memory is unavailable, it reports what's missing gracefully — no crash.
-- `/4ge:forge`, `/4ge:dfe`, `/4ge:ship`, `/4ge:commit`, `/4ge:pr`, and `/4ge:audit` require Pro tier. Free users see an upgrade prompt with the cost and upgrade URL.
+- `/4ge:forge`, `/4ge:dfe`, and `/4ge:audit` require Pro tier. Free users see an upgrade prompt with the cost and upgrade URL. (`/ship`, `/commit`, and `/pr` are now free — the delivery loop runs on every tier.)
 - The `--step N` flag exists for chaining: the first-run onboarding flow uses `--step 1` to begin the tour immediately after setup.

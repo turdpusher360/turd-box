@@ -167,7 +167,7 @@ describe('tier-gate', () => {
     it('includes upgrade URL in stderr output', () => {
       const stderrSpy = vi.spyOn(process.stderr, 'write').mockImplementation(() => {});
       tg.require('pro', 'dfe');
-      expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining('https://4ge.dev/pro'));
+      expect(stderrSpy).toHaveBeenCalledWith(expect.stringContaining('https://3sixtyco.dev/4ge'));
     });
 
     it('returns true when tier requirement is met', () => {
@@ -230,5 +230,56 @@ describe('tier-gate', () => {
       expect(tg.PRO_GATED).not.toContain('help');
       expect(tg.PRO_GATED).not.toContain('map');
     });
+
+    it('pins the exact 12-entry regraded set (S410, order-insensitive)', () => {
+      // The regrade (S410, _runs/s410/tier-regrade.md §3) shrank PRO_GATED
+      // from 24 to 12: only multi-agent machinery, professional judgment
+      // surfaces, business artifacts, and their redirect stubs remain gated.
+      const expected = [
+        'forge', 'dfe', 'audit', 'aisle',
+        'outhouse', 'wizard', 'maintain',
+        'autoresearch', 'evolve', 'export',
+        'respawn', 'resp4wn',
+      ];
+      expect(tg.PRO_GATED).toHaveLength(12);
+      expect([...tg.PRO_GATED].sort()).toEqual([...expected].sort());
+    });
+
+    it('DESCRIPTIONS keys equal PRO_GATED members exactly (no dead/missing entries)', () => {
+      // Every gated command must have upgrade-prompt copy, and no ungated
+      // command may carry dead copy (S410 §9 criterion 2).
+      const descKeys = Object.keys(tg.DESCRIPTIONS).sort();
+      const gated = [...tg.PRO_GATED].sort();
+      expect(descKeys).toEqual(gated);
+    });
+
+    it('drops the commands the regrade freed', () => {
+      // The 13 commands moved Free in S410 (commodity wrappers, file
+      // append/read utilities, demo/charm assets, the front door + bootstrap).
+      const freed = [
+        'blueprint', 'commit', 'constraint', 'decide', 'hitchhiker', 'infra',
+        'lint', 'lounge', 'pr', 'releases', 'ship', 'signoff', 'studio',
+        'substrate',
+      ];
+      for (const cmd of freed) expect(tg.PRO_GATED).not.toContain(cmd);
+    });
+  });
+
+  describe('redirect coherence (R3 — stubs inherit their target tier)', () => {
+    const pairs = [
+      ['commit', 'ship'],
+      ['maintain', 'outhouse'],
+      ['resp4wn', 'respawn'],
+      ['hitchhiker', 'recall'],
+      ['recon', 'recall'],
+      ['map', 'recall'],
+      ['superdupersecret', 'secret'],
+    ];
+
+    for (const [stub, target] of pairs) {
+      it(`/${stub} and /${target} share a tier`, () => {
+        expect(tg.PRO_GATED.includes(stub)).toBe(tg.PRO_GATED.includes(target));
+      });
+    }
   });
 });

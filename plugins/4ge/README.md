@@ -18,15 +18,6 @@ claude plugin marketplace add turdpusher360/turd-box
 claude plugin install 4ge@turd-box
 ```
 
-If remote marketplace add fails in your Claude Code build, clone first and add
-the local checkout instead:
-
-```bash
-git clone https://github.com/turdpusher360/turd-box.git
-claude plugin marketplace add ./turd-box
-claude plugin install 4ge@turd-box
-```
-
 ---
 
 ## What It Does
@@ -43,6 +34,7 @@ claude plugin install 4ge@turd-box
 
 | Command | Tier | Description |
 |---------|------|-------------|
+| `/4ge` | Free | 4ge ecosystem command — Forge orchestration + OS operations |
 | `/help` | Free | Command index and usage guide |
 | `/map` | Free | Redirect → `/recall --map` (repository map) |
 | `/recall` | Free | Guided Knowledge hub — memory search, repo map, budget (or `/recall <query>` for dev-memory search) |
@@ -51,32 +43,33 @@ claude plugin install 4ge@turd-box
 | `/hud` | Free | Toggle the OS HUD status pane |
 | `/fix` | Free | Capture maintenance issues without interrupting flow |
 | `/tour` | Free | 5-step guided walkthrough for new users |
-| `/4ge` | Pro | 4ge ecosystem command — Forge orchestration + OS operations |
+| `/ship` | Free | Verify, commit, and push — full delivery pipeline |
+| `/commit` | Free | Redirects to `/ship`; use `/ship --no-push` to commit without pushing |
+| `/pr` | Free | Verify, commit, push, and open a PR |
+| `/blueprint` | Free | Bootstrap or update a Claude Code environment |
+| `/infra` | Free | Docker container health monitoring |
+| `/studio` | Free | Full HUD engine + reactive hooks |
+| `/substrate` | Free | Unicode composition engine |
+| `/decide` | Free | Log a decision to the DCD enrichment file |
+| `/constraint` | Free | Log a constraint/dead-end |
+| `/signoff` | Free | Enrich session cartridge before ending |
+| `/releases` | Free | Recent release notes |
+| `/lint` | Free | Show rule follow-through rates and suggest demotions |
+| `/lounge` | Free | Legacy redirect; use `--lounge` on another command |
+| `/hitchhiker` | Free | Redirect → `/recall` (knowledge search) |
+| `/secret` | Free | Capture a secret without exposing its value to model context |
+| `/superdupersecret` | Free | Alias of `/secret` |
 | `/forge` | Pro | Multi-agent orchestrator: brainstorm → spec → plan → execute → ship |
 | `/dfe` | Pro | 6-pass adversarial code review |
-| `/ship` | Pro | Verify, commit, and push — full delivery pipeline |
 | `/audit` | Pro | Code quality audit — 70 checks across 10 domains |
 | `/aisle` | Pro | AI security posture, scanning, and threat management |
-| `/blueprint` | Pro | Bootstrap or update a Claude Code environment |
-| `/commit` | Pro | Redirects to `/ship`; use `/ship --no-push` to commit without pushing |
-| `/pr` | Pro | Verify, commit, push, and open a PR |
-| `/infra` | Pro | Docker container health monitoring |
-| `/maintain` | Pro | Legacy redirect to `/outhouse` |
 | `/outhouse` | Pro | Repository maintenance wizard |
-| `/autoresearch` | Pro | Self-improving measurement loops |
 | `/wizard` | Pro | Repository maintenance wizard |
-| `/respawn` | Pro | Context Respawn — decision chain preservation |
-| `/hitchhiker` | Pro | Redirect → `/recall` (knowledge search) |
-| `/export` | Pro | Export session work as brief/deck/handoff |
-| `/substrate` | Pro | Unicode composition engine |
-| `/studio` | Pro | Full HUD engine + reactive hooks |
+| `/maintain` | Pro | Legacy redirect to `/outhouse` |
+| `/autoresearch` | Pro | Self-improving measurement loops |
 | `/evolve` | Pro | Analyze usage and suggest config improvements |
-| `/signoff` | Pro | Enrich session cartridge before ending |
-| `/releases` | Pro | Recent release notes |
-| `/decide` | Pro | Log a decision to the DCD enrichment file |
-| `/constraint` | Pro | Log a constraint/dead-end |
-| `/lint` | Pro | Show rule follow-through rates and suggest demotions |
-| `/lounge` | Pro | Legacy redirect; use `--lounge` on another command |
+| `/export` | Pro | Export session work as brief/deck/handoff |
+| `/respawn` | Pro | Context Respawn — decision chain preservation |
 | `/resp4wn` | Pro | Legacy redirect to `/respawn` |
 
 ---
@@ -131,18 +124,17 @@ AISLE reports current security posture and routes scans for supply chain integri
 |--|------|-----|------|
 | **Price** | $0 | $19/mo | $39/seat/mo |
 | **Annual** | — | $190/yr | $390/seat/yr |
-| **Commands** | Core | All Pro | All Pro + admin |
-| **DFE Review** | — | 3-pass | Full 6-pass adversarial |
-| **Forge Orchestration** | — | 7-phase pipeline | + shared context |
-| **AISLE Security** | — | Posture + scans | Posture + policy roadmap |
-| **Memory** | Local only | Local | Local + hosted (shared team namespace) |
-| **Autoresearch** | — | Personal domains | Team-wide measurement |
-| **Blueprint** | — | Single project | Fleet management |
+| **Commands** | 25 free commands | + Pro machinery | Everything in Pro |
+| **DFE Review** | — | Full 6-pass adversarial | Full 6-pass adversarial |
+| **Forge Orchestration** | — | 7-phase pipeline | 7-phase pipeline |
+| **AISLE Security** | — | Posture + scans | Posture + scans |
+| **Blueprint** | Single project | Single project | Single project |
+| **Memory** | Local | Local | Local + hosted (shared team namespace) |
 | **Support** | Community | Email | Priority SLA |
 
 **Install free. Upgrade when you ship.**
 
-Upgrade: `https://4ge.dev/pro`
+Upgrade: `https://3sixtyco.dev/4ge`
 
 ---
 

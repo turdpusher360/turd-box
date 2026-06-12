@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
-const PLUGIN_VERSION = '2.2.1';
+const PLUGIN_VERSION = '2.3.0';
 
 // ---------------------------------------------------------------------------
 // Internal paths
@@ -59,7 +59,7 @@ function getSetupSteps() {
         'Memory, orchestration, review, security -- in one plugin.',
         '',
         `Your tier: ${tierLabel}`,
-        'Upgrade to Pro for all Pro commands: https://4ge.dev/pro',
+        'Upgrade to Pro for all Pro commands: https://3sixtyco.dev/4ge',
         '',
         '(enter) continue    (s) skip setup',
       ].join('\n'),
@@ -71,7 +71,7 @@ function getSetupSteps() {
         '4ge works best with persistent memory across sessions.',
         '',
         '(l) Local Docker (you run it)     -- requires Docker + GPU',
-        '(h) Hosted (we run it)            -- requires Pro, $19/mo',
+        '(h) Hosted (we run it)            -- requires Team, $39/seat/mo',
         '(s) Skip (no memory)              -- basic mode, no persistence',
       ].join('\n'),
     },

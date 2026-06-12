@@ -10,6 +10,25 @@ versioning guide.
 
 ---
 
+## [2.3.0] - 2026-06-12
+
+### Changed
+- **Tier regrade: 24 → 12 Pro-gated commands (25 Free / 12 Pro / 0 Team).** An objective rubric pass over all 37 commands (`_runs/s410/tier-regrade.md`) freed 13 previously-gated commands and aligned all seven redirect stubs with their targets. **Not breaking, stays a minor:** the gate has zero `require_()` enforcement call sites in any command body — it prints an upgrade prompt at most (honest friction, not a hard block), so no public invocation is removed. `/maintain` and `/resp4wn` move *into* the gate, but both stubs continue to resolve and their *targets* (`/outhouse`, `/respawn`) were always Pro — this aligns the stubs with the rename-with-stub doctrine, it does not remove a public surface. Per `docs/plugin-versioning.md` §2, expanding the free public surface is feature-bearing Changed (free consumers can newly invoke 13 commands) ⇒ at least minor; per §5.4 (Released = committed) 2.2.2 is committed to main, so this is a new section, not a fold-in.
+  - **Now Free (13):** `/ship`, `/commit`, `/pr` (commodity git wrappers — the delivery loop first-run already recommends to free users); `/decide`, `/constraint`, `/releases`, `/signoff`, `/lint` (file append/read utilities); `/studio`, `/substrate` (demo/charm assets, zero professional depth); `/blueprint` (bootstrap; reconciles the gate with the live /4ge page's free single-project bullet); `/infra` (health command for the local memory stack the free tier already includes); `/4ge` (the front door + first-run wizard); `/hitchhiker` (redirect → free `/recall`).
+  - **Now Pro (added via redirect coherence):** `/maintain` (→ `/outhouse`), `/resp4wn` (→ `/respawn`).
+  - **Stays Pro (the flagship line):** `/forge`, `/dfe`, `/audit`, `/aisle`, `/outhouse`, `/wizard`, `/autoresearch`, `/evolve`, `/export`, `/respawn`.
+  - `DESCRIPTIONS` trimmed to the 12 gated commands (added `maintain` + `resp4wn` entries); README command table and pricing table updated in lockstep (37 rows, `/secret` + `/superdupersecret` added; the unimplementable "3-pass Pro / 6-pass Team" DFE split and the phantom Team rows — fleet Blueprint management, team-wide measurement, policy roadmap — removed). `docs/reference/plugin-vocabulary.md` per-command PRO_GATED mentions re-synced.
+
+### Fixed
+- **First-run setup no longer mis-sells hosted memory as Pro.** `lib/first-run.cjs` step 2 said hosted memory "requires Pro, $19/mo" — but hosted memory is a Team-tier capability (honesty package, S404 B1). Every new install's setup flow now correctly reads "requires Team, $39/seat/mo." The README pricing table's hosted-memory row already named Team; this aligns the in-product copy with it.
+
+## [2.2.2] - 2026-06-11
+
+### Fixed
+- **Retired the dead legacy Pro upgrade CTA.** The old standalone 4ge domain was never registered; the 4ge web presence lives on `3sixtyco.dev`. The upgrade link printed by `tier-gate.cjs` (every Pro-gated command) and `first-run.cjs` (every new install), plus the plugin README, now point at `https://3sixtyco.dev/4ge`. Tests updated in lockstep.
+- **License holder corrected to 3Sixty Co.** The FSL-1.1-MIT license (`LICENSE`) and the Blueprint output MIT license (`LICENSES/BLUEPRINT-OUTPUT-MIT.md`) now name **3Sixty Co.** (registered WA business — the same entity behind the Stripe billing rail and 3sixtyco.dev) as Licensor and copyright holder, replacing the `Turdpusher360` handle. Aligns the legal grant with the commerce entity customers actually buy from.
+- **Plugin manifest URLs point at the public repo.** `plugin.json` `repository`/`homepage` previously pointed at the private source repository (underscore-named); corrected to the public `turd-box` marketplace home so installed-plugin metadata resolves for end users.
+
 ## [2.2.1] - 2026-06-09
 
 ### Changed

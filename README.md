@@ -57,15 +57,15 @@ That's it — `/help` will show the full command index once the plugin loads.
 
 | | Free | Pro ($19/mo) | Team ($39/seat/mo) |
 |--|------|--------------|--------------------|
-| Commands | Core | All Pro | All Pro + admin |
-| DFE Review | — | 3-pass | Full 6-pass adversarial |
-| Forge orchestration | — | 7-phase pipeline | + shared context |
-| AISLE security | — | Posture + scans | Posture + policy roadmap |
-| Memory | Local only | Local | Local + **hosted** (shared team namespace) |
-| Blueprint | — | Single project | Fleet management |
+| Commands | 25 free commands | + Pro machinery | Everything in Pro |
+| DFE Review | — | Full 6-pass adversarial | Full 6-pass adversarial |
+| Forge orchestration | — | 7-phase pipeline | 7-phase pipeline |
+| AISLE security | — | Posture + scans | Posture + scans |
+| Memory | Local | Local | Local + **hosted** (shared team namespace) |
+| Blueprint | Single project | Single project | Single project |
 | Support | Community | Email | Priority SLA |
 
-Install free; upgrade when you ship → `https://4ge.dev/pro`
+Install free today; Pro pricing applies when checkout opens → `https://3sixtyco.dev/4ge`
 
 ---
 
