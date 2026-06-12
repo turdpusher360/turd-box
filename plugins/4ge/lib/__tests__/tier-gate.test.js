@@ -254,8 +254,8 @@ describe('tier-gate', () => {
     });
 
     it('drops the commands the regrade freed', () => {
-      // The 13 commands moved Free in S410 (commodity wrappers, file
-      // append/read utilities, demo/charm assets, the front door + bootstrap).
+      // The 14 commands moved Free in S410 (commodity wrappers, file append/read
+      // utilities, legacy redirects, demo/charm assets, bootstrap, and infra).
       const freed = [
         'blueprint', 'commit', 'constraint', 'decide', 'hitchhiker', 'infra',
         'lint', 'lounge', 'pr', 'releases', 'ship', 'signoff', 'studio',

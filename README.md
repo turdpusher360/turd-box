@@ -5,7 +5,7 @@ adversarial code review, an advisory security posture (AISLE), persistent
 cross-session memory, and a live HUD — delivered as one Claude Code plugin.
 
 This repository is the public marketplace for the 4ge plugin. It contains the
-marketplace manifest and the full plugin source under [`plugins/4ge/`](./plugins/4ge/).
+marketplace manifest and the installable plugin source under [`plugins/4ge/`](./plugins/4ge/).
 
 ---
 
