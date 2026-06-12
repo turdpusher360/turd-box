@@ -27,12 +27,12 @@ const os = require('node:os');
  * Build the Claude Code project slug for a cwd.
  * Claude Code replaces non-alphanumeric characters in the absolute path
  * with '-' to form the project directory name under ~/.claude/projects/.
- * Example: "O:\\Sand_Box_Dev" -> "O--Sand-Box-Dev"
+ * Example: "O:\\Example_Workspace" -> "O--Example-Workspace"
  */
 function buildProjectSlug(cwd) {
   // Normalize to forward slashes, then replace every run of non-alphanumeric
   // with a single dash. Actually Claude Code replaces each char individually,
-  // producing `O--Sand-Box-Dev` for `O:\Sand_Box_Dev` (colon + backslash both
+  // producing `O--Example-Workspace` for `O:\Example_Workspace` (colon + backslash both
   // become dashes). Match that behavior exactly.
   return cwd.replace(/[^A-Za-z0-9]/g, '-');
 }

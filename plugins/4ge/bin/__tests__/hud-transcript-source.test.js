@@ -14,7 +14,7 @@ const {
 
 describe('buildProjectSlug', () => {
   it('replaces backslashes and colons with dashes', () => {
-    expect(buildProjectSlug('O:\\Sand_Box_Dev')).toBe('O--Sand-Box-Dev');
+    expect(buildProjectSlug('O:\\Example_Workspace')).toBe('O--Example-Workspace');
   });
 
   it('replaces forward slashes with dashes', () => {
@@ -63,7 +63,7 @@ describe('findProjectDir', () => {
     const tempHome = fs.mkdtempSync(path.join(os.tmpdir(), 'hud-projects-'));
     const homeSpy = vi.spyOn(os, 'homedir').mockReturnValue(tempHome);
     try {
-      const cwd = '/tmp/Sand_Box_Dev';
+      const cwd = '/tmp/Example_Workspace';
       const projectsRoot = path.join(tempHome, '.claude', 'projects');
       const expected = path.join(projectsRoot, buildProjectSlug(cwd));
       fs.mkdirSync(expected, { recursive: true });

@@ -96,12 +96,12 @@ describe('hud-engine module exports', () => {
     try {
       const resolved = mod.resolveProjectRoot({
         envProjectDir: '',
-        workspaceProjectDir: '/mnt/o/sand_box_dev/worktree',
+        workspaceProjectDir: '/workspace/example-project/worktree',
         stdinCwd: '/tmp/stdin-cwd',
         fallbackRoot: '/tmp/plugin-cache/turd-box',
       });
 
-      expect(resolved).toBe('/mnt/o/sand_box_dev/worktree');
+      expect(resolved).toBe('/workspace/example-project/worktree');
       expect(process.env.CLAUDE_PROJECT_DIR).toBe('/tmp/original-env-root');
     } finally {
       if (original === undefined) {
