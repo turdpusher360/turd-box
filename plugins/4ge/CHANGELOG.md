@@ -18,7 +18,7 @@ Versions follow Semantic Versioning.
 ## [2.2.2] - 2026-06-11
 
 ### Fixed
-- Updated upgrade links to the 3SIXTYCO-hosted 4ge page.
+- Updated upgrade links to the 3Sixty Co. hosted 4ge page.
 - Corrected the license holder to 3Sixty Co.
 - Updated plugin manifest URLs to the public `turd-box` marketplace repository.
 
