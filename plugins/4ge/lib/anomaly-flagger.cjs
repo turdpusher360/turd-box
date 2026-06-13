@@ -31,11 +31,6 @@ const LONG_IDLE_THRESHOLD_MS      = 5 * 60 * 1000;  // 5 minutes with no tool
 
 // ── Helpers ──
 
-/** Extract bash command strings from event list. */
-function bashCommands(events) {
-  return events.filter(e => e.tool === 'Bash' && e.command).map(e => e.command);
-}
-
 /** True if a bash command string looks like it produced an error. */
 function looksLikeError(cmd) {
   return /error|failed|fail|exception|stderr|exit code [^0]/i.test(cmd);
@@ -124,7 +119,7 @@ function checkStaleDirtyWork(state, now) {
  * ctx-burn-rate-high — contextPct growing >CTX_BURN_RATE_PCT_PER_MIN extrapolated.
  * Requires state.session.contextPct (current) + state.session.uptime (ms since session start).
  */
-function checkCtxBurnRate(state, now) {
+function checkCtxBurnRate(state, _now) {
   const session = state && state.session;
   if (!session) return null;
   const pct    = Number(session.contextPct);

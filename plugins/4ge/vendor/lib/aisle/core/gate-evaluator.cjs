@@ -159,7 +159,7 @@ function readScannerCache(stateDir, scannerId) {
 // If changed: reload and update cache. Synchronous.
 // ---------------------------------------------------------------------------
 
-function checkConfigFreshness(stateDir) {
+function checkConfigFreshness(_stateDir) {
   const configModule = require(CONFIG_PATH);
 
   // P2-9 fix: hash the canonical AISLE config file (resolved via config.cjs
@@ -338,7 +338,6 @@ function evaluate(input, stateDir) {
 
   // --- Step 4: Evaluate each applicable scanner ----------------------------
   const findings = [];
-  let totalElapsed = 0;
 
   // --- Step 3c: W2.3 Subshell content extraction ---------------------------
   // Extract $(...) and backtick inner commands from Bash calls and run them
@@ -491,7 +490,6 @@ function evaluate(input, stateDir) {
 
     // Step 4d: Timing check — per-scanner 10ms warning threshold
     const elapsed = Date.now() - scanStart;
-    totalElapsed += elapsed;
 
     if (elapsed > 10) {
       warnings.push(

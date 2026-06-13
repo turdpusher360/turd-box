@@ -439,7 +439,4 @@ module.exports = {
   EXPRESSIONS,
   getExpressionNames,
   hasExpression,
-
-  // Renderer
-  renderExpression,
 };

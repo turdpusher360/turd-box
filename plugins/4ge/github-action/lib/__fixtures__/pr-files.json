@@ -1,0 +1,7 @@
+[
+  {
+    "filename": "src/app.tsx",
+    "status": "modified",
+    "patch": "@@ -1,2 +1,2 @@\n context\n- old\n+ new"
+  }
+]

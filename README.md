@@ -57,7 +57,7 @@ That's it — `/help` will show the full command index once the plugin loads.
 
 | | Free | Pro ($19/mo) | Team ($39/seat/mo) |
 |--|------|--------------|--------------------|
-| Commands | 25 free commands | + Pro machinery | Everything in Pro |
+| Commands | 28 free commands | + Pro machinery | Everything in Pro |
 | DFE Review | — | Full 6-pass adversarial | Full 6-pass adversarial |
 | Forge orchestration | — | 7-phase pipeline | 7-phase pipeline |
 | AISLE security | — | Posture + scans | Posture + scans |

@@ -14,7 +14,7 @@
 
 const { selectScene, getScene, characterFace, infoLine, infoAlert, MAX_WIDTH, MAX_LINES } = require('./scene-library.cjs');
 const { getExpressionName } = require('./hud-expressions.cjs');
-const { toBold, toFraktur, inDiamond, BOX, FORGE_MARK } = require('./hud-zone-substrate.cjs');
+const { toFraktur, inDiamond, BOX, FORGE_MARK } = require('./hud-zone-substrate.cjs');
 
 // --- Width Enforcement ---
 

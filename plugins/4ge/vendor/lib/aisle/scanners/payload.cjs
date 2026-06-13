@@ -99,7 +99,7 @@ function makeFinding(opts) {
  */
 function shannonEntropy(buf) {
   if (!buf || buf.length === 0) return 0;
-  const freq = new Array(256).fill(0);
+  const freq = Array.from({ length: 256 }, () => 0);
   for (let i = 0; i < buf.length; i++) {
     freq[buf[i]]++;
   }
@@ -249,7 +249,7 @@ function checkZipBomb(content, filePath) {
  * @param {string} filePath
  * @returns {{ found: boolean, paths: string[] }}
  */
-function checkPathTraversal(content, filePath) {
+function checkPathTraversal(content, _filePath) {
   const traversalPaths = [];
 
   // Handle JSON stubs
@@ -311,7 +311,7 @@ module.exports = {
    * @param {object} cachedState
    * @returns {{ allow: boolean, findings: [] }}
    */
-  evaluate(toolInput, cachedState) {
+  evaluate(_toolInput, _cachedState) {
     return { allow: true, findings: [] };
   },
 

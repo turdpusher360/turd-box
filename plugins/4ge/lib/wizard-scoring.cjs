@@ -56,7 +56,7 @@ function computeOverall(categoryResults) {
   let total = 0;
   let maxTotal = 0;
 
-  for (const [name, result] of Object.entries(categoryResults)) {
+  for (const result of Object.values(categoryResults)) {
     if (result.skipped) continue;
     weightedSum += result.raw * result.weight;
     maxWeightedSum += MAX_PER_CATEGORY * result.weight;

@@ -1,0 +1,23 @@
+{
+  "timestamp": "2026-06-04T00:00:00Z",
+  "passes_run": 3,
+  "verdict": "RISK",
+  "stats": {
+    "total": 1,
+    "critical": 0,
+    "high": 0
+  },
+  "findings": [
+    {
+      "pass": "P1",
+      "title": "Fixture smoke finding",
+      "severity": "MEDIUM",
+      "file": "src/app.tsx",
+      "line": 1,
+      "evidence": "sample",
+      "reality": "fixture",
+      "fix": "no-op",
+      "confidence": "Uncertain"
+    }
+  ]
+}

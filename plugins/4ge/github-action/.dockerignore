@@ -1,0 +1,12 @@
+# Test files
+lib/*.test.js
+
+# Dev configs
+.eslintrc.cjs
+
+# Documentation
+README.md
+
+# Docker meta
+Dockerfile
+.dockerignore

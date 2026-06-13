@@ -1,0 +1,22 @@
+{
+  "command": "/forge",
+  "phase": { "number": 5, "name": "Execute" },
+  "task": "Wire bidirectional IPC between the scheduler and worker pool",
+  "teammates": [
+    { "name": "impl-expert", "phase": "P5:execute", "scope": "lib/os/scheduler/", "status": "[4/6] applied" },
+    { "name": "sonnet-execute", "phase": "P5:verify", "scope": "lib/os/scheduler/", "status": "tsc PASS" },
+    { "name": "security-rev", "phase": "idle", "scope": "--", "status": "--" }
+  ],
+  "steps": [
+    { "current": 4, "total": 6, "description": "Add keep-alive to HTTP server", "status": "applied" },
+    { "current": 5, "total": 6, "description": "Wire PostToolUse hook", "status": "running" },
+    { "current": 6, "total": 6, "description": "SQLite event log schema", "status": "pending" }
+  ],
+  "decisions": 3,
+  "constraints": 1,
+  "phases": [
+    { "label": "Phase 4", "status": "done" },
+    { "label": "Phase 5", "status": "[4/6]" },
+    { "label": "Phase 6", "status": "pending" }
+  ]
+}

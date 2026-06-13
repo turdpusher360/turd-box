@@ -27,7 +27,6 @@
  */
 
 const fs   = require('node:fs');
-const path = require('node:path');
 
 /**
  * Sleep synchronously for `ms` milliseconds using a spin-wait.

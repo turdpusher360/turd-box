@@ -172,7 +172,7 @@ module.exports = {
    * @param {object} cachedState - Unused for this scanner
    * @returns {{ allow: boolean, findings: object[] }}
    */
-  evaluate(toolInput, cachedState) {
+  evaluate(toolInput, _cachedState) {
     const findings = [];
     const toolName = toolInput.tool_name || '';
     const input = toolInput.tool_input || {};
@@ -311,7 +311,7 @@ module.exports = {
   /**
    * Boot-time scan — no-op for memory scanner.
    */
-  scan(context) {
+  scan(_context) {
     return { findings: [], duration: 0, cachedState: { writeTimestamps: [] } };
   },
 

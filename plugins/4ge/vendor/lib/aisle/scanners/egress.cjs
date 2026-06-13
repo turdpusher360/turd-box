@@ -43,9 +43,7 @@ const EGRESS_ALLOWLIST = new Set([
 // P1-5: URL_PATTERNS removed — were defined but never referenced.
 // extractHostnames() uses its own inline regex.
 
-// Network command patterns — used for DNS-tool-specific parsing only
 // P1-1: URL/credential checks no longer gated by this (moved outside guard)
-const NETWORK_COMMANDS = /\b(curl|wget|fetch|nc|ncat|socat|ssh|scp|rsync|dig|nslookup|host)\b/;
 
 // ---------------------------------------------------------------------------
 // Load data files
@@ -233,7 +231,7 @@ module.exports = {
   /**
    * Per-tool evaluation for egress monitoring.
    */
-  evaluate(toolInput, cachedState) {
+  evaluate(toolInput, _cachedState) {
     const findings = [];
     const toolName = toolInput.tool_name || '';
     const input = toolInput.tool_input || {};

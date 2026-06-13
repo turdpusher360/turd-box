@@ -225,7 +225,6 @@ function renderCommandCard({ sprite, greeting, context, options, tip, palette })
   const gutterW     = 2; // space between sprite and content
 
   const contentIndent = narrow ? 0 : spriteVis + gutterW;
-  const contentW      = Math.max(20, cols - contentIndent - 2);
 
   const lines = [];
 

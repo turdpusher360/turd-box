@@ -43,13 +43,13 @@ function resolveAlias(alias, profile) {
 }
 
 function getUniversalAliases() { return { ...UNIVERSAL_ALIASES }; }
-function getRepoAliases(profile) { return { ...(REPO_ALIASES[profile] || {}) }; }
+function getRepoAliases(profile) { return { ...REPO_ALIASES[profile] }; }
 
 function validateAliasChain(profile, customAliases) {
   const aliases = {
     ...UNIVERSAL_ALIASES,
-    ...(REPO_ALIASES[profile] || {}),
-    ...(customAliases || {}),
+    ...REPO_ALIASES[profile],
+    ...customAliases,
   };
   const cycles = [];
 

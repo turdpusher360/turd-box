@@ -59,6 +59,9 @@ claude plugin install 4ge@turd-box
 | `/hitchhiker` | Free | Redirect → `/recall` (knowledge search) |
 | `/secret` | Free | Capture a secret without exposing its value to model context |
 | `/superdupersecret` | Free | Alias of `/secret` |
+| `/design` | Free | Contextual design assistant — Visual/API/Data/System modes |
+| `/onboard` | Free | First-time repository onboarding scanner |
+| `/ps` | Free | Read-only process dashboard for agents, zombies, and OS health |
 | `/forge` | Pro | Multi-agent orchestrator: brainstorm → spec → plan → execute → ship |
 | `/dfe` | Pro | 6-pass adversarial code review |
 | `/audit` | Pro | Code quality audit — 70 checks across 10 domains |
@@ -123,7 +126,7 @@ AISLE reports current security posture and routes scans for supply chain integri
 |  | Free | Pro | Team |
 |--|------|-----|------|
 | **Price** | $0 | $19/mo | $39/seat/mo |
-| **Commands** | 25 free commands | + Pro machinery | Everything in Pro |
+| **Commands** | 28 free commands | + Pro machinery | Everything in Pro |
 | **DFE Review** | — | Full 6-pass adversarial | Full 6-pass adversarial |
 | **Forge Orchestration** | — | 7-phase pipeline | 7-phase pipeline |
 | **AISLE Security** | — | Posture + scans | Posture + scans |

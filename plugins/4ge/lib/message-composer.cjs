@@ -54,13 +54,6 @@ function getCommits(s) {
 function getUptime(s)   { return (s && s.session && s.session.uptime) || 0; }
 function getTools(s)    { return (s && s.session && s.session.toolCount) || 0; }
 function getCtx(s)      { return (s && s.session && s.session.contextPct) || 0; }
-function getModel(s) {
-  const id = (s && s.session && s.session.modelId) || '';
-  if (id.includes('opus')) return 'opus';
-  if (id.includes('sonnet')) return 'sonnet';
-  if (id.includes('haiku')) return 'haiku';
-  return '';
-}
 function getForgePhase(s) { return (s && s.forge && s.forge.phase) || null; }
 function getTeammates(s)  {
   const t = s && s.forge && s.forge.teammates;

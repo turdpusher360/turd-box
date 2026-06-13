@@ -3,6 +3,17 @@
 All notable public changes to the 4ge Claude Code plugin are documented here.
 Versions follow Semantic Versioning.
 
+## [2.4.0] - 2026-06-13
+
+### Added
+- Added `/design`, `/onboard`, and `/ps` as Free commands: contextual design assistance, first-time repository onboarding, and a read-only process dashboard.
+- Added HUD support for the Gemini Antigravity statusline adapter, the opt-in moon-phase context zone, and the Weasley multi-agent clock/conflict view.
+- Added feedback-queue capture for Bash tool failures so repeated operational failures can feed the autoresearch loop.
+
+### Changed
+- Retired unwired internal prototype modules and their tests from the shipped plugin package. These were not public command, skill, hook, or install contracts.
+- Updated public package counts and command docs to match disk truth: 40 commands and 40 skills.
+
 ## [2.3.1] - 2026-06-12
 
 ### Fixed

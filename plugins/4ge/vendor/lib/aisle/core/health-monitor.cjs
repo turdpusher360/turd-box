@@ -61,7 +61,7 @@ const STALE_MULTIPLIER = 2;
  * @param {object} config    - AISLE config (tiers, etc.)
  * @returns {PostureReport}
  */
-function getPosture(registry, config) {
+function getPosture(registry, _config) {
   const allScanners = registry.getAll();
   const scannerReport = {};
 

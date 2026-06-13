@@ -1,0 +1,85 @@
+name: "4ge DFE Review"
+description: "6-pass adversarial AI code review. Catches hallucinated APIs, injection vectors, logic errors, runtime mismatches, and AI artifacts."
+
+author: "turdpusher360"
+
+branding:
+  icon: "shield"
+  color: "red"
+
+inputs:
+  api_key:
+    description: "Anthropic API key (ANTHROPIC_API_KEY)"
+    required: true
+
+  model:
+    description: "Base model for Sonnet-tier passes."
+    required: false
+    default: "claude-sonnet-4-6"
+
+  opus_model:
+    description: "Model for Opus-tier passes. Default: claude-opus-4-8. Use claude-opus-4-7 for pinned-stability."
+    required: false
+    default: "claude-opus-4-8"
+
+  passes:
+    description: |
+      Number of passes to run (3 or 6).
+      3 = EXISTENCE + SECURITY + LOGIC (recommended for most PRs)
+      6 = all passes including RUNTIME, ARTIFACTS, PROVENANCE (full adversarial review)
+    required: false
+    default: "3"
+
+  base_branch:
+    description: "Base branch to diff against (default: main)"
+    required: false
+    default: "main"
+
+  max_diff_kb:
+    description: "Maximum diff size in KB before truncation (default: 50)"
+    required: false
+    default: "50"
+
+  fail_on_severity:
+    description: |
+      Minimum severity that causes a non-zero exit code.
+      Options: HIGH, CRITICAL, NONE
+      NONE = always exit 0 (report only, never block)
+      Any other value fails the run immediately (fail-closed).
+    required: false
+    default: "HIGH"
+
+  post_review:
+    description: "Post findings as GitHub PR review comments (true/false)"
+    required: false
+    default: "true"
+
+outputs:
+  findings_count:
+    description: "Total number of findings across all passes"
+  critical_count:
+    description: "Number of CRITICAL severity findings"
+  high_count:
+    description: "Number of HIGH severity findings"
+  verdict:
+    description: "Overall verdict: CLEAN, RISK, or BLOCKED"
+  report_path:
+    description: "Path to the full JSON report artifact"
+
+runs:
+  using: "docker"
+  image: "Dockerfile"
+  env:
+    ANTHROPIC_API_KEY: ${{ inputs.api_key }}
+    DFE_MODEL: ${{ inputs.model }}
+    DFE_OPUS_MODEL: ${{ inputs.opus_model }}
+    DFE_PASSES: ${{ inputs.passes }}
+    DFE_BASE_BRANCH: ${{ inputs.base_branch }}
+    DFE_MAX_DIFF_KB: ${{ inputs.max_diff_kb }}
+    DFE_FAIL_ON_SEVERITY: ${{ inputs.fail_on_severity }}
+    DFE_POST_REVIEW: ${{ inputs.post_review }}
+    GITHUB_TOKEN: ${{ github.token }}
+    GITHUB_REPOSITORY: ${{ github.repository }}
+    GITHUB_PR_NUMBER: ${{ github.event.pull_request.number }}
+    GITHUB_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    GITHUB_EVENT_NAME: ${{ github.event_name }}

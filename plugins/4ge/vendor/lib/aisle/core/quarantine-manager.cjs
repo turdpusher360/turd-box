@@ -205,7 +205,7 @@ function isolate(filePath, finding, stateDir) {
   let fileHash;
   try {
     fileHash = hashFile(absPath);
-  } catch (err) {
+  } catch {
     fileHash = null;
   }
 

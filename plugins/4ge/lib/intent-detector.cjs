@@ -20,17 +20,8 @@ const IDLE_THRESHOLD_MS = 5 * 60 * 1000; // 5 minutes
 // Tool category sets
 const GIT_COMMANDS = ['git commit', 'git push', 'git status', 'git diff', 'git log', 'git add'];
 const TEST_COMMANDS = ['vitest', 'jest', 'npm test', 'npm run test', 'npx vitest', 'pytest'];
-const BUILD_COMMANDS = ['npm run build', 'tsc', 'npx tsc', 'npm run lint', 'eslint'];
 
 // ── Helpers ──
-
-function countByTool(events) {
-  const counts = {};
-  for (const e of events) {
-    counts[e.tool] = (counts[e.tool] || 0) + 1;
-  }
-  return counts;
-}
 
 function matchesAny(str, patterns) {
   if (!str) return false;
@@ -67,7 +58,7 @@ function fileTouches(events, toolFilter) {
 // Each returns a score 0..1 (confidence this is the active intent).
 // The highest-scoring classifier wins.
 
-function scoreIdle(events, state, now) {
+function scoreIdle(events, _state, now) {
   if (events.length === 0) return { score: 0.3, reason: 'no recent tools' };
   const lastTs = events[events.length - 1].ts || 0;
   const gap = now - lastTs;
@@ -77,7 +68,7 @@ function scoreIdle(events, state, now) {
   return { score: 0, reason: '' };
 }
 
-function scoreShipping(events, state) {
+function scoreShipping(events, _state) {
   const bash = extractBashCommands(events);
   const gitHits = bash.filter(c => matchesAny(c, GIT_COMMANDS)).length;
   if (gitHits === 0) return { score: 0, reason: '' };
@@ -91,7 +82,7 @@ function scoreShipping(events, state) {
   return { score: 0.4, reason: 'some git activity' };
 }
 
-function scoreTesting(events, state) {
+function scoreTesting(events, _state) {
   const bash = extractBashCommands(events);
   const testCmdHits = bash.filter(c => matchesAny(c, TEST_COMMANDS)).length;
   const testFileEdits = events.filter(e =>
@@ -106,7 +97,7 @@ function scoreTesting(events, state) {
   return { score: 0.4, reason: 'some test activity' };
 }
 
-function scoreDebugging(events, state) {
+function scoreDebugging(events, _state) {
   // Signals: repeated Read/Grep on same files, Edit after test-fail, Bash with error output,
   // high tool count in short time on narrow file set
   const recentEdits = events.filter(e => e.tool === 'Edit' || e.tool === 'Write');
@@ -150,7 +141,7 @@ function scoreDebugging(events, state) {
   return { score: 0, reason: '' };
 }
 
-function scoreExploring(events, state) {
+function scoreExploring(events, _state) {
   // Signals: many unique files via Read/Glob/Grep, few or no edits
   const uniqueReads = uniqueFilesTouched(events, ['Read']);
   const globs = events.filter(e => e.tool === 'Glob').length;
@@ -170,7 +161,7 @@ function scoreExploring(events, state) {
   return { score: 0, reason: '' };
 }
 
-function scoreRefactoring(events, state) {
+function scoreRefactoring(events, _state) {
   // Signals: replace_all edits, many edits in same dir, no new files (only Edits not Writes)
   const replaceAllEdits = events.filter(e =>
     e.tool === 'Edit' && e.replaceAll === true
@@ -196,7 +187,7 @@ function scoreRefactoring(events, state) {
   return { score: 0, reason: '' };
 }
 
-function scoreReviewing(events, state) {
+function scoreReviewing(events, _state) {
   // Signals: Read-heavy, Grep to find things, no edits
   const reads = events.filter(e => e.tool === 'Read').length;
   const greps = events.filter(e => e.tool === 'Grep').length;

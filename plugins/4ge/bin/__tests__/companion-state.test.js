@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import path from 'path';
 import fs from 'fs';
 
@@ -6,8 +6,6 @@ import fs from 'fs';
 const TEST_STATE_DIR = path.resolve(process.cwd(), '_runs/os');
 const TEST_STATE_PATH = path.resolve(TEST_STATE_DIR, '.companion-state-test-cs.json');
 process.env.COMPANION_STATE_PATH = TEST_STATE_PATH;
-
-let savedState;
 
 function clearState() {
   try { fs.unlinkSync(TEST_STATE_PATH); } catch { /* ok */ }
@@ -64,7 +62,7 @@ describe('companion-state', () => {
     });
 
     it('holds expression during dwell time', () => {
-      const { resolveExpression, signalEvent, DWELL_MS } = requireFresh();
+      const { resolveExpression, signalEvent } = requireFresh();
       // Signal a commit event
       signalEvent('commit');
       // Immediately resolve — should hold commit expression
@@ -187,7 +185,7 @@ describe('companion-state', () => {
     });
 
     it('updates lastToolAt for high-priority events', () => {
-      const { signalEvent, PRIORITY } = requireFresh();
+      const { signalEvent } = requireFresh();
       const before = Date.now();
       signalEvent('commit');
       const state = readState();
@@ -382,7 +380,7 @@ describe('companion-state', () => {
 
     it('every STATE_MAP entry has expression, gaze, mode', () => {
       const { STATE_MAP } = requireFresh();
-      for (const [key, val] of Object.entries(STATE_MAP)) {
+      for (const val of Object.values(STATE_MAP)) {
         expect(val.expression).toBeDefined();
         expect(val.gaze).toBeDefined();
         expect(val.mode).toBeDefined();
@@ -392,7 +390,7 @@ describe('companion-state', () => {
 
   describe('boot animation', () => {
     it('startBoot sets bootActive and frame 0', () => {
-      const { startBoot, loadState } = requireFresh();
+      const { startBoot } = requireFresh();
       startBoot(8); // target: proud joy
       const state = readState();
       expect(state.bootActive).toBe(true);
@@ -401,7 +399,7 @@ describe('companion-state', () => {
     });
 
     it('resolveExpression advances boot frames', () => {
-      const { startBoot, resolveExpression, BOOT_SEQUENCE } = requireFresh();
+      const { startBoot, resolveExpression } = requireFresh();
       startBoot(3); // target: neutral alive (frame 3)
 
       const r0 = resolveExpression({});

@@ -8,31 +8,6 @@ vi.mock('fs', async () => {
 });
 
 describe('Tier 2 Phase E integration', () => {
-  it('classifier routes .tsx files to visual mode toolkit', () => {
-    const { classifyContext } = require('../lib/design-suite-classifier.cjs');
-    const { assembleVisualToolkit } = require('../lib/design-suite-visual.cjs');
-
-    const result = classifyContext(['src/components/Button.tsx']);
-    expect(result.mode).toBe('visual');
-
-    const config = { detected: { framework: 'react' }, design_suite: { enabled: true } };
-    const toolkit = assembleVisualToolkit(config);
-    expect(toolkit.a11y.length).toBe(5);
-    expect(toolkit.framework_refs.framework).toBe('react');
-  });
-
-  it('classifier routes /api/ files to API mode toolkit', () => {
-    const { classifyContext } = require('../lib/design-suite-classifier.cjs');
-    const { assembleApiToolkit } = require('../lib/design-suite-api.cjs');
-
-    const result = classifyContext(['src/api/users.ts']);
-    expect(result.mode).toBe('api');
-
-    const config = { detected: { cloud: 'cloudflare' }, design_suite: { enabled: true } };
-    const toolkit = assembleApiToolkit(config);
-    expect(toolkit.framework_refs.router).toBe('hono');
-  });
-
   it('prompt scorer gives actionable suggestions for vague prompts', () => {
     const { suggestImprovements } = require('../lib/prompt-scorer.cjs');
     const result = suggestImprovements('fix it');
@@ -99,10 +74,6 @@ describe('Tier 2 Phase E integration', () => {
   });
 
   it('all modules load without errors', () => {
-    expect(() => require('../lib/design-suite-classifier.cjs')).not.toThrow();
-    expect(() => require('../lib/design-suite-visual.cjs')).not.toThrow();
-    expect(() => require('../lib/design-suite-api.cjs')).not.toThrow();
-    expect(() => require('../lib/design-suite-data-system.cjs')).not.toThrow();
     expect(() => require('../lib/dialect-detector.cjs')).not.toThrow();
     expect(() => require('../lib/hook-auditor.cjs')).not.toThrow();
     expect(() => require('../lib/prompt-scorer.cjs')).not.toThrow();

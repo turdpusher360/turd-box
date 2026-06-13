@@ -1,6 +1,6 @@
 'use strict';
 
-const { colorize, stripAnsi } = require('./hud-palette.cjs');
+const { colorize } = require('./hud-palette.cjs');
 
 const BRAILLE_FILLS = [
   '\u2800', '\u2801', '\u2803', '\u2807', '\u280F', '\u281F', '\u28FF',

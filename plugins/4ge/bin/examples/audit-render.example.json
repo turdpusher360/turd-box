@@ -1,0 +1,18 @@
+{
+  "command": "/4ge:audit",
+  "title": "implementation quality",
+  "scope": { "path": "src/", "modules": 24, "lines": 3891 },
+  "health": 93,
+  "categories": [
+    { "name": "Security", "score": 19, "findings": 1 },
+    { "name": "Dependencies", "score": 18, "findings": 1 },
+    { "name": "Dead Code", "score": 20, "findings": 0 },
+    { "name": "Complexity", "score": 17, "findings": 2 },
+    { "name": "Test Coverage", "score": 18, "findings": 1 },
+    { "name": "Hook Hygiene", "score": 20, "findings": 0 },
+    { "name": "Config", "score": 19, "findings": 0 },
+    { "name": "Documentation", "score": 17, "findings": 1 }
+  ],
+  "severity": { "p0": 0, "p1": 0, "p2": 3, "p3": 3 },
+  "scanSeconds": 12
+}

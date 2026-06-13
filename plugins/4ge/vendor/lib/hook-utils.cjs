@@ -170,7 +170,7 @@ function buildCapabilityOutput(name, event, hookSpecificOutput, meta = {}) {
   }
   const payload = {
     hookEventName: event,
-    ...(hookSpecificOutput || {}),
+    ...hookSpecificOutput,
   };
   return JSON.stringify({ hookSpecificOutput: payload });
 }

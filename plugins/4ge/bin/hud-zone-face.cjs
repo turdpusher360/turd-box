@@ -1,15 +1,14 @@
 'use strict';
 
-const { colorize, stripAnsi } = require('./hud-palette.cjs');
+const { colorize } = require('./hud-palette.cjs');
 const { countDegraded } = require('./hud-state.cjs');
-const { buildExpression, selectExpression, getExpressionName, EXPRESSIONS } = require('./hud-expressions.cjs');
+const { getExpressionName } = require('./hud-expressions.cjs');
 const { renderCompanionEyes } = require('./companion-face.cjs');
 const { renderColoredOrb } = require('./hud-braille-orb.cjs');
 const { computeHealthScore } = require('./hud-zone-health.cjs');
 
 // --- Constants ---
 const SIDE_BY_SIDE_THRESHOLD = 60; // cols needed for side-by-side layout
-const FACE_COL_WIDTH = 8;          // companion eyes (CompactFace) — tight gap to header/ledger
 
 // --- Half-Block Pixel Art Eyes ---
 // Uses ▀ (upper half) and ▄ (lower half) with fg/bg color tricks.
@@ -190,12 +189,6 @@ function pickQuip(degradedCaps) {
 function humanizeMs(ms) {
   if (ms >= 1000) return `${(ms / 1000).toFixed(1)}s`;
   return `${ms}ms`;
-}
-
-function padRight(str, width) {
-  const visible = stripAnsi(str).length;
-  const pad = Math.max(0, width - visible);
-  return str + ' '.repeat(pad);
 }
 
 // --- Zone Renderer ---

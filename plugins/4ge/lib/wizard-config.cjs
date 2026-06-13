@@ -1,8 +1,5 @@
 'use strict';
 
-const fs = require('node:fs');
-const path = require('node:path');
-
 /**
  * Deep merge two objects. Null values in override remove keys from base.
  * @param {Object} base

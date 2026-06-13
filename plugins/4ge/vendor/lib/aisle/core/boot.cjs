@@ -16,7 +16,6 @@
  *   - Any uncaught exception = fail-closed + CRITICAL event
  */
 
-const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const childProcess = require('child_process');

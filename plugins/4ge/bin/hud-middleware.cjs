@@ -18,20 +18,17 @@
  */
 
 const path = require('node:path');
-const fs = require('node:fs');
 
 // --- Resolve engine paths relative to this file ---
 const ENGINE_PATH = path.resolve(__dirname, 'hud-engine.cjs');
 const DATA_LOADER_PATH = path.resolve(__dirname, 'hud-data-loader.cjs');
 const PALETTE_PATH = path.resolve(__dirname, 'hud-palette.cjs');
 
-let loadHudData, renderByMode, resolvePalette, colorize, stripAnsi;
+let loadHudData, renderByMode, stripAnsi;
 try {
   loadHudData = require(DATA_LOADER_PATH).loadHudData;
   renderByMode = require(ENGINE_PATH).renderByMode;
   const pal = require(PALETTE_PATH);
-  resolvePalette = pal.resolvePalette;
-  colorize = pal.colorize;
   stripAnsi = pal.stripAnsi;
 } catch (err) {
   // Engine not available — report and exit
@@ -124,10 +121,8 @@ function createPipeTransformer() {
   return new Transform({
     transform(chunk, encoding, callback) {
       let text = chunk.toString('utf8');
-      let modified = false;
 
       text = text.replace(SCENE_RE, (match, sceneName, variant) => {
-        modified = true;
         try {
           const raw = loadHudData({ cwd: process.cwd(), runExpensiveProbes: false });
           // Inject scene context
@@ -299,7 +294,6 @@ function buildD5Output(sceneType, hudState, eventName = 'PostToolUse') {
 
 function runDemo() {
   const raw = loadHudData({ cwd: process.cwd(), runExpensiveProbes: false });
-  const palette = resolvePalette();
 
   console.log('='.repeat(72));
   console.log('  HUD MIDDLEWARE SPIKE D — APPROACH DEMONSTRATIONS');

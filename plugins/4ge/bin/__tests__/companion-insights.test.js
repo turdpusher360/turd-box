@@ -65,7 +65,7 @@ function makeState(overrides = {}) {
       toolCount: 10,
       outputTokens: 0,
       duration: 600,
-      ...(overrides.session || {}),
+      ...overrides.session,
     },
     git: {
       branch: 'main',
@@ -74,22 +74,22 @@ function makeState(overrides = {}) {
       behind: 0,
       lastCommitAge: 5,
       lastCommitMsg: 'test commit',
-      ...(overrides.git || {}),
+      ...overrides.git,
     },
     forge: {
       active: false,
       phase: null,
       activeCommand: '',
-      ...(overrides.forge || {}),
+      ...overrides.forge,
     },
     os: {
       capabilities: {},
-      ...(overrides.os || {}),
+      ...overrides.os,
     },
     context: {
       trigger: '',
       event: '',
-      ...(overrides.context || {}),
+      ...overrides.context,
     },
     palette: {},
     ...Object.fromEntries(

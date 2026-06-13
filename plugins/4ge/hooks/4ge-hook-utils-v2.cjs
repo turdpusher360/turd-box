@@ -29,10 +29,10 @@ function read4geConfig(root) {
   return {
     ...SAFE_DEFAULTS,
     ...config,
-    design_suite: { ...SAFE_DEFAULTS.design_suite, ...(config.design_suite || {}) },
-    telemetry: { ...SAFE_DEFAULTS.telemetry, ...(config.telemetry || {}) },
-    trust: { ...SAFE_DEFAULTS.trust, ...(config.trust || {}) },
-    lounge: { ...SAFE_DEFAULTS.lounge, ...(config.lounge || {}) },
+    design_suite: { ...SAFE_DEFAULTS.design_suite, ...config.design_suite },
+    telemetry: { ...SAFE_DEFAULTS.telemetry, ...config.telemetry },
+    trust: { ...SAFE_DEFAULTS.trust, ...config.trust },
+    lounge: { ...SAFE_DEFAULTS.lounge, ...config.lounge },
   };
 }
 

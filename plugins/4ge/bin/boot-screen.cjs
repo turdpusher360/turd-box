@@ -16,8 +16,6 @@ const {
 const {
   FACE_HEALTHY_INLINE,
   FACE_DEGRADED_INLINE,
-  DEGRADED_QUIPS,
-  MULTI_CAP_QUIPS,
   degradedTier,
   pickQuip: _facePickQuip,
 } = require('./hud-zone-face.cjs');

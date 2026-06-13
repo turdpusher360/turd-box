@@ -16,7 +16,6 @@
  *   - hashFile delegated to scripts/pin-hooks.cjs (single source of truth, P1-8)
  */
 
-const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 
@@ -308,8 +307,6 @@ const scanner = {
     if (!toolInput || typeof toolInput !== 'object') {
       return { allow: true, findings };
     }
-
-    const toolName = toolInput._toolName || toolInput.tool_name;
 
     // -- Write or Edit: check file_path --
     if (toolInput.file_path !== undefined) {

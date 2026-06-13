@@ -43,7 +43,6 @@ const SKIP_PATTERNS = [
   /\.claude-plugin[\\/]plugin\.json$/, // manifest intentionally contains author/repo
   /^CHANGELOG\.md$/, // public changelog intentionally contains author handle and release refs
   /^commands[\\/]releases\.md$/, // doc uses session IDs as usage examples (e.g. S186)
-  /^lib[\\/]repo-config-/, // generated config templates; localhost:8091 is a default value, not personal infra
   /^\.data[\\/]sprites[\\/]/, // parody display fixtures with fictional author names for mock GitHub UI
   /^bin[\\/]hud-zone-caps\.cjs$/, // session refs in comments (e.g. "S240") are false positives — code, not personal data
   /^bin[\\/]hud-zone-substrate\.cjs$/, // substrate technique provenance comments reference session IDs

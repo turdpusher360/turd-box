@@ -2,7 +2,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { loadEjected, saveEjected, EJECTED_FILE } = require('./eject.cjs');
+const { loadEjected, saveEjected } = require('./eject.cjs');
 
 /**
  * Re-adopt an ejected component back to plugin management.

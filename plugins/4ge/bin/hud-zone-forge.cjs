@@ -1,6 +1,6 @@
 'use strict';
 
-const { colorize, stripAnsi } = require('./hud-palette.cjs');
+const { colorize } = require('./hud-palette.cjs');
 
 const ZONE_META = { priority: 5, minRows: 1, idealRows: 6 };
 const PHASES = ['scope', 'brainstorm', 'spec', 'plan', 'execute', 'review', 'ship'];

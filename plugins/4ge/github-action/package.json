@@ -1,0 +1,13 @@
+{
+  "name": "4ge-dfe-action",
+  "version": "1.0.0",
+  "description": "4ge DFE adversarial review GitHub Action runtime",
+  "type": "module",
+  "private": true,
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.39.0"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

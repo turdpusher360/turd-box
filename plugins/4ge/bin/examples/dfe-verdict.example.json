@@ -1,0 +1,16 @@
+{
+  "command": "/dfe",
+  "target": { "path": "src/api/", "files": 8, "lines": 1247 },
+  "scan": { "current": 5, "total": 5, "label": "dfe-pass5 complete" },
+  "passes": [
+    { "num": 1, "name": "existence", "status": "PASS", "detail": "imports resolve, packages verified", "findings": 0 },
+    { "num": 2, "name": "security", "status": "WARN", "detail": "unvalidated input at routes.ts:42", "findings": 1 },
+    { "num": 3, "name": "logic", "status": "PASS", "detail": "no race conditions, bounds checked", "findings": 0 },
+    { "num": 4, "name": "runtime", "status": "PASS", "detail": "await verified, env matches", "findings": 0 },
+    { "num": 5, "name": "trust", "status": "WARN", "detail": "type assertion hides error at db:89", "findings": 1 },
+    { "num": 6, "name": "artifacts", "status": "PASS", "detail": "no dead exports, no orphaned vars", "findings": 0 }
+  ],
+  "severity": { "p0": 0, "p1": 0, "p2": 1, "p3": 1 },
+  "confidence": 91,
+  "reportPath": "_runs/review/dfe-adversarial-2026-06-10.md"
+}

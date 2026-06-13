@@ -1,6 +1,6 @@
 'use strict';
 
-const { colorize, stripAnsi } = require('./hud-palette.cjs');
+const { colorize } = require('./hud-palette.cjs');
 
 // --- Zone Metadata ---
 // Lowest priority — only shows when transcript data is available and space permits.

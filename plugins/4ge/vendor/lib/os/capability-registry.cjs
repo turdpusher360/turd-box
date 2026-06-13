@@ -147,7 +147,7 @@ function createCapabilityRegistry(osApi, opts = {}) {
           if (svc.obs) svc.obs.log(stream, event || 'info', data || {});
         },
         query(stream, queryOpts) {
-          return svc.obs ? svc.obs.query({ stream, ...(queryOpts || {}) }) : [];
+          return svc.obs ? svc.obs.query({ stream, ...queryOpts }) : [];
         },
         summary() {
           return svc.obs
@@ -437,6 +437,14 @@ function createCapabilityRegistry(osApi, opts = {}) {
   /**
    * Invoke a capability action. Actions receive `this` bound to the module
    * object via .call(), so capability code can use `this._os`, `this._stateDir`, etc.
+   *
+   * STATUS (upstream): the dispatch path works, but `invoke()` has NO real (non-test)
+   * callers tree-wide — the 30 registered actions across 9 capabilities are reached
+   * by direct module paths or acted out as LLM pseudocode in command `.md` files
+   * (self-labeled at aisle.md:36), not by code calling this function. Capability
+   * MODULES stay live via boot + `probe()` (do not prune); only this action-invocation
+   * layer is aspirational. Do not describe the OS as "executing its capabilities'
+   * actions" through `invoke()`.
    *
    * Error cases (in priority order):
    *   unknown_capability — capability not registered

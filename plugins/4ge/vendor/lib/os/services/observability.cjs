@@ -185,7 +185,7 @@ function createObservability(stateDir) {
   function log(stream, event, data, meta) {
     const entry = {
       ...data,
-      ...(meta || {}),
+      ...meta,
       ts: new Date().toISOString(),
       stream,
       event,

@@ -34,7 +34,6 @@ const VELOCITY_WINDOW_MS         = 5  * 60 * 1000;  // 5 min window for tpm metr
 
 // ── Winding-down signal patterns ─────────────────────────────────────────────
 
-const WINDING_DOWN_GIT_CMDS  = ['git commit', 'git push'];
 const WINDING_DOWN_FILE_PATS = [
   /HANDOFF/i,
   /handoff/,
@@ -163,7 +162,7 @@ function scoreLockedIn(events, now) {
 /**
  * Drift: slowing down — last 3 inter-tool gaps are ≥2 min each, but not yet cold.
  */
-function scoreDrift(events, now) {
+function scoreDrift(events, _now) {
   if (events.length < DRIFT_RECENT_GAPS + 1) return { score: 0, reason: '' };
 
   const tail = events.slice(-(DRIFT_RECENT_GAPS + 1));

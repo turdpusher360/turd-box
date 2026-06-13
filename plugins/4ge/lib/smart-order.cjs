@@ -154,7 +154,7 @@ function readRecentEdits() {
     return {
       hasTypeScriptEdits: files.some((f) => /\.(ts|tsx)/.test(f)),
       hasTestEdits:       files.some((f) => /\.(test|spec)\.(js|ts|cjs)/.test(f)),
-      hasHookEdits:       files.some((f) => /\.claude\/hooks/.test(f) || /\.cjs$/.test(f)),
+      hasHookEdits:       files.some((f) => /\.claude\/hooks/.test(f) || f.endsWith('.cjs')),
       hasDocEdits:        files.some((f) => /\.(md|txt|json)$/.test(f)),
     };
   } catch {

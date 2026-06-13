@@ -173,14 +173,6 @@ const BOX = {
   brd: '\u255D', // ╝
 };
 
-function boxLine(width) {
-  return BOX.h.repeat(width);
-}
-
-function doubleBoxLine(width) {
-  return BOX.hv.repeat(width);
-}
-
 // --- Capability Status Emoji ---
 function capEmoji(ok, degraded) {
   if (degraded) return '🟡';
@@ -246,7 +238,6 @@ function renderSubstrateZone(state) {
 
   // --- HEADER ---
   // Title in math-bold: "FORGE OS" with ligature ties between F-O and O-S
-  const titleRaw = toBold('FORGE') + ' ' + toBold('OS');
   // Layer a combining signature on the forge mark
   const signatureMark = FORGE_MARK;
   // Half-mark ligature tie across the OS pair

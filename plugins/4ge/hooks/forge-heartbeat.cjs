@@ -102,6 +102,34 @@ const ESCALATION_THRESHOLD = 2;
 
     const now = Date.now();
 
+    // R05: deterministically populate the HUD forge-progress zone from the live
+    // .forge-session.json on each throttled full-heartbeat. Without this the zone
+    // only fills when the /forge SKILL prose remembers to shell the writer, so it
+    // usually renders blank during real runs. Non-destructive: upserts a per-phase
+    // wave keyed by session.phase, preserving any waves the SKILL wrote.
+    try {
+      const fp = require('../lib/forge-progress-writer.cjs');
+      const STMAP = { active: 'running', running: 'running', done: 'done', complete: 'done', failed: 'failed', error: 'failed' };
+      const phaseId = String(session.phase != null ? session.phase : 'forge');
+      if (!fp.readProgress()) {
+        fp.startSession({
+          session: session.id || session.session || '',
+          task: session.task || session.scope || '',
+          startedAt: session.startedAt || session.started_at,
+        });
+      }
+      fp.upsertWave({
+        id: phaseId,
+        label: session.phase_label || (session.phase != null ? `Phase ${session.phase}` : 'Forge'),
+        status: 'running',
+        agents: (session.teammates || []).map((tm) => ({
+          name: tm.name,
+          type: tm.type || tm.agent_type || '',
+          status: STMAP[tm.status] || 'running',
+        })),
+      });
+    } catch { /* writer is best-effort and never throws */ }
+
     // Build a lookup: agent_id -> teammate name (session teammates may carry agent_id).
     // Falls back to name-matching if agent_id is absent from session records.
     const agentIdToName = {};

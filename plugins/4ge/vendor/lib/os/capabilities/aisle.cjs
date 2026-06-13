@@ -96,7 +96,7 @@ module.exports = {
   manifest: {
     name: 'aisle',
     version: '1.0.0',
-    description: 'AI Security Learning Environment — unified threat detection and policy enforcement',
+    description: 'AI Security Learning Environment — advisory threat detection and security posture (fail-closed enforcement gate shelved per ADR-SEC-001)',
     depends_on: [],
     actions: {
       scan:       { description: 'Full security scan (all or specific class)', args: ['target'] },

@@ -8,10 +8,6 @@ vi.mock('fs', async () => {
 
 describe('Tier 2 full integration', () => {
   it('all modules load without errors', () => {
-    expect(() => require('../lib/design-suite-classifier.cjs')).not.toThrow();
-    expect(() => require('../lib/design-suite-visual.cjs')).not.toThrow();
-    expect(() => require('../lib/design-suite-api.cjs')).not.toThrow();
-    expect(() => require('../lib/design-suite-data-system.cjs')).not.toThrow();
     expect(() => require('../lib/dialect-detector.cjs')).not.toThrow();
     expect(() => require('../lib/hook-auditor.cjs')).not.toThrow();
     expect(() => require('../lib/prompt-scorer.cjs')).not.toThrow();
@@ -22,17 +18,7 @@ describe('Tier 2 full integration', () => {
     expect(() => require('../lib/layout-parser.cjs')).not.toThrow();
     expect(() => require('../lib/session-archaeology.cjs')).not.toThrow();
     expect(() => require('../lib/checkpoint-buddy.cjs')).not.toThrow();
-    expect(() => require('../lib/lounge-engine.cjs')).not.toThrow();
     expect(() => require('../hooks/4ge-hook-utils-v2.cjs')).not.toThrow();
-  });
-
-  it('classifier + toolkit pipeline: .tsx -> visual -> a11y rules', () => {
-    const { classifyContext } = require('../lib/design-suite-classifier.cjs');
-    const { assembleVisualToolkit, A11Y_RULES } = require('../lib/design-suite-visual.cjs');
-    const result = classifyContext(['src/App.tsx']);
-    expect(result.mode).toBe('visual');
-    const tk = assembleVisualToolkit({ detected: { framework: 'react' } });
-    expect(tk.a11y).toEqual(A11Y_RULES);
   });
 
   it('trust escalation full cycle: guided -> assisted -> failure -> guided', () => {
@@ -55,15 +41,6 @@ describe('Tier 2 full integration', () => {
     for (const layout of layouts) {
       expect(validateLayout(layout)).toEqual([]);
     }
-  });
-
-  it('lounge round-trip: format -> parse -> resolve', () => {
-    const { createDecisionPoint, parseChoice } = require('../lib/lounge-engine.cjs');
-    const dp = createDecisionPoint('Pick', ['Alpha', 'Beta', 'Gamma']);
-    expect(dp.formatted).toContain('[1] Alpha');
-    expect(parseChoice('2', dp.options)).toBe('Beta');
-    expect(parseChoice('gamma', dp.options)).toBe('Gamma');
-    expect(parseChoice('99', dp.options)).toBeNull();
   });
 
   it('budget + telemetry interop', () => {

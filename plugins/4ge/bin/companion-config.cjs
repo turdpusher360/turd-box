@@ -73,8 +73,8 @@ function loadCompanionConfig(projectRoot) {
   const merged = { ...DEFAULTS, ...userConfig };
   merged.insights = {
     ...DEFAULTS.insights,
-    ...(homeConfig.insights || {}),
-    ...(projectConfig.insights || {}),
+    ...homeConfig.insights,
+    ...projectConfig.insights,
   };
 
   // Validate array fields

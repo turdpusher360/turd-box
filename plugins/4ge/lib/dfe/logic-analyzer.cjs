@@ -39,8 +39,6 @@ function scan(filePath) {
   // inverted-boolean: function body contains !== 'admin' (or similar negated role check)
   // and returns true/truthy in the positive branch
   const invertedBoolRe = /!==\s*['"`]admin['"`]/;
-  // also catch patterns like: role !== 'user', permission !== 'allowed'
-  const invertedBoolBroadRe = /\b\w+\s*!==\s*['"`]\w+['"`]/;
 
   // falsy-value: !value ternary pattern — !value ? default : value
   const falsyValueRe = /!\s*\w+\s*\?/;

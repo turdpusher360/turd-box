@@ -4,11 +4,6 @@ const {
   detectArc,
   PHASE_THRESHOLDS,
   computeMetrics,
-  scoreCold,
-  scoreWarmup,
-  scoreLockedIn,
-  scoreDrift,
-  scoreWindingDown,
 } = require('../session-arc.cjs');
 
 // ── Fixed clock ───────────────────────────────────────────────────────────────
@@ -19,7 +14,6 @@ const ev    = (tool, tsOffset = 0, extra = {}) => ({ tool, ts: now + tsOffset, .
 const bash  = (command, tsOffset = 0)           => ({ tool: 'Bash', command, ts: now + tsOffset });
 const edit  = (filePath, tsOffset = 0)          => ({ tool: 'Edit', filePath, ts: now + tsOffset });
 const write = (filePath, tsOffset = 0)          => ({ tool: 'Write', filePath, ts: now + tsOffset });
-const read  = (filePath, tsOffset = 0)          => ({ tool: 'Read', filePath, ts: now + tsOffset });
 
 // Build N events evenly spaced over a window (all before now)
 function evenSpread(n, windowMs, toolName = 'Bash') {
@@ -121,7 +115,6 @@ describe('detectArc — locked-in', () => {
 
   it('detects high velocity even with irregular spacing', () => {
     // 7 tools scattered across 3 min, not perfectly even
-    const base = now - 3 * 60 * 1000;
     const offsets = [0, 10000, 35000, 60000, 110000, 140000, 170000];
     const recentTools = offsets.map(o => ev('Edit', -(3 * 60 * 1000 - o)));
     const r = detectArc({

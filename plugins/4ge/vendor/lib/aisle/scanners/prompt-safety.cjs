@@ -217,7 +217,7 @@ module.exports = {
    * @param {object} cachedState - Unused
    * @returns {{ allow: boolean, findings: object[] }}
    */
-  evaluate(toolInput, cachedState) {
+  evaluate(toolInput, _cachedState) {
     const findings = [];
     const text = extractText(toolInput);
     const sessionId = toolInput.session_id || null;
@@ -268,7 +268,7 @@ module.exports = {
   /**
    * Boot-time scan — no-op for prompt scanner (no static files to inspect).
    */
-  scan(context) {
+  scan(_context) {
     return { findings: [], duration: 0, cachedState: {} };
   },
 

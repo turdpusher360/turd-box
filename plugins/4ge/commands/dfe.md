@@ -13,6 +13,8 @@ Parse $ARGUMENTS:
 | `all` | Review all tracked reviewable project files (`git ls-files`) |
 | `--staged` | Review staged files only (`git diff --cached --name-only`) |
 | `--unstaged` | Review unstaged files only (`git diff --name-only`) |
+| `--base <ref>` | Review files changed since `<ref>` via `node lib/dfe/diff-scoper.cjs --base <ref>` |
+| `--ref <ref>` | Review files changed relative to `<ref>` via `node lib/dfe/diff-scoper.cjs --ref <ref>` |
 | `<file path>` | Review the specified file(s) only |
 | (empty) | Default to unstaged files (`git diff --name-only`) |
 
@@ -22,7 +24,12 @@ Before producing any output, read `${CLAUDE_PLUGIN_ROOT}/skills/wizard-engine/re
 ## Pipeline
 
 ### Step 1: Determine file set
-Run the appropriate git command from the table above. Filter the result to reviewable files:
+
+**For `--base <ref>` or `--ref <ref>` arguments:** run `node lib/dfe/diff-scoper.cjs --base <ref>` or `node lib/dfe/diff-scoper.cjs --ref <ref>`. Parse the JSON output (fields: `ref`, `files`, `new_deps`, `summary`). Extract `files[].path` for the reviewable file list and retain the full JSON result for use in Step 2.
+
+**For all other arguments:** run the appropriate git command from the table above to obtain a flat list of file paths.
+
+Then filter the file list to reviewable files:
 
 - Extensions: `.ts`, `.tsx`, `.js`, `.cjs`, `.mjs`, `.jsx`, `.py`, `.go`, `.rs`, `.md`
 - Exclude: `node_modules/`, `_runs/`, generated build output, vendored third-party output
@@ -37,7 +44,8 @@ Create `_runs/review/dfe-brief-$DATE.md` with the Write tool before dispatching 
 ### Target Files
 [list files]
 ### Scope
-[argument mode and, when available, git diff --stat summary]
+[argument mode; when --base/--ref was used, include diff-scoper summary: added/modified/deleted counts,
+ total_changed_lines, and any new_deps detected; otherwise include git diff --stat summary when available]
 ### Artifact Policy
 - Disk-first: every pass writes a report under _runs/review/.
 - Inline output is a concise progress/status summary only.

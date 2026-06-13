@@ -378,7 +378,7 @@ function verify(sessionId, options = {}) {
     // not the snapshot — silently discarding any uncommitted edit the user made
     // after the last commit, and making the repair-log newHash (entry.hash) a
     // lie. Prefer the snapshot; skip hash-only large files when no snapshot exists.
-    let method = 'write';
+    const method = 'write';
 
     if (entry.content !== null) {
       // Have the snapshot — restore it verbatim. Correct for both
@@ -530,11 +530,11 @@ module.exports = {
         tracked_files: tracked.length,
         session_id: sessionId || 'unknown',
       };
-      this._healthCache = { ...(this._healthCache || {}), ...result };
+      this._healthCache = { ...this._healthCache, ...result };
       return result;
     } catch (e) {
       const result = { ok: false, reason: `probe threw: ${e.message}` };
-      this._healthCache = { ...(this._healthCache || {}), ...result };
+      this._healthCache = { ...this._healthCache, ...result };
       return result;
     }
   },
@@ -631,7 +631,7 @@ module.exports = {
       return { ...(this._healthCache || { ok: false }) };
     },
 
-    check(_args, osCtx) {
+    check(_args, _osCtx) {
       const sessionId = getStableSessionId();
       const result = verify(sessionId);
       this._healthCache = {

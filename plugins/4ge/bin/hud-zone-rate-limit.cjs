@@ -1,6 +1,6 @@
 'use strict';
 
-const { colorize, stripAnsi, RESET } = require('./hud-palette.cjs');
+const { colorize } = require('./hud-palette.cjs');
 
 // --- Zone Metadata ---
 const RATE_META = { key: 'rate', priority: 10, minRows: 1, idealRows: 2 };

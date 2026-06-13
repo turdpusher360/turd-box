@@ -161,8 +161,8 @@ function merge(defaults, agent) {
   return {
     ...defaults,
     ...agent,
-    scope: { ...defaults.scope, ...(agent.scope || {}) },
-    slo: { ...defaults.slo, ...(agent.slo || {}) },
+    scope: { ...defaults.scope, ...agent.scope },
+    slo: { ...defaults.slo, ...agent.slo },
   };
 }
 

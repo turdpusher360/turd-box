@@ -48,15 +48,9 @@ const ESC = '\x1b';
 const CLEAR_SCREEN = `${ESC}[2J${ESC}[H`;
 const HIDE_CURSOR = `${ESC}[?25l`;
 const SHOW_CURSOR = `${ESC}[?25h`;
-const MOVE_HOME = `${ESC}[H`;
-const ERASE_LINE = `${ESC}[2K`;
-
-function moveTo(row, col) {
-  return `${ESC}[${row};${col}H`;
-}
 
 // --- Load HUD modules (resilient — prototype may run before all modules exist) ---
-let renderFull, loadHudData, resolvePalette, colorize, stripAnsi, getTheme, setTheme;
+let renderFull, loadHudData, resolvePalette, colorize, getTheme, setTheme;
 
 try {
   const engine = require(path.join(BIN_DIR, 'hud-engine.cjs'));
@@ -76,14 +70,12 @@ try {
   const palette = require(path.join(BIN_DIR, 'hud-palette.cjs'));
   resolvePalette = palette.resolvePalette;
   colorize = palette.colorize;
-  stripAnsi = palette.stripAnsi;
   getTheme = palette.getTheme;
   setTheme = palette.setTheme;
 } catch {
   // Fallback: plain text
   resolvePalette = () => ({ ok: '', warn: '', error: '', accent: '', muted: '', text: '', glow: '', bg: '', reset: '' });
   colorize = (_p, _r, t) => t;
-  stripAnsi = (s) => s.replace(/\x1b\[[0-9;]*m/g, '');
   getTheme = () => 'plain';
   setTheme = () => false;
 }
@@ -185,7 +177,7 @@ function buildState() {
 }
 
 // --- Render the menu bar at the bottom ---
-function renderMenu(palette, cols) {
+function renderMenu(palette) {
   const items = [
     { key: '1', label: 'Health' },
     { key: '2', label: 'Caps' },
@@ -210,7 +202,6 @@ function renderScene() {
   const state = buildState();
   const palette = resolvePalette({ name: themeName || getTheme() });
   const cols = state.terminal.cols;
-  const rows = state.terminal.rows;
 
   let output = '';
 
@@ -235,17 +226,13 @@ function renderScene() {
   const now = new Date();
   const timeStr = now.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
   const timestamp = colorize(palette, 'muted', `  last render: ${timeStr}`);
-  const menu = renderMenu(palette, cols);
+  const menu = renderMenu(palette);
   const divider = colorize(palette, 'muted', '  ' + '\u2500'.repeat(Math.min(cols - 4, 72)));
 
   return output + '\n' + divider + '\n' + timestamp + '\n' + menu;
 }
 
-// --- Clear and redraw ---
-let renderCount = 0;
-
 function redraw() {
-  renderCount++;
   const scene = renderScene();
   process.stdout.write(CLEAR_SCREEN + scene + '\n');
 }
@@ -303,8 +290,6 @@ function setupKeyboard() {
       shutdown();
       return;
     }
-
-    const palette = resolvePalette({ name: themeName || getTheme() });
 
     switch (key) {
       case '1': // Health zone

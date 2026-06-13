@@ -1,7 +1,7 @@
 {
   "name": "4ge",
-  "version": "2.3.1",
-  "description": "The production layer for Claude Code. 37 commands and 40 skills across 9 OS capabilities: multi-agent forge orchestration, 6-pass adversarial code review, AISLE security posture, persistent-memory support, systematic debugging, live HUD, and more.",
+  "version": "2.4.0",
+  "description": "The production layer for Claude Code. 40 commands and 40 skills across 9 OS capabilities: multi-agent forge orchestration, 6-pass adversarial code review, AISLE security posture, persistent-memory support, systematic debugging, live HUD, and more.",
   "author": {
     "name": "turdpusher360"
   },
@@ -259,6 +259,24 @@
       "model": "sonnet",
       "description": "5-step guided walkthrough of the highest-value /4ge commands for new users.",
       "argumentHint": "[--step N]"
+    },
+    "design": {
+      "source": "./commands/design.md",
+      "model": "sonnet",
+      "description": "Contextual design assistant — wraps the design-suite skill (Visual/API/Data/System modes).",
+      "argumentHint": "[visual | api | data | system] or empty to auto-detect"
+    },
+    "onboard": {
+      "source": "./commands/onboard.md",
+      "model": "sonnet",
+      "description": "First-time repository onboarding scanner — wraps the repo-onboard skill.",
+      "argumentHint": "[path] or empty for cwd"
+    },
+    "ps": {
+      "source": "./commands/ps.md",
+      "model": "sonnet",
+      "description": "Read-only process dashboard — running agents, zombies, OS health.",
+      "argumentHint": ""
     }
   }
 }

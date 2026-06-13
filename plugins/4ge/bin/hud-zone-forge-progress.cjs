@@ -1,6 +1,6 @@
 'use strict';
 
-const { colorize, stripAnsi } = require('./hud-palette.cjs');
+const { colorize } = require('./hud-palette.cjs');
 
 // --- Zone Metadata ---
 // Above activity (1) and badges (2), below cards (3) and forge (5).
@@ -53,8 +53,6 @@ function renderWaveBar(wave, palette, barWidth) {
   if (pkgs === 0) return colorize(palette, 'muted', '\u2500'.repeat(barWidth));
 
   const status = wave.status || 'queued';
-  const agents = Array.isArray(wave.agents) ? wave.agents.length : 0;
-  const commits = wave.commits || 0;
 
   // For individual wave: full bar in wave's status color
   const filled = Math.min(barWidth, pkgs);

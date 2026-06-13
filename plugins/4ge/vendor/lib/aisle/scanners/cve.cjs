@@ -226,7 +226,7 @@ module.exports = {
   /**
    * Per-tool evaluation — no-op for CVE scanner (boot + on-demand only).
    */
-  evaluate(toolInput, cachedState) {
+  evaluate(_toolInput, _cachedState) {
     return { allow: true, findings: [] };
   },
 

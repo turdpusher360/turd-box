@@ -70,6 +70,11 @@
             "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_DATA}/hooks/forge-scope-check.cjs\"",
             "timeout": 3
+          },
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_DATA}/hooks/weasley-conflict-check.cjs\"",
+            "timeout": 3
           }
         ]
       }
@@ -80,6 +85,15 @@
           {
             "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_DATA}/hooks/rubber-duck-debugger.cjs\"",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_DATA}/hooks/feedback-queue-capture.cjs\"",
             "timeout": 5
           }
         ]
@@ -118,6 +132,11 @@
             "type": "command",
             "command": "node \"${CLAUDE_PLUGIN_DATA}/hooks/os-accounting.cjs\"",
             "timeout": 5
+          },
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PLUGIN_DATA}/hooks/weasley-heartbeat.cjs\"",
+            "timeout": 3
           }
         ]
       },

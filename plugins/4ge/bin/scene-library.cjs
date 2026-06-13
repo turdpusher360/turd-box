@@ -15,10 +15,10 @@
 
 const {
   toBold, toFraktur, toMono,
-  blockBar, gradedBlockBar,
-  inCircle, inSquare, inDiamond, inKeycap,
+  blockBar,
+  inCircle,
   capEmoji,
-  BLOCK, BOX, COMBINING_LATIN, palimpsest,
+  BLOCK,
 } = require('./hud-zone-substrate.cjs');
 
 // --- Constants ---

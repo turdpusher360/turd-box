@@ -398,8 +398,8 @@ function extractAuditFindings(auditData) {
 function scanTyposquats(pkgJson, filePath) {
   const findings = [];
   const allDeps = {
-    ...((pkgJson && pkgJson.dependencies) || {}),
-    ...((pkgJson && pkgJson.devDependencies) || {}),
+    ...(pkgJson && pkgJson.dependencies),
+    ...(pkgJson && pkgJson.devDependencies),
   };
 
   for (const depName of Object.keys(allDeps)) {
@@ -461,7 +461,7 @@ function scanUnpinnedVersions(packages, filePath) {
  * @param {string} cwd
  * @returns {boolean} true if too new
  */
-function isTooNew(pkgName, version, cwd) {
+function _isTooNew(pkgName, version, cwd) {
   // Validate pkgName to prevent shell metacharacter injection (cmd.exe on Windows)
   if (!/^[@a-zA-Z0-9._/-]+$/.test(pkgName)) return false;
 

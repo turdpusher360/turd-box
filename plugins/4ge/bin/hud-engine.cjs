@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 'use strict';
 
-const { resolvePalette, colorize, stripAnsi } = require('./hud-palette.cjs');
+const { colorize, stripAnsi } = require('./hud-palette.cjs');
 const { buildCanonicalState, countDegraded } = require('./hud-state.cjs');
 const { createCanvas, paintRows, allocateVerticalZones, render } = require('./hud-canvas.cjs');
 const { renderFaceZone, ZONE_META: FACE_META } = require('./hud-zone-face.cjs');
@@ -19,6 +19,8 @@ const { renderRateLimitZone, RATE_META, rateVisible } = require('./hud-zone-rate
 const { renderActivityZone } = require('./hud-zone-activity.cjs');
 const { renderForgeProgressZone, ZONE_META: FORGE_PROGRESS_META, forgeProgressVisible } = require('./hud-zone-forge-progress.cjs');
 const { renderGitStatusZone, ZONE_META: GIT_STATUS_META, gitStatusVisible } = require('./hud-zone-git-status.cjs');
+const { renderMoonphaseZone, ZONE_META: MOONPHASE_META, moonphaseVisible } = require('./hud-zone-moonphase.cjs');
+const { renderWeasleyZone, ZONE_META: WEASLEY_META, weasleyVisible } = require('./hud-zone-weasley.cjs');
 const { loadHudData, mergeHarnessStdin } = require('./hud-data-loader.cjs');
 const { renderSubstrateZone } = require('./hud-zone-substrate.cjs');
 const { composeScene } = require('./scene-compositor.cjs');
@@ -80,6 +82,8 @@ function renderFull(rawState) {
     { meta: GIT_STATUS_META, key: 'gitStatus', render: renderGitStatusZone, visible: gitStatusVisible },
     { meta: RATE_META, key: 'rate', render: renderRateLimitZone, visible: rateVisible },
     { meta: FORGE_PROGRESS_META, key: 'forgeProgress', render: renderForgeProgressZone, visible: forgeProgressVisible },
+    { meta: MOONPHASE_META, key: 'moonphase', render: renderMoonphaseZone, visible: moonphaseVisible },
+    { meta: WEASLEY_META, key: 'weasley', render: renderWeasleyZone, visible: weasleyVisible },
   ];
 
   // W3: Filter zones by visibility predicate before allocation.
@@ -225,7 +229,7 @@ function renderGradientFace(leftGlyph, rightGlyph) {
   return FACE_LEFT + '[' + FACE_RIGHT + leftGlyph + FACE_RESET + ' ' + FACE_LEFT + rightGlyph + FACE_RIGHT + ']' + FACE_RESET;
 }
 
-function resolveCompanionFace(rawState, palette, modelFace) {
+function resolveCompanionFace(rawState, palette, _modelFace) {
   try {
     const companion = require('./companion-state.cjs');
     const stdinJson = rawState || {};
@@ -340,10 +344,6 @@ function renderStrip(rawState) {
   const uptime = state.session.uptime || 0;
   const uptimeStr = colorize(palette, 'muted', `${Math.floor(uptime / 60000)}m`);
 
-  // Session ID (short)
-  const sid = state.session.id || '';
-  const sidStr = sid ? colorize(palette, 'muted', sid.slice(0, 8)) : '';
-
   // Assemble strip: face + key info only
   const sep = colorize(palette, 'muted', '\u00B7');
   const parts = [faceStr];
@@ -387,6 +387,7 @@ function renderZone(rawState) {
     gitStatus: () => renderGitStatusZone(state, p),
     'git-status': () => renderGitStatusZone(state, p),
     git: () => renderGitStatusZone(state, p),
+    moonphase: () => renderMoonphaseZone(state, p),
   };
 
   const renderer = zoneMap[zone] || zoneMap.face;

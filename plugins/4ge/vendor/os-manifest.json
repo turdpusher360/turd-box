@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-06-10T17:02:42.124Z",
-  "sourceHead": "f6aca4947e3cc24ab96c9302c958b6e1a01fdb59",
+  "generatedAt": "2026-06-13T10:50:20.299Z",
+  "sourceHead": "5fb63cbc5a7fd62a3621cef60fd9c8cc11febad5",
   "files": {
     "lib/aisle/.gitignore": {
       "sourceSha256": "051f52b7c0fb350f7e8e5cd2e6aceb85e7cf198ff9062f9b52959eac14209671",
@@ -128,8 +128,8 @@
       "transformed": false
     },
     "lib/aisle/core/boot.cjs": {
-      "sourceSha256": "d171cd4c4c2357aa636f199bb484bec82763f5aa37a32b834713171befb1420b",
-      "vendoredSha256": "797582297a37ae307931ada1b5a8cad549ab76fd8440bc22325d4f9acf3b9b73",
+      "sourceSha256": "d4a53555a33851a28274b09bde229ed35327cf65527c66e0d3b8b119ea016460",
+      "vendoredSha256": "595e963ad65fba85dc1b8e438289b204128b2bf1f3ff342dbee67b8c9def45b1",
       "transformed": true
     },
     "lib/aisle/core/config.cjs": {
@@ -138,13 +138,13 @@
       "transformed": true
     },
     "lib/aisle/core/gate-evaluator.cjs": {
-      "sourceSha256": "73dd0f98a1081eb55a7e72bd736cb7d832e0fb9abb0e8bafd49835ad9ae7423a",
-      "vendoredSha256": "73dd0f98a1081eb55a7e72bd736cb7d832e0fb9abb0e8bafd49835ad9ae7423a",
+      "sourceSha256": "328aef753492f478bc524ad568ae9e467694bd6427db754353289ee319bfb517",
+      "vendoredSha256": "328aef753492f478bc524ad568ae9e467694bd6427db754353289ee319bfb517",
       "transformed": false
     },
     "lib/aisle/core/health-monitor.cjs": {
-      "sourceSha256": "c531a874c00139988a34640d2a097aa736d3b0a951268557276f11d990137d69",
-      "vendoredSha256": "c531a874c00139988a34640d2a097aa736d3b0a951268557276f11d990137d69",
+      "sourceSha256": "e8348adba431600298eb1d4327a0c42b8224e347813143cf9471afe1ab1a9326",
+      "vendoredSha256": "e8348adba431600298eb1d4327a0c42b8224e347813143cf9471afe1ab1a9326",
       "transformed": false
     },
     "lib/aisle/core/learning.cjs": {
@@ -158,8 +158,8 @@
       "transformed": false
     },
     "lib/aisle/core/quarantine-manager.cjs": {
-      "sourceSha256": "61b47cfb5b6a95261736d9364ce916de4f90394f31d6e9f2e109558a488f5910",
-      "vendoredSha256": "61b47cfb5b6a95261736d9364ce916de4f90394f31d6e9f2e109558a488f5910",
+      "sourceSha256": "8959f2281ba1d0d195056c544a8fcbab27668feedf8c2c19d990c71215041254",
+      "vendoredSha256": "8959f2281ba1d0d195056c544a8fcbab27668feedf8c2c19d990c71215041254",
       "transformed": false
     },
     "lib/aisle/core/scanner-registry.cjs": {
@@ -198,13 +198,13 @@
       "transformed": false
     },
     "lib/aisle/scanners/cve.cjs": {
-      "sourceSha256": "838d394e14f4ca47245607044f13c53354cc9244156479b62e2f8af8d611d003",
-      "vendoredSha256": "838d394e14f4ca47245607044f13c53354cc9244156479b62e2f8af8d611d003",
+      "sourceSha256": "ce4df30dff7e142c4aeb32817689179a2f91711a579b7af033deeb63dfbb762c",
+      "vendoredSha256": "ce4df30dff7e142c4aeb32817689179a2f91711a579b7af033deeb63dfbb762c",
       "transformed": false
     },
     "lib/aisle/scanners/egress.cjs": {
-      "sourceSha256": "a038d1c23b7caf5f2090b1404186671b18e241b7aea612630545273bfd969189",
-      "vendoredSha256": "a038d1c23b7caf5f2090b1404186671b18e241b7aea612630545273bfd969189",
+      "sourceSha256": "7cea8c33a5b675dd4fd32664895f690ff85f00363bca388702a370c30ce348f3",
+      "vendoredSha256": "7cea8c33a5b675dd4fd32664895f690ff85f00363bca388702a370c30ce348f3",
       "transformed": false
     },
     "lib/aisle/scanners/event-bus.cjs": {
@@ -213,18 +213,18 @@
       "transformed": false
     },
     "lib/aisle/scanners/integrity.cjs": {
-      "sourceSha256": "f5b7712c8c2c92ac3f879f99cbdf91a302d2d89f120b0de05f5bf846de47016c",
-      "vendoredSha256": "3757e55138f8001cbafe6943beb28f25fe8cd4981d310a6f63a7614b1318f88f",
+      "sourceSha256": "002df749f3de07b903062c633989849ac2956f5f5f08681545fdbb47817e192e",
+      "vendoredSha256": "2b180a9ca4bc3d5798bb2bdf83f9817d8c7c589023608916b0e362bc96786097",
       "transformed": true
     },
     "lib/aisle/scanners/memory-integrity.cjs": {
-      "sourceSha256": "5f19470279a80a22116ee8346b8f52baa364f3ff9fc7535a84b2d0e8a9c0afa2",
-      "vendoredSha256": "5f19470279a80a22116ee8346b8f52baa364f3ff9fc7535a84b2d0e8a9c0afa2",
+      "sourceSha256": "f73d9c76a54fdef46494045072dc918a2ddaa2c13aca656cdab7981775561065",
+      "vendoredSha256": "f73d9c76a54fdef46494045072dc918a2ddaa2c13aca656cdab7981775561065",
       "transformed": false
     },
     "lib/aisle/scanners/payload.cjs": {
-      "sourceSha256": "d510a7e9777cd403ad9d93a19eb858436352cdbe4701a0773d5cbe713ca19bb1",
-      "vendoredSha256": "d510a7e9777cd403ad9d93a19eb858436352cdbe4701a0773d5cbe713ca19bb1",
+      "sourceSha256": "e0a3ef79fc6fd9ffa681b0bbb59250a82042210aa6696fc1fce8df177dc46ee2",
+      "vendoredSha256": "e0a3ef79fc6fd9ffa681b0bbb59250a82042210aa6696fc1fce8df177dc46ee2",
       "transformed": false
     },
     "lib/aisle/scanners/privilege.cjs": {
@@ -233,13 +233,13 @@
       "transformed": false
     },
     "lib/aisle/scanners/prompt-safety.cjs": {
-      "sourceSha256": "7909a9be06e6d21408800078205df5736a776655f9939bf8eeb9575b322ebcc8",
-      "vendoredSha256": "7909a9be06e6d21408800078205df5736a776655f9939bf8eeb9575b322ebcc8",
+      "sourceSha256": "db6572bdca81dcfec7017340deacc18f3d21ca8a92c60962f08783505af38b6e",
+      "vendoredSha256": "db6572bdca81dcfec7017340deacc18f3d21ca8a92c60962f08783505af38b6e",
       "transformed": false
     },
     "lib/aisle/scanners/supply-chain.cjs": {
-      "sourceSha256": "ea5aef5be3ae4c65b926542c45bd6bbf2f59208c5572bef7d3d7abf60c020218",
-      "vendoredSha256": "33aa17f59ff3ee389276d0aff5c0cecb6504d20345130e00eceee302ab8dde5b",
+      "sourceSha256": "14475e35e7d97347b2151af4350d8a9962648f52c9d00316b42f062a60c5aa32",
+      "vendoredSha256": "b3619a5d076f9be789e381dc0f23a52a5ce2556088cfde17596030906c6c42f1",
       "transformed": true
     },
     "lib/aisle/server.cjs": {
@@ -253,13 +253,13 @@
       "transformed": true
     },
     "lib/hook-utils.cjs": {
-      "sourceSha256": "8493a771659204eef1c5d32811296f5a8fc06793d36a92b8e2632d9988585d8b",
-      "vendoredSha256": "6e6c73725faf09b8704039ca9c963ea1f65c0901eca87b0645e55a2f2a8a1b14",
+      "sourceSha256": "d762e0975b7513ce8c00f013ddb612b0fdf79d2ea72fe0e65694418d43465aa3",
+      "vendoredSha256": "a2bf5a1b7a7f666a58d5e05b417eb92c303a366fb10e0c3fd0d03cd800ef77bc",
       "transformed": true
     },
     "lib/os/capabilities/aisle.cjs": {
-      "sourceSha256": "e8825d0913ca244b50bb0b5dc9a26800b36b1890fc77310846f8be22a6dd6c40",
-      "vendoredSha256": "4244fcc5d800b9121018cd56ea3519d82a094ee34dd553aed4b20ecefff9186c",
+      "sourceSha256": "4a5e0498c8a4f45eb1ef88fd88403d8743d5de2b4bdee2661041102ae3d9863f",
+      "vendoredSha256": "f5b668fab979311619d957e16f2faaaf9b926e06b54bd326c293947162903eb6",
       "transformed": true
     },
     "lib/os/capabilities/audit.cjs": {
@@ -273,8 +273,8 @@
       "transformed": false
     },
     "lib/os/capabilities/file-integrity.cjs": {
-      "sourceSha256": "b39f6206f89bf01dc8b8371f908b4b24541f8ce30657f2118c7068b6e749cfb0",
-      "vendoredSha256": "b39f6206f89bf01dc8b8371f908b4b24541f8ce30657f2118c7068b6e749cfb0",
+      "sourceSha256": "f649c57a01915f1ee9baa4b5b3ae43e2a78855a41d8454f3bb3b6f2944a05a09",
+      "vendoredSha256": "f649c57a01915f1ee9baa4b5b3ae43e2a78855a41d8454f3bb3b6f2944a05a09",
       "transformed": false
     },
     "lib/os/capabilities/forge-session.cjs": {
@@ -303,9 +303,9 @@
       "transformed": false
     },
     "lib/os/capability-registry.cjs": {
-      "sourceSha256": "150d42649250e59eec2e1ed00a870aa3b8795fc9934cd34b93c0de3c64b865d5",
-      "vendoredSha256": "150d42649250e59eec2e1ed00a870aa3b8795fc9934cd34b93c0de3c64b865d5",
-      "transformed": false
+      "sourceSha256": "8a14eb4efd95425d9730e7a1838f31978470b4577ae6197d3a140ad62e2ca9cf",
+      "vendoredSha256": "afbcffe3cc2c1ae5d4692b0a272be89201a6cbfc4503ed253efdfedb755840d3",
+      "transformed": true
     },
     "lib/os/config/gates.json": {
       "sourceSha256": "e8b664d3ec3ad5d11a7bfaadd8171711c93068851aade07ef4903ff137a4c466",
@@ -348,8 +348,8 @@
       "transformed": true
     },
     "lib/os/kernel/contracts.cjs": {
-      "sourceSha256": "b7fbf13ddd724a4cc7ee29fb8268b238397c89a2e6ac11e0864d4843720d9903",
-      "vendoredSha256": "b7fbf13ddd724a4cc7ee29fb8268b238397c89a2e6ac11e0864d4843720d9903",
+      "sourceSha256": "5f185403c6a2e83537aca2828b0f57c47077d041477c064605796ebca00c93ec",
+      "vendoredSha256": "5f185403c6a2e83537aca2828b0f57c47077d041477c064605796ebca00c93ec",
       "transformed": false
     },
     "lib/os/kernel/feature-gates.cjs": {
@@ -393,8 +393,8 @@
       "transformed": false
     },
     "lib/os/services/observability.cjs": {
-      "sourceSha256": "c6cfdfac9a18d8f51e3dace963a503d25c82ab109f65cd54cf04b6076a08201d",
-      "vendoredSha256": "c6cfdfac9a18d8f51e3dace963a503d25c82ab109f65cd54cf04b6076a08201d",
+      "sourceSha256": "57c1f6e533f151bf88bf41c4cfc1a4eea6b8c43b29534f45af7cd930fc810fa8",
+      "vendoredSha256": "57c1f6e533f151bf88bf41c4cfc1a4eea6b8c43b29534f45af7cd930fc810fa8",
       "transformed": false
     },
     "lib/os/services/work-product-router.cjs": {
