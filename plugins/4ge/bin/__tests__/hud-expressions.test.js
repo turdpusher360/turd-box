@@ -26,9 +26,9 @@ function makeState(overrides) {
 }
 
 describe('EXPRESSIONS', () => {
-  it('defines 16 named expressions', () => {
+  it('defines 17 named expressions (16 + neutral-alive idle alias)', () => {
     const { EXPRESSIONS } = requireFresh();
-    expect(Object.keys(EXPRESSIONS).length).toBe(16);
+    expect(Object.keys(EXPRESSIONS).length).toBe(17);
   });
 
   it('each expression has left and right arrays', () => {
@@ -47,14 +47,14 @@ describe('EXPRESSION_RULES', () => {
     const { EXPRESSION_RULES } = requireFresh();
     const last = EXPRESSION_RULES[EXPRESSION_RULES.length - 1];
     expect(last.match(makeState())).toBe(true);
-    expect(last.expr).toBe('neutral');
+    expect(last.expr).toBe('neutral alive');
   });
 });
 
 describe('getExpressionName', () => {
-  it('returns "neutral" for default state', () => {
+  it('returns "neutral alive" (asymmetric idle identity) for default state', () => {
     const { getExpressionName } = requireFresh();
-    expect(getExpressionName(makeState())).toBe('neutral');
+    expect(getExpressionName(makeState())).toBe('neutral alive');
   });
 
   it('returns "determined" for forge-start event', () => {

@@ -597,9 +597,9 @@ describe('hud-expressions — EXPRESSIONS catalog', () => {
     'sad', 'angry', 'blinking', 'lookLeft', 'lookRight',
   ];
 
-  it('exports exactly 16 named expressions', () => {
+  it('exports exactly 17 named expressions (16 + neutral-alive idle alias)', () => {
     const { EXPRESSIONS } = mod();
-    expect(Object.keys(EXPRESSIONS)).toHaveLength(16);
+    expect(Object.keys(EXPRESSIONS)).toHaveLength(17);
   });
 
   for (const name of EXPECTED_NAMES) {
@@ -701,9 +701,11 @@ describe('hud-expressions — selectExpression', () => {
     expect(Array.isArray(result.right)).toBe(true);
   });
 
-  it('returns neutral for empty/default state', () => {
+  it('returns the neutral-alive idle alias for empty/default state', () => {
     const { selectExpression, EXPRESSIONS } = mod();
     const result = selectExpression(makeState());
+    // 'neutral alive' big-eye art is aliased to neutral — same object by design.
+    expect(result).toBe(EXPRESSIONS['neutral alive']);
     expect(result).toBe(EXPRESSIONS.neutral);
   });
 
@@ -839,9 +841,9 @@ describe('hud-expressions — getExpressionName', () => {
     expect(typeof getExpressionName(makeState())).toBe('string');
   });
 
-  it('returns "neutral" for default state', () => {
+  it('returns "neutral alive" (asymmetric idle identity) for default state', () => {
     const { getExpressionName } = mod();
-    expect(getExpressionName(makeState())).toBe('neutral');
+    expect(getExpressionName(makeState())).toBe('neutral alive');
   });
 
   it('returns "focused" when forge active with phase', () => {
@@ -873,9 +875,9 @@ describe('hud-expressions — getExpressionName', () => {
     expect(EXPRESSIONS[name]).toBe(expr);
   });
 
-  it('returns "neutral" on malformed state without throwing', () => {
+  it('returns "neutral alive" on malformed state without throwing', () => {
     const { getExpressionName } = mod();
     expect(() => getExpressionName({})).not.toThrow();
-    expect(getExpressionName({})).toBe('neutral');
+    expect(getExpressionName({})).toBe('neutral alive');
   });
 });

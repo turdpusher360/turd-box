@@ -187,6 +187,7 @@ function bgAlert(width) {
  */
 const SCENE_FACES = {
   neutral:    '[\u2585 \u2585]',
+  'neutral alive': '[\u2585 \u2584]', // idle identity \u2014 asymmetric, matches COMPACT_FACES
   happy:      '[\u25E0 \u25E0]',
   focused:    '[\u2500 \u2500]',
   sad:        '[\u2584 \u2584]',

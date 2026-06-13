@@ -103,7 +103,9 @@ function resolveCompanionFace(rawState, palette, _modelFace) {
     if (glyphs) return renderGradientFace(glyphs[1], glyphs[2]);
     return colorize(palette, 'accent', face);
   } catch {
-    return renderGradientFace('▅', '▅');
+    // Failure fallback shows the companion's true idle face (asymmetric), not
+    // the symmetric reset face.
+    return renderGradientFace('▅', '▄');
   }
 }
 

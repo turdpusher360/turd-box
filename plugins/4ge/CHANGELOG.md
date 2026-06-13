@@ -3,6 +3,11 @@
 All notable public changes to the 4ge Claude Code plugin are documented here.
 Versions follow Semantic Versioning.
 
+## [2.3.1] - 2026-06-12
+
+### Fixed
+- Companion idle eyes now render the asymmetric "alive" identity (`[▅ ▄]`): the idle default expression routes to `neutral alive`, with the expression alias, big-eye map entry, and failure-fallback face updated to match.
+
 ## [2.3.0] - 2026-06-12
 
 ### Changed

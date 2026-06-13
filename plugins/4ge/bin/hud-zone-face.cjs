@@ -254,6 +254,7 @@ function renderFaceZone(state, palette) {
   } else {
     const exprQuips = {
       neutral: 'everything is where it should be',
+      'neutral alive': 'everything is where it should be',
       happy: 'all systems green',
       focused: 'locked in',
       curious: 'exploring',

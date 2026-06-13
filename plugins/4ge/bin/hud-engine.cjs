@@ -254,7 +254,9 @@ function resolveCompanionFace(rawState, palette, modelFace) {
     if (glyphs) return renderGradientFace(glyphs[1], glyphs[2]);
     return colorize(palette, 'accent', face);
   } catch {
-    return renderGradientFace('\u2585', '\u2585');
+    // Failure fallback shows the companion's true idle face (asymmetric), not
+    // the symmetric reset face.
+    return renderGradientFace('\u2585', '\u2584');
   }
 }
 

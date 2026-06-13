@@ -254,6 +254,7 @@ function _buildExpressions(c) {
     blinking:   { left: _eyeClosed(c),         right: _eyeClosed(c) },
     lookLeft:   { left: _eyeFull(c),           right: _eyeFull(c) },
     lookRight:  { left: _eyeFull(c),           right: _eyeFull(c) },
+    'neutral alive': { left: _eyeFull(c),      right: _eyeFull(c) }, // idle alias — see EXPRESSIONS
   };
 }
 
@@ -277,6 +278,9 @@ const EXPRESSIONS = {
   lookLeft:   { left: eyeFull(),         right: eyeFull() },   // future: shift pupil
   lookRight:  { left: eyeFull(),         right: eyeFull() },   // future: shift pupil
 };
+// Idle identity alias — same big-eye art as neutral (the asymmetry lives in the
+// compact glyph faces, which have a dedicated 'neutral alive' entry).
+EXPRESSIONS['neutral alive'] = EXPRESSIONS.neutral;
 
 // --- Context-to-Expression Mapping ---
 // Priority-ordered rules. First match wins.
@@ -314,8 +318,10 @@ const EXPRESSION_RULES = [
   // Blink (periodic — every ~30 renders)
   { match: (s) => s.context.event === 'blink',            expr: 'blinking' },
 
-  // Default
-  { match: () => true,                                    expr: 'neutral' },
+  // Default — idle identity is the asymmetric 'neutral alive' face ([▅ ▄],
+  // big left eye / smaller right eye), matching companion-state's idle default.
+  // Plain symmetric 'neutral' is reserved for explicit resets, never idle.
+  { match: () => true,                                    expr: 'neutral alive' },
 ];
 
 // --- Helper ---
