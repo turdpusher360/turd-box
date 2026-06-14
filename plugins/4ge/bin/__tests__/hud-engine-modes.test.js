@@ -3,6 +3,7 @@ import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import fs from 'node:fs';
+import os from 'node:os';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const _require = createRequire(import.meta.url);
@@ -87,6 +88,44 @@ describe('renderByMode routing', () => {
 });
 
 describe('renderCompact output structure', () => {
+  it('renders legacy focused compact state instead of falling back to neutral', () => {
+    const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), 'hud-compact-state-'));
+    const previousStatePath = process.env.COMPANION_STATE_PATH;
+    process.env.COMPANION_STATE_PATH = path.join(stateDir, '.companion-state.json');
+    try {
+      const mod = requireFresh();
+      const state = JSON.parse(fs.readFileSync(MOCK_HEALTHY, 'utf8'));
+      state.forge = { active: true, phase: 'execute' };
+      const output = mod.renderCompact(state);
+      const plain = stripAnsi(output);
+      expect(plain).toContain('[━ ━]');
+      expect(plain).not.toContain('[▅ ▅]');
+    } finally {
+      if (previousStatePath === undefined) delete process.env.COMPANION_STATE_PATH;
+      else process.env.COMPANION_STATE_PATH = previousStatePath;
+      fs.rmSync(stateDir, { recursive: true, force: true });
+    }
+  });
+
+  it('renders legacy winking compact state instead of falling back to neutral', () => {
+    const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), 'hud-compact-state-'));
+    const previousStatePath = process.env.COMPANION_STATE_PATH;
+    process.env.COMPANION_STATE_PATH = path.join(stateDir, '.companion-state.json');
+    try {
+      const mod = requireFresh();
+      const state = JSON.parse(fs.readFileSync(MOCK_HEALTHY, 'utf8'));
+      state.context = { trigger: 'command', event: 'export', zone: null };
+      const output = mod.renderCompact(state);
+      const plain = stripAnsi(output);
+      expect(plain).toContain('[▅ ─]');
+      expect(plain).not.toContain('[▅ ▅]');
+    } finally {
+      if (previousStatePath === undefined) delete process.env.COMPANION_STATE_PATH;
+      else process.env.COMPANION_STATE_PATH = previousStatePath;
+      fs.rmSync(stateDir, { recursive: true, force: true });
+    }
+  });
+
   it('returns 1 line when no event', () => {
     const mod = requireFresh();
     const state = JSON.parse(fs.readFileSync(MOCK_HEALTHY, 'utf8'));

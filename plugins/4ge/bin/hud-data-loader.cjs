@@ -32,6 +32,113 @@ function readFreshHudContext(filePath) {
   return raw;
 }
 
+// Forge-progress.json uses top-level `startedAt` (ISO, written by forge-progress-writer.cjs).
+// A session that was abandoned without `clear` would linger and show a ghost progress bar.
+// 10 minutes: long enough to survive agent context switches, short enough to clear crashed
+// sessions before the next session starts.
+const FORGE_PROGRESS_TTL_MS = 10 * 60 * 1000;
+
+function readFreshForgeProgress(filePath) {
+  const raw = readJsonSafe(filePath);
+  if (!raw || typeof raw !== 'object') return null;
+  const t = Date.parse(raw.startedAt);
+  // No valid in-JSON timestamp → fall back to file mtime (forge-progress-writer didn't
+  // include startedAt in early format; mtime is close enough for staleness detection).
+  if (!Number.isFinite(t)) {
+    try {
+      const mtime = fs.statSync(filePath).mtimeMs;
+      if (Date.now() - mtime > FORGE_PROGRESS_TTL_MS) return null;
+    } catch { return null; }
+    return raw;
+  }
+  if (Date.now() - t > FORGE_PROGRESS_TTL_MS) return null;
+  return raw;
+}
+
+// .forge-session.json uses top-level `started` (ISO) per SKILL.md Phase-5 schema.
+// Missing / malformed → treat as no active session. TTL mirrors forge-progress so
+// they expire together when cleanup is skipped.
+const FORGE_SESSION_TTL_MS = FORGE_PROGRESS_TTL_MS;
+
+function readFreshForgeSession(filePath) {
+  const raw = readJsonSafe(filePath);
+  if (!raw || typeof raw !== 'object') return null;
+  const t = Date.parse(raw.started);
+  if (!Number.isFinite(t)) {
+    // No in-JSON timestamp: defer to mtime.
+    try {
+      const mtime = fs.statSync(filePath).mtimeMs;
+      if (Date.now() - mtime > FORGE_SESSION_TTL_MS) return null;
+    } catch { return null; }
+    return raw;
+  }
+  if (Date.now() - t > FORGE_SESSION_TTL_MS) return null;
+  return raw;
+}
+
+function clipHudText(value, max = 160) {
+  if (typeof value !== 'string') return '';
+  const text = value.replace(/\s+/g, ' ').trim();
+  if (text.length <= max) return text;
+  return text.slice(0, max - 3).trimEnd() + '...';
+}
+
+function firstOpenTask(tasks) {
+  if (!Array.isArray(tasks)) return '';
+  const task = tasks.find(t => t && t.done !== true && typeof t.text === 'string' && t.text.trim());
+  return task ? task.text : '';
+}
+
+function loadLatestHandoffSummary(cwd) {
+  try {
+    const runsDir = path.join(cwd, '_runs');
+    const entries = fs.readdirSync(runsDir)
+      .map(name => {
+        const m = name.match(/^HANDOFF-S(\d+)\.md$/);
+        return m ? { name, n: Number(m[1]) } : null;
+      })
+      .filter(Boolean)
+      .sort((a, b) => b.n - a.n);
+    if (entries.length === 0) return '';
+    const content = fs.readFileSync(path.join(runsDir, entries[0].name), 'utf8');
+    const line = content.split(/\r?\n/)
+      .map(s => s.trim())
+      .find(s => s && !s.startsWith('#') && !s.startsWith('---') && !s.startsWith('>'));
+    return line || '';
+  } catch {
+    return '';
+  }
+}
+
+function loadSessionMemory(cwd, forgeSession) {
+  const memory = {};
+  const cartridge = readJsonSafe(path.join(cwd, '_runs', 'session-cartridge.json'));
+  if (cartridge && typeof cartridge === 'object') {
+    const momentum = cartridge.momentum && typeof cartridge.momentum === 'object'
+      ? cartridge.momentum
+      : {};
+    const openTask = firstOpenTask(cartridge.tasks);
+    memory.lastSession = clipHudText(momentum.summary, 180);
+    memory.next = clipHudText(momentum.next, 160);
+    memory.parked = clipHudText(openTask, 160);
+  }
+
+  if (!memory.lastSession) {
+    memory.lastSession = clipHudText(loadLatestHandoffSummary(cwd), 180);
+  }
+
+  if (!memory.parked && forgeSession && typeof forgeSession === 'object') {
+    const phase = forgeSession.phase || forgeSession.current_phase || '';
+    const scope = forgeSession.scope || forgeSession.slug || '';
+    memory.parked = clipHudText([phase, scope].filter(Boolean).join(': '), 160);
+  }
+
+  for (const key of Object.keys(memory)) {
+    if (!memory[key]) delete memory[key];
+  }
+  return memory;
+}
+
 /**
  * Build capabilities map by merging boot-status init_ms/status with
  * flat health.json ok/reason. `health` is already flat -- no .capabilities key.
@@ -110,8 +217,9 @@ function loadHudData(opts = {}) {
   const bootStatus = readJsonSafe(path.join(stateDir, 'boot-status.json')) || {};
   const meta = readJsonSafe(path.join(stateDir, 'session-meta.json')) || {};
   const hudCtx = readFreshHudContext(path.join(stateDir, 'hud-context.json'));
-  const forgeSession = readJsonSafe(path.join(cwd, '.forge-session.json'));
-  const forgeProgress = readJsonSafe(path.join(stateDir, 'forge-progress.json'));
+  const forgeSession = readFreshForgeSession(path.join(cwd, '.forge-session.json'));
+  const forgeProgress = readFreshForgeProgress(path.join(stateDir, 'forge-progress.json'));
+  const sessionMemory = loadSessionMemory(cwd, forgeSession);
 
   const capabilities = buildCapabilities(bootStatus, health);
   const overallHealth = deriveOverall(capabilities);
@@ -173,7 +281,7 @@ function loadHudData(opts = {}) {
       zone: null,
     },
     badges: readJsonSafe(path.join(cwd, 'plugins/4ge/.data/badges.json')) || {},
-    memory: {},
+    memory: sessionMemory,
     forgeProgress: forgeProgress || null,
     transcript,
   };

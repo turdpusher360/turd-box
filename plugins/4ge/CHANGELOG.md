@@ -3,6 +3,21 @@
 All notable public changes to the 4ge Claude Code plugin are documented here.
 Versions follow Semantic Versioning.
 
+## [2.5.0] - 2026-06-14
+
+### Added
+- Added a `companion.animate` config toggle for the HUD companion orb. Animation remains on by default and can be disabled without turning off the companion.
+- Added live statusline polish for the companion: statusline voice now falls back to contextual companion insights when no active message is present, and the compact bracket face reflects companion gaze.
+- Added boot-pulse statusline expansion so a fresh OS boot briefly surfaces capability health in the persistent HUD instead of only in one-shot full-mode output.
+
+### Changed
+- Hydrated the session zone from the session cartridge so it can show last-session and parked-work context instead of an empty memory placeholder.
+- Pruned retired internal HUD implementation paths: Clawd mascot payloads, block-art expression builders, zero-producer companion state keys, and the stale hud-frame watcher. These were internal surfaces, not public plugin commands, skills, hooks, or install contracts.
+- Tightened HUD staleness handling so old forge-progress and boot-state data stops leaking into the persistent statusline.
+
+### Fixed
+- Fixed companion eye drift across live and full HUD modes by routing face/orb rendering through the companion-state expression resolver and passing the same freeze/animation inputs to the full-mode orb.
+
 ## [2.4.0] - 2026-06-13
 
 ### Added

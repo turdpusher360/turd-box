@@ -2,6 +2,8 @@ import { describe, it, expect, vi } from 'vitest';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import fs from 'node:fs';
+import os from 'node:os';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const _require = createRequire(import.meta.url);
@@ -96,6 +98,70 @@ describe('renderFaceZone', () => {
     const allText = lines.map(l => stripAnsi(l)).join(' ');
     // Wide mode shows "N degraded" count or a cap-specific quip
     expect(allText).toMatch(/degraded|unreachable|docker|memory|what were/i);
+  });
+
+  it('passes companion state and idle freeze options to the full-mode orb', () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'hud-zone-face-orb-'));
+    const previousProjectDir = process.env.CLAUDE_PROJECT_DIR;
+    const previousStatePath = process.env.COMPANION_STATE_PATH;
+    process.env.CLAUDE_PROJECT_DIR = tmpDir;
+    process.env.COMPANION_STATE_PATH = path.join(tmpDir, '_runs', 'os', '.companion-state.json');
+    fs.mkdirSync(path.join(tmpDir, '_runs', 'os'), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpDir, '_runs', 'os', 'hud-active.json'),
+      JSON.stringify({ active: false, at: '2026-06-13T17:00:00.000Z' }),
+    );
+
+    const orbPath = path.resolve(__dirname, '../hud-braille-orb.cjs');
+    const originalOrb = _require.cache[orbPath];
+    let capturedOpts = null;
+    _require.cache[orbPath] = {
+      exports: {
+        renderColoredOrb: (_score, opts) => {
+          capturedOpts = opts;
+          return ['orb-top', 'orb-bot'];
+        },
+      },
+    };
+
+    try {
+      const { renderFaceZone } = requireFresh();
+      const palette = {
+        ok: '', warn: '', error: '', accent: '', muted: '', text: '', bg: '', reset: '',
+      };
+      const state = {
+        projectRoot: tmpDir,
+        terminal: { cols: 120, rows: 40 },
+        os: { overallHealth: 'ready', bootTime: 1819, capabilities: { memory: { ok: true } } },
+        session: { toolCount: 2, outputTokens: 0 },
+        forge: { active: false },
+      };
+      renderFaceZone(state, palette);
+      expect(capturedOpts).toBeTruthy();
+      expect(capturedOpts.companionState).toBeTruthy();
+      expect(capturedOpts.outerActive).toBe(false);
+      expect(capturedOpts.freezeTimeMs).toBe(new Date('2026-06-13T17:00:00.000Z').getTime());
+    } finally {
+      if (originalOrb) _require.cache[orbPath] = originalOrb;
+      else delete _require.cache[orbPath];
+      if (previousProjectDir === undefined) delete process.env.CLAUDE_PROJECT_DIR;
+      else process.env.CLAUDE_PROJECT_DIR = previousProjectDir;
+      if (previousStatePath === undefined) delete process.env.COMPANION_STATE_PATH;
+      else process.env.COMPANION_STATE_PATH = previousStatePath;
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it('does not export or retain the retired Clawd and block-art face builders', () => {
+    const mod = requireFresh();
+    const source = fs.readFileSync(MODULE_PATH, 'utf8');
+
+    expect(mod.CLAWD_POSES).toBeUndefined();
+    expect(mod.pickClawdPose).toBeUndefined();
+    expect(mod.buildClawdLines).toBeUndefined();
+    expect(mod.FACE_HEALTHY).toBeUndefined();
+    expect(mod.FACE_DEGRADED).toBeUndefined();
+    expect(source).not.toMatch(/\b(?:CLAWD_POSES|buildClawdLines|pickClawdPose|FACE_HEALTHY(?!_INLINE)|FACE_DEGRADED(?!_INLINE))\b/);
   });
 });
 

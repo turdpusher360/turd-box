@@ -151,6 +151,28 @@ describe('hud-data-loader', () => {
     expect(raw.os.overallHealth).toBe('unknown');
     expect(raw.forge.active).toBe(false);
   });
+
+  it('loadHudData hydrates session-zone memory from session-cartridge.json', () => {
+    fs.mkdirSync(path.join(tmpCwd, '_runs'), { recursive: true });
+    fs.writeFileSync(
+      path.join(tmpCwd, '_runs', 'session-cartridge.json'),
+      JSON.stringify({
+        momentum: {
+          summary: 'S427 shipped HUD boot-pulse and found companion eye bugs.',
+          next: 'Start the HUD polish pass.',
+        },
+        tasks: [
+          { done: true, text: 'old task' },
+          { done: false, text: 'Fix companion eyes and insight fallback.' },
+        ],
+      }),
+    );
+
+    const raw = loadHudData({ stateDir: tmpStateDir, cwd: tmpCwd, runExpensiveProbes: false });
+    expect(raw.memory.lastSession).toBe('S427 shipped HUD boot-pulse and found companion eye bugs.');
+    expect(raw.memory.next).toBe('Start the HUD polish pass.');
+    expect(raw.memory.parked).toBe('Fix companion eyes and insight fallback.');
+  });
 });
 
 describe('mergeHarnessStdin', () => {

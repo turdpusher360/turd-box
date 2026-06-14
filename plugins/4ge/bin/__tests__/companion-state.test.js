@@ -6,6 +6,7 @@ import fs from 'fs';
 const TEST_STATE_DIR = path.resolve(process.cwd(), '_runs/os');
 const TEST_STATE_PATH = path.resolve(TEST_STATE_DIR, '.companion-state-test-cs.json');
 process.env.COMPANION_STATE_PATH = TEST_STATE_PATH;
+const RETIRED_STATE_KEYS = ['push', 'interrupted', 'model-change', 'effort-change', 'user-typing'];
 
 function clearState() {
   try { fs.unlinkSync(TEST_STATE_PATH); } catch { /* ok */ }
@@ -207,6 +208,17 @@ describe('companion-state', () => {
       // idle priority (10) <= idle priority, so lastToolAt unchanged
       expect(state.lastToolAt).toBe(1000);
     });
+
+    it('retired event keys fall back to idle instead of persisting ghost states', () => {
+      const { signalEvent } = requireFresh();
+      for (const key of RETIRED_STATE_KEYS) {
+        clearState();
+        signalEvent(key);
+        const state = readState();
+        expect(state.stateKey, key).toBe('idle');
+        expect(state.expression, key).toBe('proud joy');
+      }
+    });
   });
 
   describe('detectState', () => {
@@ -368,6 +380,13 @@ describe('companion-state', () => {
       const { PRIORITY } = requireFresh();
       expect(PRIORITY['tests-fail']).toBeGreaterThan(PRIORITY['tests-pass']);
     });
+
+    it('does not retain retired zero-producer state priorities', () => {
+      const { PRIORITY } = requireFresh();
+      for (const key of RETIRED_STATE_KEYS) {
+        expect(PRIORITY[key], key).toBeUndefined();
+      }
+    });
   });
 
   describe('STATE_MAP coverage', () => {
@@ -384,6 +403,25 @@ describe('companion-state', () => {
         expect(val.expression).toBeDefined();
         expect(val.gaze).toBeDefined();
         expect(val.mode).toBeDefined();
+      }
+    });
+
+    it('does not retain retired zero-producer state mappings', () => {
+      const { STATE_MAP } = requireFresh();
+      for (const key of RETIRED_STATE_KEYS) {
+        expect(STATE_MAP[key], key).toBeUndefined();
+      }
+    });
+  });
+
+  describe('retired event hints', () => {
+    it('resolveExpression falls back to idle for retired event hints', () => {
+      const { resolveExpression } = requireFresh();
+      for (const key of RETIRED_STATE_KEYS) {
+        clearState();
+        const result = resolveExpression({}, key);
+        expect(result.stateKey, key).toBe('idle');
+        expect(result.expression, key).toBe('proud joy');
       }
     });
   });

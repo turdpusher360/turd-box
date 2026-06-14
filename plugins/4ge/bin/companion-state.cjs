@@ -27,14 +27,9 @@ const PRIORITY = {
   'tests-fail': 70,
   'tests-pass': 60,
   commit: 55,
-  push: 55,
-  interrupted: 55,
-  'model-change': 55,
-  'effort-change': 55,
   'agent-dispatch': 50,
   'agent-return': 50,
   'tool-running': 40,
-  'user-typing': 35,
   idle: 10,
   'long-idle': 5,
   boot: 100,
@@ -51,16 +46,15 @@ const STATE_MAP = {
   'tests-fail':     { expression: 'proud joy',      gaze: 'forward', mode: 'standard' },
   error:            { expression: 'dead',           gaze: 'forward', mode: 'standard' },
   commit:           { expression: 'proud joy',      gaze: 'forward', mode: 'standard' },
-  push:             { expression: 'alert',          gaze: 'forward', mode: 'standard' },
-  interrupted:      { expression: 'proud joy',      gaze: 'forward', mode: 'standard' },
-  'model-change':   { expression: 'alert',          gaze: 'forward', mode: 'standard' },
-  'effort-change':  { expression: 'alert',          gaze: 'forward', mode: 'standard' },
-  'user-typing':    { expression: 'curious',        gaze: 'left',    mode: 'standard' },
   'context-warn':   { expression: 'exhausted',      gaze: 'forward', mode: 'standard' },
   'rate-limited':   { expression: 'sleepy',         gaze: 'forward', mode: 'standard' }, // was 'compact' S288, reverted S290 — semantically inert post-S290
   'agent-dispatch': { expression: 'determined',     gaze: 'forward', mode: 'standard' },
   'agent-return':   { expression: 'sad',            gaze: 'left',    mode: 'standard' },
 };
+
+function normalizeStateKey(key) {
+  return STATE_MAP[key] ? key : 'idle';
+}
 
 // ── State Persistence ──
 
@@ -162,6 +156,7 @@ function detectState(stdin, prevState) {
 function applyIdleAnimation(result, state, now) {
   if (result.mode !== 'standard' && result.mode !== 'expanded') return;
   if (PRIORITY[state.stateKey] > PRIORITY.idle) return; // don't animate during events
+  if (cc().animate === false) return; // escape hatch: no idle blink/gaze drift when animation is off
 
   // Blink: only during long-idle (5min+). Not a regular idle animation.
   if (state.stateKey === 'long-idle') {
@@ -192,6 +187,7 @@ function applyIdleAnimation(result, state, now) {
 function resolveExpression(stdin, eventHint) {
   const now = Date.now();
   const state = loadState();
+  state.stateKey = normalizeStateKey(state.stateKey);
 
   // Session-resume detection (H7 fix, S332 + 2026-04-27 Task 1):
   //
@@ -280,7 +276,7 @@ function resolveExpression(stdin, eventHint) {
 
   // If an explicit event hint is provided (from a reactive hook), use it.
   // detectState runs BEFORE totalOutputTokens update so old vs new comparison works.
-  let newKey = eventHint || detectState(stdin, state);
+  let newKey = normalizeStateKey(eventHint || detectState(stdin, state));
 
   // Update totalOutputTokens AFTER detectState so old vs new comparison works
   state.totalOutputTokens = (stdin && stdin.session && stdin.session.outputTokens)
@@ -296,10 +292,10 @@ function resolveExpression(stdin, eventHint) {
   const sinceChange = now - (state.changedAt || 0);
   if (sinceChange < _cc.dwellMs && !eventHint) {
     // Hold current expression
-    newKey = state.stateKey;
+    newKey = normalizeStateKey(state.stateKey);
   } else if (newPriority < curPriority && sinceChange < _cc.decayMs) {
     // Current state is higher priority and hasn't decayed yet
-    newKey = state.stateKey;
+    newKey = normalizeStateKey(state.stateKey);
   }
 
   // Resolve expression from map
@@ -338,6 +334,7 @@ function resolveExpression(stdin, eventHint) {
  */
 function signalEvent(eventKey) {
   const state = loadState();
+  const stateKey = normalizeStateKey(eventKey);
   // Cancel boot animation — real events take precedence
   if (state.bootActive) {
     state.bootActive = false;
@@ -346,13 +343,13 @@ function signalEvent(eventKey) {
   if (state.message && Date.now() > (state.message.at || 0) + (state.message.ttl || 15000)) {
     state.message = null;
   }
-  state.stateKey = eventKey;
+  state.stateKey = stateKey;
   state.changedAt = Date.now();
-  if (PRIORITY[eventKey] > PRIORITY.idle) {
+  if (PRIORITY[stateKey] > PRIORITY.idle) {
     state.lastToolAt = Date.now();
   }
   // Write the expression field so the strip renderer picks it up directly
-  const mapped = STATE_MAP[eventKey] || STATE_MAP.idle;
+  const mapped = STATE_MAP[stateKey] || STATE_MAP.idle;
   state.expression = mapped.expression;
   state.gaze = mapped.gaze || 'forward';
   state.mode = mapped.mode || 'compact';

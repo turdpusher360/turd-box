@@ -17,7 +17,7 @@ const { renderSessionZone } = require('./hud-zone-session.cjs');
 const { renderCommandCards } = require('./hud-zone-cards.cjs');
 const { renderRateLimitZone, RATE_META, rateVisible } = require('./hud-zone-rate-limit.cjs');
 const { renderActivityZone } = require('./hud-zone-activity.cjs');
-const { renderForgeProgressZone, ZONE_META: FORGE_PROGRESS_META, forgeProgressVisible } = require('./hud-zone-forge-progress.cjs');
+const { renderForgeProgressZone } = require('./hud-zone-forge-progress.cjs');
 const { renderGitStatusZone, ZONE_META: GIT_STATUS_META, gitStatusVisible } = require('./hud-zone-git-status.cjs');
 const { renderMoonphaseZone, ZONE_META: MOONPHASE_META, moonphaseVisible } = require('./hud-zone-moonphase.cjs');
 const { renderWeasleyZone, ZONE_META: WEASLEY_META, weasleyVisible } = require('./hud-zone-weasley.cjs');
@@ -78,10 +78,12 @@ function renderFull(rawState) {
     { meta: FACE_META,    key: 'face',    render: renderFaceZone },
     { meta: CONTEXT_META, key: 'context', render: renderContextZone },
     { meta: HEALTH_META,  key: 'health',  render: renderHealthZone },
-    { meta: FORGE_META,   key: 'forge',   render: renderForgeZone },
+    { meta: FORGE_META,   key: 'forge',   render: renderForgeZone, visible: (s) => !!(s.forge && s.forge.active) },
     { meta: GIT_STATUS_META, key: 'gitStatus', render: renderGitStatusZone, visible: gitStatusVisible },
     { meta: RATE_META, key: 'rate', render: renderRateLimitZone, visible: rateVisible },
-    { meta: FORGE_PROGRESS_META, key: 'forgeProgress', render: renderForgeProgressZone, visible: forgeProgressVisible },
+    // forgeProgress zone REMOVED from composite (S426): was orphaned consumer with no writer;
+    // never rendered (forgeProgressVisible always false). Still callable on demand via
+    // `renderByMode` zone dispatch ('forge-progress') — import kept intact above.
     { meta: MOONPHASE_META, key: 'moonphase', render: renderMoonphaseZone, visible: moonphaseVisible },
     { meta: WEASLEY_META, key: 'weasley', render: renderWeasleyZone, visible: weasleyVisible },
   ];
@@ -218,6 +220,46 @@ const COMPACT_FACES = {
   'nodding off':  '[\u2504 \u2500]',  // ┄ ─ — asymmetric drowsy
 };
 
+const COMPACT_FACE_ALIASES = {
+  focused: 'determined',
+  winking: 'wink',
+  blinking: 'blink',
+};
+
+const COMPACT_COMPANION_EVENT_HINTS = {
+  commit: 'commit',
+  'test-pass': 'tests-pass',
+  'test-fail': 'tests-fail',
+  'error-state': 'error',
+  'rate-limit-warn': 'rate-limited',
+  'context-high': 'context-warn',
+};
+
+function compactFaceForExpression(expression) {
+  const key = COMPACT_FACES[expression]
+    ? expression
+    : (COMPACT_FACE_ALIASES[expression] || expression);
+  return COMPACT_FACES[key] || COMPACT_FACES.neutral;
+}
+
+function resolveCompactExpressionName(rawState, state) {
+  const event = (state.context && state.context.event) || '';
+  const eventHint = COMPACT_COMPANION_EVENT_HINTS[event] || null;
+  if (eventHint) {
+    try {
+      const companion = require('./companion-state.cjs');
+      return companion.resolveExpression(rawState || state, eventHint).expression;
+    } catch { /* fall through to legacy compact rules */ }
+  }
+
+  try {
+    const { getExpressionName } = require('./hud-expressions.cjs');
+    return getExpressionName(state);
+  } catch {
+    return 'neutral alive';
+  }
+}
+
 // Gradient face: left eye purple (57), right eye blue (39)
 const FACE_LEFT = '\x1b[38;5;63m';   // muted indigo (brackets + small eye)
 const FACE_RIGHT = '\x1b[38;5;39m';  // sky blue (brackets + big eye)
@@ -229,7 +271,27 @@ function renderGradientFace(leftGlyph, rightGlyph) {
   return FACE_LEFT + '[' + FACE_RIGHT + leftGlyph + FACE_RESET + ' ' + FACE_LEFT + rightGlyph + FACE_RIGHT + ']' + FACE_RESET;
 }
 
-function resolveCompanionFace(rawState, palette, _modelFace) {
+function applyGazeToGlyphs(expression, leftGlyph, rightGlyph, gaze) {
+  if (gaze !== 'left' && gaze !== 'right') return [leftGlyph, rightGlyph];
+  if (expression === 'thinking' || expression === 'exhausted') return [leftGlyph, rightGlyph];
+
+  const gazeMap = gaze === 'left'
+    ? {
+        left: { '\u2588': '\u258C', '\u2586': '\u2586', '\u2585': '\u258C', '\u2584': '\u2582', '\u25CF': '\u25D0' },
+        right: { '\u2588': '\u2588', '\u2586': '\u2586', '\u2585': '\u2585', '\u2584': '\u2582', '\u25CF': '\u25D0' },
+      }
+    : {
+        left: { '\u2588': '\u2588', '\u2586': '\u2586', '\u2585': '\u2585', '\u2584': '\u2582', '\u25CF': '\u25D1' },
+        right: { '\u2588': '\u2590', '\u2586': '\u2590', '\u2585': '\u2590', '\u2584': '\u2582', '\u25CF': '\u25D1' },
+      };
+
+  return [
+    (gazeMap.left && gazeMap.left[leftGlyph]) || leftGlyph,
+    (gazeMap.right && gazeMap.right[rightGlyph]) || rightGlyph,
+  ];
+}
+
+function resolveCompanionFace(rawState, palette, _modelFace, options = {}) {
   try {
     const companion = require('./companion-state.cjs');
     const stdinJson = rawState || {};
@@ -253,9 +315,19 @@ function resolveCompanionFace(rawState, palette, _modelFace) {
       return renderGradientFace(leftGlyph, rightGlyph);
     }
 
-    const face = COMPACT_FACES[resolved.expression] || COMPACT_FACES.neutral;
+    const face = compactFaceForExpression(resolved.expression);
     const glyphs = face.match(/^\[(.+) (.+)\]$/);
-    if (glyphs) return renderGradientFace(glyphs[1], glyphs[2]);
+    if (glyphs) {
+      const [leftGlyph, rightGlyph] = options.projectGaze === true
+        ? applyGazeToGlyphs(
+            resolved.expression,
+            glyphs[1],
+            glyphs[2],
+            resolved.gaze,
+          )
+        : [glyphs[1], glyphs[2]];
+      return renderGradientFace(leftGlyph, rightGlyph);
+    }
     return colorize(palette, 'accent', face);
   } catch {
     // Failure fallback shows the companion's true idle face (asymmetric), not
@@ -406,10 +478,11 @@ function renderCompact(rawState) {
   const event = (state.context && state.context.event) || '';
   const degradedCount = countDegraded(caps);
 
-  // Face inline
-  const { getExpressionName } = require('./hud-expressions.cjs');
-  const expr = getExpressionName(state);
-  const face = COMPACT_FACES[expr] || COMPACT_FACES.neutral;
+  // Face inline. Prefer the live companion-state resolver for companion-owned
+  // events, with legacy compact rules kept only for compact-only events until
+  // the larger expression-engine deletion lane lands.
+  const expr = resolveCompactExpressionName(rawState, state);
+  const face = compactFaceForExpression(expr);
   const faceColor = degradedCount > 0 ? 'warn' : 'accent';
 
   // Health bar (short)
@@ -478,7 +551,7 @@ function renderStatusLine(rawState, maxRows) {
 
   // Row 1: Face + model + caps + ctx (grade removed — orb replaces it)
   const modelFace = resolveModelFace(session.modelId);
-  const faceStr = resolveCompanionFace(rawState, palette, modelFace);
+  const faceStr = resolveCompanionFace(rawState, palette, modelFace, { projectGaze: true });
   const modelId = session.modelId || session.model || '';
   const modelFamily = modelId.includes('fable') ? 'fable' : modelId.includes('opus') ? 'opus' : modelId.includes('sonnet') ? 'sonnet' : modelId.includes('haiku') ? 'haiku' : '';
   // Per-model color (fable bypasses this — it renders via rainbowize below)
@@ -534,7 +607,9 @@ function renderStatusLine(rawState, maxRows) {
   // frame it was last on rather than snapping to rest. Output bytes stay
   // stable across CC's 2s statusLine polls — mobile Termius bounce fix.
   const engineCwd = path.resolve(__dirname, '..', '..', '..');
-  const outerActive = isSessionActive(engineCwd);
+  const animate = require('./companion-config.cjs').loadCompanionConfig(engineCwd).animate;
+  // animate OFF → force the idle/frozen branch regardless of session activity
+  const outerActive = animate ? isSessionActive(engineCwd) : false;
   const freezeTimeMs = outerActive ? null : getFreezeTime(engineCwd);
   const orbLines = renderColoredOrb(score, { companionState, outerActive, freezeTimeMs });
 
@@ -685,6 +760,14 @@ function renderStatusLine(rawState, maxRows) {
     if (am) msg = am;
   } catch { /* no companion */ }
 
+  if (!msg) {
+    try {
+      const { getInsight } = require('./companion-insights.cjs');
+      const insight = getInsight(state);
+      if (insight) msg = { text: insight, tier: 'signal', age: 0 };
+    } catch { /* no insights */ }
+  }
+
   if (msg) {
     // Voice from the companion. No stamp glyph — the face IS the speaker, so
     // text appearing on the same row reads as its speech. Italic ANSI gives
@@ -725,6 +808,31 @@ function renderStatusLine(rawState, maxRows) {
       orbPad1,
     ];
   }
+
+  // --- Boot-pulse: expanded layout within the first 12 s after OS boot ---
+  // Stateless: reads boot-status.json; no flag/state file written.
+  // Failsafe: missing / unreadable / malformed / old timestamp → skip (compact normal).
+  try {
+    const bootStatusPath = require('node:path').join(projectRoot, '_runs', 'os', 'boot-status.json');
+    const bs = JSON.parse(require('node:fs').readFileSync(bootStatusPath, 'utf8'));
+    const booted = Date.parse(bs && bs.booted_at);
+    if (Number.isFinite(booted) && (Date.now() - booted) <= 12000) {
+      // Fresh boot — expand to show capabilities + health + boot timing.
+      const capsObj = (bs && bs.capabilities) || {};
+      const capNames = Object.keys(capsObj);
+      const capLines = capNames.slice(0, Math.max(0, ceiling - 2)).map(n => {
+        const c = capsObj[n];
+        const ok = c && (c.status === 'ready');
+        const dot = ok ? `\x1b[38;5;77m●${RST}` : `\x1b[38;5;167m●${RST}`;
+        const ms = (c && c.init_ms) ? ` \x1b[38;5;243m${c.init_ms}ms${RST}` : '';
+        const reason = (!ok && c && c.reason) ? ` \x1b[38;5;167m${c.reason}${RST}` : '';
+        return `  ${dot} \x1b[38;5;253m${n}${RST}${ms}${reason}`;
+      });
+      const totalMs = bs.total_boot_ms != null ? ` \x1b[38;5;240m(${bs.total_boot_ms}ms)${RST}` : '';
+      const bootHeader = `\x1b[1m\x1b[38;5;75m⚡ OS BOOT${RST}${totalMs}  ${row1}`;
+      rows = [bootHeader, ...capLines].slice(0, ceiling);
+    }
+  } catch { /* boot-pulse unavailable — render compact */ }
 
   // Trailing blank padding: claude-hud parity. CC's statusLine renderer treats
   // "content + N trailing blanks" as a self-contained pin region; without padding

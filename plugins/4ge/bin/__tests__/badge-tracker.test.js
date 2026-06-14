@@ -405,26 +405,24 @@ describe('checkAllZones', () => {
 });
 
 describe('checkCompanionV2', () => {
-  it('returns true when expressions module has 6+ expressions', () => {
+  it('returns true when expressions module has 6+ rule names and a resolver', () => {
     const { checkCompanionV2 } = requireFresh();
-    // Write a minimal fake expressions module with 8 keys
     const fakeExpr = path.join(tmpDir, 'hud-expressions.cjs');
-    const exprObj = Object.fromEntries(
-      ['neutral','happy','focused','curious','sleepy','surprised','thinking','winking']
-        .map(k => [k, { left: [], right: [] }])
+    const rules = ['neutral','happy','focused','curious','sleepy','surprised','thinking','winking'].map(
+      expr => ({ expr })
     );
     fs.writeFileSync(fakeExpr,
-      `'use strict'; module.exports = { EXPRESSIONS: ${JSON.stringify(exprObj)} };`
+      `'use strict'; module.exports = { EXPRESSION_RULES: ${JSON.stringify(rules)}, getExpressionName: () => 'neutral' };`
     );
     expect(checkCompanionV2({ expressionsPath: fakeExpr })).toBe(true);
   });
 
-  it('returns false when expressions module has fewer than 6 expressions', () => {
+  it('returns false when expressions module has fewer than 6 rule names', () => {
     const { checkCompanionV2 } = requireFresh();
     const fakeExpr = path.join(tmpDir, 'hud-expressions.cjs');
-    const exprObj = { neutral: {}, happy: {}, focused: {} };
+    const rules = ['neutral','happy','focused'].map(expr => ({ expr }));
     fs.writeFileSync(fakeExpr,
-      `'use strict'; module.exports = { EXPRESSIONS: ${JSON.stringify(exprObj)} };`
+      `'use strict'; module.exports = { EXPRESSION_RULES: ${JSON.stringify(rules)}, getExpressionName: () => 'neutral' };`
     );
     expect(checkCompanionV2({ expressionsPath: fakeExpr })).toBe(false);
   });
@@ -434,10 +432,13 @@ describe('checkCompanionV2', () => {
     expect(checkCompanionV2({ expressionsPath: path.join(tmpDir, 'no-expr.cjs') })).toBe(false);
   });
 
-  it('returns false when EXPRESSIONS export is missing', () => {
+  it('returns false when getExpressionName export is missing', () => {
     const { checkCompanionV2 } = requireFresh();
     const fakeExpr = path.join(tmpDir, 'hud-expressions.cjs');
-    fs.writeFileSync(fakeExpr, `'use strict'; module.exports = {};`);
+    const rules = ['neutral','happy','focused','curious','sleepy','surprised'].map(expr => ({ expr }));
+    fs.writeFileSync(fakeExpr,
+      `'use strict'; module.exports = { EXPRESSION_RULES: ${JSON.stringify(rules)} };`
+    );
     expect(checkCompanionV2({ expressionsPath: fakeExpr })).toBe(false);
   });
 });

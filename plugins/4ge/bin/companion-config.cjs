@@ -19,6 +19,7 @@ const DEFAULTS = {
   blinkInterval: 25000,
 
   // hud-braille-orb.cjs rendering
+  animate: true,               // master gate: false = byte-identical frozen statusline (mobile escape hatch)
   breathScaleMin: 0.80,
   breathScaleMax: 0.85,
   shimmer: true,
@@ -105,6 +106,8 @@ function loadCompanionConfig(projectRoot) {
     merged.breathScaleMin = DEFAULTS.breathScaleMin;
     merged.breathScaleMax = DEFAULTS.breathScaleMax;
   }
+  // Coerce animate to a real boolean — a stray string can't read as truthy accidentally
+  merged.animate = (merged.animate !== false);   // default true; only explicit false disables
   // Validate insights.tone — restrict to known values
   const VALID_TONES = ['warm', 'technical', 'minimal'];
   if (!VALID_TONES.includes(merged.insights.tone)) {

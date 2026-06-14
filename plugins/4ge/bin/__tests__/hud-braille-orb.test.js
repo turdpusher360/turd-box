@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 const { renderOrb, renderColoredOrb, WIREFRAME, getBreathPeriod, easeInOutSine } = require('../hud-braille-orb.cjs');
 
 describe('hud-braille-orb', () => {
@@ -23,14 +23,21 @@ describe('hud-braille-orb', () => {
 
     it('produces multiple distinct frames at different angles', () => {
       // 7-meridian orb in a 6x8 braille grid: symmetric angles can collide at
-      // this resolution, and renderOrb's live-time breath/shimmer can align an
-      // extra pair under a fast loop. >=5 distinct frames of 8 still confirms
-      // rotation works (S351: was flaky at >=6).
-      const frames = new Set();
-      for (let i = 0; i < 8; i++) {
-        frames.add(renderOrb(100, { angle: (i / 8) * 2 * Math.PI }).join(''));
+      // this resolution. Freeze the clock so breathScale is deterministic — at
+      // live Date.now() the breath phase shifts each run, and a contracted scale
+      // (breathScaleMin=0.65) can drop distinctness below 5 (S427: amplitude
+      // restore from 0.85/0.85 made this flaky; freeze clock at mid-inhale
+      // where breathScale ~0.82 to guarantee >= 6 distinct frames).
+      const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(1_700_000_001_200);
+      try {
+        const frames = new Set();
+        for (let i = 0; i < 8; i++) {
+          frames.add(renderOrb(100, { angle: (i / 8) * 2 * Math.PI }).join(''));
+        }
+        expect(frames.size).toBeGreaterThanOrEqual(6);
+      } finally {
+        nowSpy.mockRestore();
       }
-      expect(frames.size).toBeGreaterThanOrEqual(5);
     });
 
     it('health 0% produces visible dormant silhouette (outline only)', () => {

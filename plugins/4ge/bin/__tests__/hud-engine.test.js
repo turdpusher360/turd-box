@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { execSync } from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const _require = createRequire(import.meta.url);
@@ -11,6 +12,7 @@ const ENGINE_PATH = path.resolve(__dirname, '../hud-engine.cjs');
 const MOCK_HEALTHY = path.resolve(__dirname, '../mocks/healthy.json');
 const MOCK_DEGRADED = path.resolve(__dirname, '../mocks/degraded.json');
 const MOCK_PHONE = path.resolve(__dirname, '../mocks/phone-minimal.json');
+const { stripAnsi } = _require(path.resolve(__dirname, '../hud-palette.cjs'));
 
 function runEngine(mockFile, mode = 'full', extraArgs = '') {
   const input = fs.readFileSync(mockFile, 'utf8');
@@ -61,7 +63,8 @@ describe('hud-engine CLI (integration)', () => {
 describe('hud-engine module exports', () => {
   function requireFresh() {
     for (const key of Object.keys(_require.cache)) {
-      if (key.includes('hud-engine') || key.includes('hud-palette') || key.includes('hud-state') || key.includes('hud-canvas') || key.includes('hud-zone')) {
+      if (key.includes('hud-engine') || key.includes('hud-palette') || key.includes('hud-state') || key.includes('hud-canvas') || key.includes('hud-zone') ||
+          key.includes('companion-state') || key.includes('companion-insights')) {
         delete _require.cache[key];
       }
     }
@@ -164,6 +167,55 @@ describe('hud-engine module exports', () => {
     // Shimmer uses Date.now() so exact string differs between calls — check structure.
     expect(viaRouter).toContain('\n');
     expect(viaRouter.split('\n').length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('uses companion insight as the statusline voice fallback when no active message exists', () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'hud-statusline-insight-'));
+    const previousStatePath = process.env.COMPANION_STATE_PATH;
+    process.env.COMPANION_STATE_PATH = path.join(tmpDir, '_runs', 'os', '.companion-state.json');
+    const mod = requireFresh();
+    const insightsPath = path.resolve(__dirname, '../companion-insights.cjs');
+    const originalInsights = _require.cache[insightsPath];
+    _require.cache[insightsPath] = {
+      exports: {
+        getInsight: () => 'Check the current handoff before edits.',
+      },
+    };
+    try {
+      const state = JSON.parse(fs.readFileSync(MOCK_HEALTHY, 'utf8'));
+      state.projectRoot = tmpDir;
+      state.terminal = { cols: 120, rows: 24 };
+      const output = mod.renderStatusLine(state, 8);
+      expect(output).toContain('Check the current handoff before edits.');
+    } finally {
+      if (originalInsights) _require.cache[insightsPath] = originalInsights;
+      else delete _require.cache[insightsPath];
+      if (previousStatePath === undefined) delete process.env.COMPANION_STATE_PATH;
+      else process.env.COMPANION_STATE_PATH = previousStatePath;
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it('projects companion left gaze onto the statusline bracket face', () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'hud-statusline-gaze-'));
+    const previousStatePath = process.env.COMPANION_STATE_PATH;
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000);
+    process.env.COMPANION_STATE_PATH = path.join(tmpDir, '_runs', 'os', '.companion-state.json');
+    try {
+      const mod = requireFresh();
+      const state = JSON.parse(fs.readFileSync(MOCK_HEALTHY, 'utf8'));
+      state.projectRoot = tmpDir;
+      state.terminal = { cols: 120, rows: 24 };
+      const output = mod.renderStatusLine(state, 8);
+      const firstLine = stripAnsi(output).split('\n')[0];
+      expect(firstLine).toContain('[▌ ▆]');
+      expect(firstLine).not.toContain('[█ ▆]');
+    } finally {
+      nowSpy.mockRestore();
+      if (previousStatePath === undefined) delete process.env.COMPANION_STATE_PATH;
+      else process.env.COMPANION_STATE_PATH = previousStatePath;
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
   });
 });
 

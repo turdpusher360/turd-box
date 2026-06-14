@@ -1,10 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import { createRequire } from 'node:module';
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const _require = createRequire(import.meta.url);
+const MODULE_PATH = path.resolve(__dirname, '../hud-expressions.cjs');
 
 function requireFresh() {
   for (const key of Object.keys(_require.cache)) {
@@ -12,7 +14,7 @@ function requireFresh() {
       delete _require.cache[key];
     }
   }
-  return _require(path.resolve(__dirname, '../hud-expressions.cjs'));
+  return _require(MODULE_PATH);
 }
 
 function makeState(overrides) {
@@ -25,34 +27,25 @@ function makeState(overrides) {
   };
 }
 
-describe('EXPRESSIONS', () => {
-  it('defines 17 named expressions (16 + neutral-alive idle alias)', () => {
-    const { EXPRESSIONS } = requireFresh();
-    expect(Object.keys(EXPRESSIONS).length).toBe(17);
-  });
-
-  it('each expression has left and right arrays', () => {
-    const { EXPRESSIONS } = requireFresh();
-    for (const [name, expr] of Object.entries(EXPRESSIONS)) {
-      expect(Array.isArray(expr.left), `${name}.left should be array`).toBe(true);
-      expect(Array.isArray(expr.right), `${name}.right should be array`).toBe(true);
-      expect(expr.left.length, `${name}.left should have rows`).toBeGreaterThan(0);
-      expect(expr.right.length, `${name}.right should have rows`).toBeGreaterThan(0);
-    }
-  });
-});
-
 describe('EXPRESSION_RULES', () => {
-  it('has a default rule that always matches', () => {
+  it('has a default rule that always matches neutral alive', () => {
     const { EXPRESSION_RULES } = requireFresh();
     const last = EXPRESSION_RULES[EXPRESSION_RULES.length - 1];
     expect(last.match(makeState())).toBe(true);
     expect(last.expr).toBe('neutral alive');
   });
+
+  it('keeps every rule as a name-only mapping', () => {
+    const { EXPRESSION_RULES } = requireFresh();
+    for (const rule of EXPRESSION_RULES) {
+      expect(typeof rule.expr).toBe('string');
+      expect(typeof rule.match).toBe('function');
+    }
+  });
 });
 
 describe('getExpressionName', () => {
-  it('returns "neutral alive" (asymmetric idle identity) for default state', () => {
+  it('returns "neutral alive" for default state', () => {
     const { getExpressionName } = requireFresh();
     expect(getExpressionName(makeState())).toBe('neutral alive');
   });
@@ -111,149 +104,30 @@ describe('getExpressionName', () => {
   });
 });
 
-describe('selectExpression', () => {
-  it('returns an object with left and right arrays', () => {
-    const { selectExpression } = requireFresh();
-    const result = selectExpression(makeState());
-    expect(Array.isArray(result.left)).toBe(true);
-    expect(Array.isArray(result.right)).toBe(true);
-  });
-});
-
-describe('buildExpression', () => {
-  it('returns palette-aware art with left and right arrays', () => {
-    const { buildExpression } = requireFresh();
-    const { resolvePalette } = _require(path.resolve(__dirname, '../hud-palette.cjs'));
-    const palette = resolvePalette({ name: 'forge' });
-    const result = buildExpression(makeState(), palette);
-    expect(Array.isArray(result.left)).toBe(true);
-    expect(Array.isArray(result.right)).toBe(true);
-  });
-
-  it('works without palette (falls back to hardcoded)', () => {
-    const { buildExpression } = requireFresh();
-    const result = buildExpression(makeState(), null);
-    expect(Array.isArray(result.left)).toBe(true);
-  });
-});
-
-describe('eye shape builders', () => {
-  it('eyeFull returns 4-row array', () => {
-    const { eyeFull } = requireFresh();
-    expect(eyeFull().length).toBe(4);
-  });
-
-  it('eyeHighlight returns 4-row array', () => {
-    const { eyeHighlight } = requireFresh();
-    expect(eyeHighlight().length).toBe(4);
-  });
-
-  it('eyeHalfLid returns 4-row array', () => {
-    const { eyeHalfLid } = requireFresh();
-    expect(eyeHalfLid().length).toBe(4);
-  });
-
-  it('eyeSquint returns 4-row array', () => {
-    const { eyeSquint } = requireFresh();
-    expect(eyeSquint().length).toBe(4);
-  });
-
-  it('eyeWide returns 5-row array', () => {
-    const { eyeWide } = requireFresh();
-    expect(eyeWide().length).toBe(5);
-  });
-
-  it('eyeHappy returns 4-row array', () => {
-    const { eyeHappy } = requireFresh();
-    expect(eyeHappy().length).toBe(4);
-  });
-
-  it('eyeSad returns 4-row array', () => {
-    const { eyeSad } = requireFresh();
-    expect(eyeSad().length).toBe(4);
-  });
-
-  it('eyeClosed returns 4-row array', () => {
-    const { eyeClosed } = requireFresh();
-    expect(eyeClosed().length).toBe(4);
-  });
-
-  it('eyeExcited returns 5-row array', () => {
-    const { eyeExcited } = requireFresh();
-    expect(eyeExcited().length).toBe(5);
-  });
-
-  it('eye builders accept tint argument', () => {
-    const { eyeFull } = requireFresh();
-    const result = eyeFull('\x1b[38;5;196m');
-    expect(result.length).toBe(4);
-    expect(result[0]).toContain('\x1b[38;5;196m');
-  });
-});
-
-// --- W5 T5.1: Expression palette cross-reference audit ---
-// companion-state.cjs STATE_MAP and BOOT_SEQUENCE use expression names that belong
-// to the COMPACT_FACES vocabulary in hud-engine.cjs (strip/compact mode).
-// EXPRESSIONS in hud-expressions.cjs is a separate vocabulary for the full-mode
-// face zone art (hud-zone-face.cjs). The two systems are intentionally disjoint:
-//   - hud-expressions.EXPRESSIONS → hud-zone-face.cjs (pixel art, full mode)
-//   - hud-engine.COMPACT_FACES   → companion-state.cjs (glyphs, strip/compact mode)
-// This test suite documents and locks the boundary so the split does not drift
-// into a silent bug (e.g., companion expression name changed but COMPACT_FACES entry not).
-describe('W5: expression palette cross-reference', () => {
-  // Expression names referenced by EXPRESSION_RULES in hud-expressions.cjs.
-  // These must all exist as keys in EXPRESSIONS.
-  const EXPRESSIONS_RULE_NAMES = [
-    'determined', 'excited', 'focused', 'happy', 'sad',
-    'angry', 'suspicious', 'curious', 'sleepy', 'thinking',
-    'winking', 'surprised', 'blinking', 'neutral',
-  ];
-
-  it('every expression name in EXPRESSION_RULES resolves in EXPRESSIONS', () => {
-    const { EXPRESSIONS } = requireFresh();
-    for (const name of EXPRESSIONS_RULE_NAMES) {
-      expect(EXPRESSIONS[name], `EXPRESSIONS["${name}"] should exist`).toBeDefined();
-    }
-  });
-
-  it('EXPRESSIONS has left and right arrays for every rule-referenced name', () => {
-    const { EXPRESSIONS } = requireFresh();
-    for (const name of EXPRESSIONS_RULE_NAMES) {
-      const expr = EXPRESSIONS[name];
-      if (!expr) continue; // guarded by previous test
-      expect(Array.isArray(expr.left),  `${name}.left should be array`).toBe(true);
-      expect(Array.isArray(expr.right), `${name}.right should be array`).toBe(true);
-    }
-  });
-
-  // Companion-state vocabulary (STATE_MAP + BOOT_SEQUENCE expression strings).
-  // These must all exist in hud-engine.cjs COMPACT_FACES.
-  // Verified by reading companion-state.cjs STATE_MAP and BOOT_SEQUENCE.
-  const COMPANION_STATE_EXPRESSIONS = [
-    'proud joy', 'blink', 'thinking', 'happy', 'dead', 'alert',
-    'curious', 'exhausted', 'sleepy', 'determined', 'sad',
-    'neutral alive',
-  ];
-
-  it('companion-state expression names are documented (COMPACT_FACES vocabulary)', () => {
-    // This test does not require importing hud-engine to avoid heavyweight deps.
-    // It locks the known set so any future addition to companion-state STATE_MAP
-    // is caught here and must also be added to COMPACT_FACES.
-    const knownCompactFaces = [
-      'neutral', 'neutral alive', 'happy', 'sad', 'angry', 'surprised',
-      'fear', 'worried', 'curious', 'thinking', 'suspicious', 'determined',
-      'anxious', 'alert', 'excited', 'proud joy', 'sleepy', 'exhausted',
-      'blink', 'dead', 'wink', 'intrigued', 'patient', 'guilt', 'nodding off',
+describe('retired block-art API', () => {
+  it('does not export or retain the old art builders/catalog', () => {
+    const mod = requireFresh();
+    const source = fs.readFileSync(MODULE_PATH, 'utf8');
+    const retiredExports = [
+      'EXPRESSIONS',
+      'selectExpression',
+      'buildExpression',
+      'eyeFull',
+      'eyeHighlight',
+      'eyeHalfLid',
+      'eyeSquint',
+      'eyeWide',
+      'eyeHappy',
+      'eyeSad',
+      'eyeClosed',
+      'eyeExcited',
+      '_buildExpressions',
+      '_codes',
     ];
-    for (const name of COMPANION_STATE_EXPRESSIONS) {
-      expect(knownCompactFaces).toContain(name);
-    }
-  });
 
-  it('getExpressionName returns only names that exist in EXPRESSIONS', () => {
-    const { EXPRESSION_RULES, EXPRESSIONS } = requireFresh();
-    for (const rule of EXPRESSION_RULES) {
-      expect(EXPRESSIONS[rule.expr], `rule.expr "${rule.expr}" should exist in EXPRESSIONS`).toBeDefined();
+    for (const name of retiredExports) {
+      expect(mod[name], `${name} should be retired`).toBeUndefined();
     }
+    expect(source).not.toMatch(/\b(?:EXPRESSIONS|selectExpression|buildExpression|eyeFull|eyeHighlight|eyeHalfLid|eyeSquint|eyeWide|eyeHappy|eyeSad|eyeClosed|eyeExcited|_buildExpressions|_codes)\b/);
   });
 });

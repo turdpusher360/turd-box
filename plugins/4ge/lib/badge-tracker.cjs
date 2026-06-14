@@ -232,8 +232,7 @@ function checkAllZones(ctx) {
 }
 
 /**
- * companion-v2: Expression engine has 6+ distinct expression keys wired.
- * Checks the EXPRESSIONS export from hud-expressions.cjs.
+ * companion-v2: expression resolver has 6+ distinct rule names wired.
  */
 function checkCompanionV2(ctx) {
   try {
@@ -243,10 +242,16 @@ function checkCompanionV2(ctx) {
 
     // Clear from require cache so we always read current state
     delete require.cache[require.resolve(expressionsPath)];
-    const { EXPRESSIONS } = require(expressionsPath);
-    if (!EXPRESSIONS || typeof EXPRESSIONS !== 'object') return false;
+    const { EXPRESSION_RULES, getExpressionName } = require(expressionsPath);
+    if (!Array.isArray(EXPRESSION_RULES)) return false;
+    if (typeof getExpressionName !== 'function') return false;
 
-    return Object.keys(EXPRESSIONS).length >= 6;
+    const names = new Set(
+      EXPRESSION_RULES
+        .map(rule => rule && rule.expr)
+        .filter(expr => typeof expr === 'string' && expr.length > 0)
+    );
+    return names.size >= 6;
   } catch {
     return false;
   }

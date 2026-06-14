@@ -588,100 +588,7 @@ describe('hud-zone-session — renderSessionZone', () => {
 // hud-expressions.cjs
 // ============================================================
 
-describe('hud-expressions — EXPRESSIONS catalog', () => {
-  const mod = () => requireFresh(path.resolve(__dirname, '../hud-expressions.cjs'), 'hud-expressions');
-
-  const EXPECTED_NAMES = [
-    'neutral', 'happy', 'focused', 'curious', 'sleepy', 'surprised',
-    'thinking', 'determined', 'winking', 'excited', 'suspicious',
-    'sad', 'angry', 'blinking', 'lookLeft', 'lookRight',
-  ];
-
-  it('exports exactly 17 named expressions (16 + neutral-alive idle alias)', () => {
-    const { EXPRESSIONS } = mod();
-    expect(Object.keys(EXPRESSIONS)).toHaveLength(17);
-  });
-
-  for (const name of EXPECTED_NAMES) {
-    it(`"${name}" expression exists`, () => {
-      const { EXPRESSIONS } = mod();
-      expect(EXPRESSIONS[name]).toBeDefined();
-    });
-  }
-
-  it('every expression has left and right arrays', () => {
-    const { EXPRESSIONS } = mod();
-    for (const [name, expr] of Object.entries(EXPRESSIONS)) {
-      expect(Array.isArray(expr.left), `${name}.left should be array`).toBe(true);
-      expect(Array.isArray(expr.right), `${name}.right should be array`).toBe(true);
-    }
-  });
-});
-
-describe('hud-expressions — eye builder functions', () => {
-  const mod = () => requireFresh(path.resolve(__dirname, '../hud-expressions.cjs'), 'hud-expressions');
-
-  it('eyeFull returns 4 strings', () => {
-    const { eyeFull } = mod();
-    const result = eyeFull();
-    expect(result).toHaveLength(4);
-    result.forEach(row => expect(typeof row).toBe('string'));
-  });
-
-  it('eyeHighlight returns 4 strings', () => {
-    const { eyeHighlight } = mod();
-    expect(eyeHighlight()).toHaveLength(4);
-  });
-
-  it('eyeHalfLid returns 4 strings', () => {
-    const { eyeHalfLid } = mod();
-    expect(eyeHalfLid()).toHaveLength(4);
-  });
-
-  it('eyeSquint returns 4 strings', () => {
-    const { eyeSquint } = mod();
-    expect(eyeSquint()).toHaveLength(4);
-  });
-
-  it('eyeWide returns 5 strings', () => {
-    const { eyeWide } = mod();
-    expect(eyeWide()).toHaveLength(5);
-  });
-
-  it('eyeHappy returns 4 strings', () => {
-    const { eyeHappy } = mod();
-    expect(eyeHappy()).toHaveLength(4);
-  });
-
-  it('eyeSad returns 4 strings', () => {
-    const { eyeSad } = mod();
-    expect(eyeSad()).toHaveLength(4);
-  });
-
-  it('eyeClosed returns 4 strings', () => {
-    const { eyeClosed } = mod();
-    expect(eyeClosed()).toHaveLength(4);
-  });
-
-  it('eyeExcited returns 5 strings', () => {
-    const { eyeExcited } = mod();
-    expect(eyeExcited()).toHaveLength(5);
-  });
-
-  it('eye builders accept a tint argument without throwing', () => {
-    const { eyeFull, eyeSquint, eyeHalfLid, eyeHappy, eyeSad, eyeHighlight } = mod();
-    const tint = '\x1b[38;5;196m';
-    expect(() => eyeFull(tint)).not.toThrow();
-    expect(() => eyeSquint(tint)).not.toThrow();
-    expect(() => eyeHalfLid(tint)).not.toThrow();
-    expect(() => eyeHappy(tint)).not.toThrow();
-    expect(() => eyeSad(tint)).not.toThrow();
-    expect(() => eyeHighlight(tint)).not.toThrow();
-  });
-});
-
-// Helper: build a minimal state object for selectExpression.
-function makeState(overrides = {}) {
+function makeExpressionState(overrides = {}) {
   return {
     context: { event: null },
     forge: { active: false, phase: null },
@@ -691,193 +598,55 @@ function makeState(overrides = {}) {
   };
 }
 
-describe('hud-expressions — selectExpression', () => {
-  const mod = () => requireFresh(path.resolve(__dirname, '../hud-expressions.cjs'), 'hud-expressions');
+describe("hud-expressions - name resolver", () => {
+  const mod = () => requireFresh(path.resolve(__dirname, "../hud-expressions.cjs"), "hud-expressions");
 
-  it('returns an object with left and right arrays', () => {
-    const { selectExpression } = mod();
-    const result = selectExpression(makeState());
-    expect(Array.isArray(result.left)).toBe(true);
-    expect(Array.isArray(result.right)).toBe(true);
+  it("exports expression rules and the name resolver only", () => {
+    const m = mod();
+    expect(Array.isArray(m.EXPRESSION_RULES)).toBe(true);
+    expect(typeof m.getExpressionName).toBe("function");
+    expect(m.EXPRESSIONS).toBeUndefined();
+    expect(m.selectExpression).toBeUndefined();
+    expect(m.buildExpression).toBeUndefined();
   });
 
-  it('returns the neutral-alive idle alias for empty/default state', () => {
-    const { selectExpression, EXPRESSIONS } = mod();
-    const result = selectExpression(makeState());
-    // 'neutral alive' big-eye art is aliased to neutral — same object by design.
-    expect(result).toBe(EXPRESSIONS['neutral alive']);
-    expect(result).toBe(EXPRESSIONS.neutral);
+  it("keeps every expression rule name-only", () => {
+    const { EXPRESSION_RULES } = mod();
+    for (const rule of EXPRESSION_RULES) {
+      expect(typeof rule.expr).toBe("string");
+      expect(typeof rule.match).toBe("function");
+    }
   });
 
-  it('returns focused when forge is active with a phase', () => {
-    const { selectExpression, EXPRESSIONS } = mod();
-    const state = makeState({ forge: { active: true, phase: 'P5:execute' } });
-    expect(selectExpression(state)).toBe(EXPRESSIONS.focused);
-  });
-
-  it('returns determined on forge-start event', () => {
-    const { selectExpression, EXPRESSIONS } = mod();
-    const state = makeState({ context: { event: 'forge-start' } });
-    expect(selectExpression(state)).toBe(EXPRESSIONS.determined);
-  });
-
-  it('returns excited on forge-complete event', () => {
-    const { selectExpression, EXPRESSIONS } = mod();
-    const state = makeState({ context: { event: 'forge-complete' } });
-    expect(selectExpression(state)).toBe(EXPRESSIONS.excited);
-  });
-
-  it('returns happy on test-pass event', () => {
-    const { selectExpression, EXPRESSIONS } = mod();
-    const state = makeState({ context: { event: 'test-pass' } });
-    expect(selectExpression(state)).toBe(EXPRESSIONS.happy);
-  });
-
-  it('returns sad on test-fail event', () => {
-    const { selectExpression, EXPRESSIONS } = mod();
-    const state = makeState({ context: { event: 'test-fail' } });
-    expect(selectExpression(state)).toBe(EXPRESSIONS.sad);
-  });
-
-  it('returns sleepy when contextPct >= 80', () => {
-    const { selectExpression, EXPRESSIONS } = mod();
-    const state = makeState({ session: { contextPct: 80 } });
-    expect(selectExpression(state)).toBe(EXPRESSIONS.sleepy);
-  });
-
-  it('returns sleepy when contextPct is 95', () => {
-    const { selectExpression, EXPRESSIONS } = mod();
-    const state = makeState({ session: { contextPct: 95 } });
-    expect(selectExpression(state)).toBe(EXPRESSIONS.sleepy);
-  });
-
-  it('returns thinking when contextPct is 60', () => {
-    const { selectExpression, EXPRESSIONS } = mod();
-    const state = makeState({ session: { contextPct: 60 } });
-    expect(selectExpression(state)).toBe(EXPRESSIONS.thinking);
-  });
-
-  it('returns thinking when contextPct is 70', () => {
-    const { selectExpression, EXPRESSIONS } = mod();
-    const state = makeState({ session: { contextPct: 70 } });
-    expect(selectExpression(state)).toBe(EXPRESSIONS.thinking);
-  });
-
-  it('returns winking on export event', () => {
-    const { selectExpression, EXPRESSIONS } = mod();
-    const state = makeState({ context: { event: 'export' } });
-    expect(selectExpression(state)).toBe(EXPRESSIONS.winking);
-  });
-
-  it('returns excited on badge-earned event', () => {
-    const { selectExpression, EXPRESSIONS } = mod();
-    const state = makeState({ context: { event: 'badge-earned' } });
-    expect(selectExpression(state)).toBe(EXPRESSIONS.excited);
-  });
-
-  it('returns surprised on boot event', () => {
-    const { selectExpression, EXPRESSIONS } = mod();
-    const state = makeState({ context: { event: 'boot' } });
-    expect(selectExpression(state)).toBe(EXPRESSIONS.surprised);
-  });
-
-  it('returns sleepy on session-end event', () => {
-    const { selectExpression, EXPRESSIONS } = mod();
-    const state = makeState({ context: { event: 'session-end' } });
-    expect(selectExpression(state)).toBe(EXPRESSIONS.sleepy);
-  });
-
-  it('returns blinking on blink event', () => {
-    const { selectExpression, EXPRESSIONS } = mod();
-    const state = makeState({ context: { event: 'blink' } });
-    expect(selectExpression(state)).toBe(EXPRESSIONS.blinking);
-  });
-
-  it('returns angry when 4 or more caps degraded', () => {
-    const { selectExpression, EXPRESSIONS } = mod();
-    const caps = {
-      a: { ok: false }, b: { ok: false }, c: { ok: false }, d: { ok: false },
-    };
-    const state = makeState({ os: { capabilities: caps } });
-    expect(selectExpression(state)).toBe(EXPRESSIONS.angry);
-  });
-
-  it('returns suspicious when 2 caps degraded', () => {
-    const { selectExpression, EXPRESSIONS } = mod();
-    const caps = { a: { ok: false }, b: { ok: false } };
-    const state = makeState({ os: { capabilities: caps } });
-    expect(selectExpression(state)).toBe(EXPRESSIONS.suspicious);
-  });
-
-  it('returns curious when exactly 1 cap degraded', () => {
-    const { selectExpression, EXPRESSIONS } = mod();
-    const caps = { a: { ok: false } };
-    const state = makeState({ os: { capabilities: caps } });
-    expect(selectExpression(state)).toBe(EXPRESSIONS.curious);
-  });
-
-  it('forge-start takes priority over degraded caps', () => {
-    const { selectExpression, EXPRESSIONS } = mod();
-    const state = makeState({
-      context: { event: 'forge-start' },
-      os: { capabilities: { a: { ok: false }, b: { ok: false }, c: { ok: false }, d: { ok: false } } },
-    });
-    // forge-start is listed before cap-degradation rules
-    expect(selectExpression(state)).toBe(EXPRESSIONS.determined);
-  });
-
-  it('does not throw on malformed state', () => {
-    const { selectExpression } = mod();
-    // Missing required nested keys — rules should catch via try/catch
-    expect(() => selectExpression({})).not.toThrow();
-  });
-});
-
-describe('hud-expressions — getExpressionName', () => {
-  const mod = () => requireFresh(path.resolve(__dirname, '../hud-expressions.cjs'), 'hud-expressions');
-
-  it('returns a string', () => {
+  it("returns neutral alive for empty/default state", () => {
     const { getExpressionName } = mod();
-    expect(typeof getExpressionName(makeState())).toBe('string');
+    expect(getExpressionName(makeExpressionState())).toBe("neutral alive");
   });
 
-  it('returns "neutral alive" (asymmetric idle identity) for default state', () => {
+  it("returns focused when forge is active with a phase", () => {
     const { getExpressionName } = mod();
-    expect(getExpressionName(makeState())).toBe('neutral alive');
+    const state = makeExpressionState({ forge: { active: true, phase: "P3" } });
+    expect(getExpressionName(state)).toBe("focused");
   });
 
-  it('returns "focused" when forge active with phase', () => {
+  it("returns happy on test-pass event", () => {
     const { getExpressionName } = mod();
-    const state = makeState({ forge: { active: true, phase: 'P3' } });
-    expect(getExpressionName(state)).toBe('focused');
+    expect(getExpressionName(makeExpressionState({ context: { event: "test-pass" } }))).toBe("happy");
   });
 
-  it('returns "happy" on test-pass event', () => {
+  it("returns sad on test-fail event", () => {
     const { getExpressionName } = mod();
-    expect(getExpressionName(makeState({ context: { event: 'test-pass' } }))).toBe('happy');
+    expect(getExpressionName(makeExpressionState({ context: { event: "test-fail" } }))).toBe("sad");
   });
 
-  it('returns "sad" on test-fail event', () => {
+  it("returns sleepy when contextPct >= 80", () => {
     const { getExpressionName } = mod();
-    expect(getExpressionName(makeState({ context: { event: 'test-fail' } }))).toBe('sad');
+    expect(getExpressionName(makeExpressionState({ session: { contextPct: 80 } }))).toBe("sleepy");
   });
 
-  it('returns "sleepy" when contextPct >= 80', () => {
-    const { getExpressionName } = mod();
-    expect(getExpressionName(makeState({ session: { contextPct: 80 } }))).toBe('sleepy');
-  });
-
-  it('name matches the expression object returned by selectExpression', () => {
-    const { selectExpression, getExpressionName, EXPRESSIONS } = mod();
-    const state = makeState({ context: { event: 'test-pass' } });
-    const name = getExpressionName(state);
-    const expr = selectExpression(state);
-    expect(EXPRESSIONS[name]).toBe(expr);
-  });
-
-  it('returns "neutral alive" on malformed state without throwing', () => {
+  it("returns neutral alive on malformed state without throwing", () => {
     const { getExpressionName } = mod();
     expect(() => getExpressionName({})).not.toThrow();
-    expect(getExpressionName({})).toBe('neutral alive');
+    expect(getExpressionName({})).toBe("neutral alive");
   });
 });
