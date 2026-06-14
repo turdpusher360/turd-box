@@ -15,12 +15,10 @@
  * Fail-safe: any error → minimal plain line → exit 0 (never breaks statusline).
  */
 
-const path = require('node:path');
 const fs = require('node:fs');
+const { loadSurfaceState, renderSurface, defaultProjectRoot } = require('./hud-surface-host.cjs');
 
-// Adapter lives in plugins/4ge/bin/ — project root is three levels up.
-const ADAPTER_DIR = __dirname;
-const PROJECT_ROOT = path.resolve(ADAPTER_DIR, '..', '..', '..');
+const PROJECT_ROOT = defaultProjectRoot();
 
 // ── stdin read (Windows-safe synchronous) ────────────────────────────────────
 function readStdinSync() {
@@ -58,23 +56,10 @@ function buildRawState(payload) {
   const rawUsage = typeof payload.context_usage === 'number' ? payload.context_usage : 0;
   const contextPct = Math.round(rawUsage <= 1 ? rawUsage * 100 : rawUsage);
 
-  // Load OS disk state from the project _runs/os/ dir.
-  const stateDir = path.join(workspaceDir, '_runs', 'os');
-  let rawState = {};
-  try {
-    const { loadHudData } = require(path.resolve(ADAPTER_DIR, 'hud-data-loader.cjs'));
-    rawState = loadHudData({ stateDir, cwd: workspaceDir, runExpensiveProbes: false });
-  } catch {
-    // If disk load fails (e.g. path mismatch), start from a minimal state.
-    rawState = {
-      projectRoot: workspaceDir,
-      terminal: { cols: 80, rows: 24 },
-      session: {},
-      os: { overallHealth: 'unknown', bootTime: 0, capabilities: {} },
-      forge: { active: false, phase: null, teammates: [], scope: null },
-      context: { trigger: 'gemini', event: null, zone: null },
-    };
-  }
+  const rawState = loadSurfaceState({
+    projectRoot: workspaceDir,
+    context: { trigger: 'gemini', event: null, zone: null },
+  });
 
   // ── Apply Antigravity-sourced overrides ──────────────────────────────────
 
@@ -116,9 +101,8 @@ function buildRawState(payload) {
 
 // ── Main render ───────────────────────────────────────────────────────────────
 function adaptAndRender(payload) {
-  const { renderStrip } = require(path.resolve(ADAPTER_DIR, 'hud-engine.cjs'));
   const rawState = buildRawState(payload);
-  return renderStrip(rawState);
+  return renderSurface({ rawState, mode: 'strip' }).output;
 }
 
 // ── Entry point ───────────────────────────────────────────────────────────────
@@ -136,4 +120,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { adaptAndRender, buildRawState, readStdinSync };
+module.exports = { adaptAndRender, buildRawState, readStdinSync, usesSurfaceHost: true };

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { createRequire } from 'node:module';
 const _require = createRequire(import.meta.url);
-const { renderRateLimitZone, rateVisible, RATE_META } = _require('../hud-zone-rate-limit.cjs');
+const { renderRateLimitZone, renderRateLimitCompact, rateVisible, RATE_META } = _require('../hud-zone-rate-limit.cjs');
 const { resolvePalette } = _require('../hud-palette.cjs');
 
 const palette = resolvePalette({ name: 'forge' });
@@ -71,5 +71,62 @@ describe('renderRateLimitZone', () => {
     const plain = lines.join(' ').replace(/\x1b\[[0-9;]*m/g, '');
     expect(plain).toContain('97%');
     expect(plain).toContain('7-day');
+  });
+
+  it('renders a braille trend for the visible worst tier when rate history is present', () => {
+    const state = {
+      session: {
+        rateLimits: { fiveHour: 88, sevenDay: 20 },
+        rateLimitHistory: [
+          { fiveHour: 40, sevenDay: 10 },
+          { fiveHour: 52, sevenDay: 12 },
+          { fiveHour: 70, sevenDay: 15 },
+          { fiveHour: 88, sevenDay: 20 },
+        ],
+      },
+    };
+
+    const lines = renderRateLimitZone(state, palette);
+    const plain = lines.join(' ').replace(/\x1b\[[0-9;]*m/g, '');
+
+    expect(lines).toHaveLength(2);
+    expect(plain).toContain('trend');
+    expect(plain).toMatch(/[\u2800-\u28ff]/);
+  });
+
+  it('exposes the visible worst-tier trend as an optional compact row', () => {
+    const state = {
+      session: {
+        rateLimits: { fiveHour: 88, sevenDay: 20 },
+        rateLimitHistory: [
+          { fiveHour: 40, sevenDay: 10 },
+          { fiveHour: 52, sevenDay: 12 },
+          { fiveHour: 70, sevenDay: 15 },
+          { fiveHour: 88, sevenDay: 20 },
+        ],
+      },
+    };
+
+    const lines = renderRateLimitCompact(state, palette);
+    const plain = lines.join(' ').replace(/\x1b\[[0-9;]*m/g, '');
+
+    expect(lines).toHaveLength(1);
+    expect(plain).toContain('rate trend');
+    expect(plain).toContain('88%');
+    expect(plain).toMatch(/[\u2800-\u28ff]/);
+  });
+
+  it('omits compact output when the rate alert zone is not visible', () => {
+    const state = {
+      session: {
+        rateLimits: { fiveHour: 40, sevenDay: 20 },
+        rateLimitHistory: [
+          { fiveHour: 30, sevenDay: 10 },
+          { fiveHour: 40, sevenDay: 20 },
+        ],
+      },
+    };
+
+    expect(renderRateLimitCompact(state, palette)).toEqual([]);
   });
 });

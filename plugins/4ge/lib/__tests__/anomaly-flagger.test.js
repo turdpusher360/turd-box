@@ -10,6 +10,7 @@ const {
   LONG_IDLE_THRESHOLD_MS,
   RATE_LIMIT_RESET_MIN_MS,
   RATE_LIMIT_USED_THRESHOLD,
+  CHECKERS,
 } = require('../anomaly-flagger.cjs');
 
 const NOW = Date.now();
@@ -73,6 +74,102 @@ describe('detectAnomalies — no anomalies', () => {
     const r = detectAnomalies({});
     expect(r.anomalies).toHaveLength(0);
     expect(r.topSeverity).toBeNull();
+  });
+});
+
+// ── Checker registry ──
+
+describe('checker registry', () => {
+  it('preserves the shipped checker order', () => {
+    expect(CHECKERS.map(checker => checker.type)).toEqual([
+      'rapid-error-cascade',
+      'stale-dirty-work',
+      'ctx-burn-rate-high',
+      'rate-limit-approaching',
+      'vram-low',
+      'process-reaped-kill',
+      'process-bloat',
+      'error-regression',
+      'long-idle',
+    ]);
+  });
+
+  it('continues after a checker throws', () => {
+    const checkers = [
+      {
+        type: 'throws',
+        run: () => { throw new Error('boom'); },
+      },
+      {
+        type: 'still-runs',
+        run: () => ({
+          type: 'still-runs',
+          severity: SEVERITY_FLASH,
+          reason: 'later checker ran',
+          metrics: {},
+        }),
+      },
+    ];
+
+    const r = detectAnomalies({ recentTools: [], state: {}, now: NOW, checkers });
+    expect(r.anomalies.map(a => a.type)).toEqual(['still-runs']);
+    expect(r.topSeverity).toBe(SEVERITY_FLASH);
+  });
+});
+
+// ── zero-producer environment signals ──
+
+describe('zero-producer environment signals', () => {
+  it('fires vram-low when cached free VRAM is below 1GiB', () => {
+    const state = { os: { vram: { freeMiB: 768, totalMiB: 8192 } } };
+    const r = detectAnomalies({ recentTools: [], state, now: NOW });
+    const a = r.anomalies.find(x => x.type === 'vram-low');
+
+    expect(a).toBeDefined();
+    expect(a.severity).toBe(SEVERITY_SIGNAL);
+    expect(a.metrics.freeMiB).toBe(768);
+  });
+
+  it('does NOT fire vram-low when cached free VRAM is healthy or missing', () => {
+    expect(detectAnomalies({
+      recentTools: [],
+      state: { os: { vram: { freeMiB: 2048 } } },
+      now: NOW,
+    }).anomalies.find(x => x.type === 'vram-low')).toBeUndefined();
+
+    expect(detectAnomalies({ recentTools: [], state: { os: {} }, now: NOW })
+      .anomalies.find(x => x.type === 'vram-low')).toBeUndefined();
+  });
+
+  it('fires process-reaped-kill when the reaper killed processes', () => {
+    const state = { os: { processes: { totalProcs: 80, mcpProcs: 0, killed: 2 } } };
+    const r = detectAnomalies({ recentTools: [], state, now: NOW });
+    const a = r.anomalies.find(x => x.type === 'process-reaped-kill');
+
+    expect(a).toBeDefined();
+    expect(a.severity).toBe(SEVERITY_SIGNAL);
+    expect(a.metrics.killed).toBe(2);
+  });
+
+  it('fires process-bloat when total or MCP process counts cross thresholds', () => {
+    const totalState = { os: { processes: { totalProcs: 151, mcpProcs: 1, killed: 0 } } };
+    const total = detectAnomalies({ recentTools: [], state: totalState, now: NOW })
+      .anomalies.find(x => x.type === 'process-bloat');
+    expect(total).toBeDefined();
+    expect(total.metrics.totalProcs).toBe(151);
+
+    const mcpState = { os: { processes: { totalProcs: 80, mcpProcs: 8, killed: 0 } } };
+    const mcp = detectAnomalies({ recentTools: [], state: mcpState, now: NOW })
+      .anomalies.find(x => x.type === 'process-bloat');
+    expect(mcp).toBeDefined();
+    expect(mcp.metrics.mcpProcs).toBe(8);
+  });
+
+  it('does NOT fire process health anomalies for normal process counts', () => {
+    const state = { os: { processes: { totalProcs: 95, mcpProcs: 1, killed: 0 } } };
+    const r = detectAnomalies({ recentTools: [], state, now: NOW });
+    expect(r.anomalies.find(x => x.type === 'process-reaped-kill')).toBeUndefined();
+    expect(r.anomalies.find(x => x.type === 'process-bloat')).toBeUndefined();
   });
 });
 
@@ -177,6 +274,35 @@ describe('ctx-burn-rate-high', () => {
     expect(a).toBeDefined();
     expect(a.severity).toBe(SEVERITY_SIGNAL);
     expect(a.metrics.ratePctPerMin).toBeGreaterThan(10);
+  });
+
+  it('uses recent context history slope when at least three samples are present', () => {
+    const state = {
+      session: {
+        contextPct: 50,
+        uptime: 60 * 60 * 1000,
+        contextPctHistory: [10, 20, 35, 50],
+      },
+    };
+    const r = detectAnomalies({ recentTools: [], state, now: NOW });
+    const a = r.anomalies.find(x => x.type === 'ctx-burn-rate-high');
+    expect(a).toBeDefined();
+    expect(a.metrics.source).toBe('history');
+    expect(a.metrics.sampleCount).toBe(4);
+    expect(a.metrics.ratePctPerMin).toBeCloseTo(13.3, 1);
+  });
+
+  it('does NOT fall back to noisy uptime burn rate when history slope is acceptable', () => {
+    const state = {
+      session: {
+        contextPct: 50,
+        uptime: 4 * 60 * 1000,
+        contextPctHistory: [35, 39, 43, 47, 50],
+      },
+    };
+    const r = detectAnomalies({ recentTools: [], state, now: NOW });
+    const a = r.anomalies.find(x => x.type === 'ctx-burn-rate-high');
+    expect(a).toBeUndefined();
   });
 
   it('does NOT fire when burn rate is acceptable', () => {

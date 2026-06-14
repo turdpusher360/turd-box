@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-const { renderContextZone } = require('../hud-zone-context.cjs');
+const { renderContextZone, renderContextCompact } = require('../hud-zone-context.cjs');
 const { stripAnsi } = require('../hud-palette.cjs');
 
 // Palette with no ANSI codes — makes string assertions straightforward.
@@ -106,5 +106,49 @@ describe('hud-zone-context model-specific color (W5 T5.4)', () => {
     const lines = renderContextZone(state, plainPalette());
     const text = stripAnsi(lines[0]);
     expect(text).toContain('claude-opus-4-6');
+  });
+});
+
+describe('hud-zone-context substrate trend activation', () => {
+  it('renders a braille context trend when history is present', () => {
+    const state = {
+      session: {
+        model: 'claude-opus-4-6',
+        modelId: 'claude-opus-4-6',
+        contextPct: 62,
+        contextPctHistory: [8, 16, 25, 37, 50, 62],
+        rateLimits: 'N/A',
+      },
+    };
+
+    const lines = renderContextZone(state, plainPalette());
+    const text = lines.map((line) => stripAnsi(line)).join('\n');
+
+    expect(text).toContain('ctx trend');
+    expect(text).toMatch(/[\u2800-\u28ff]/);
+  });
+
+  it('exposes the context trend as an optional compact row', () => {
+    const lines = renderContextCompact({
+      session: {
+        contextPct: 62,
+        contextPctHistory: [8, 16, 25, 37, 50, 62],
+      },
+    }, plainPalette());
+    const text = lines.map((line) => stripAnsi(line)).join('\n');
+
+    expect(lines).toHaveLength(1);
+    expect(text).toContain('ctx trend');
+    expect(text).toMatch(/[\u2800-\u28ff]/);
+  });
+
+  it('omits the compact row when context history is absent', () => {
+    const lines = renderContextCompact({
+      session: {
+        contextPct: 12,
+      },
+    }, plainPalette());
+
+    expect(lines).toEqual([]);
   });
 });

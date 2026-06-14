@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -132,6 +132,12 @@ describe('hud-engine module exports', () => {
     expect(output).not.toContain('\n');
   });
 
+  it('exports resolveCompanionFace', () => {
+    const mod = requireFresh();
+    expect(typeof mod.resolveCompanionFace).toBe('function');
+  });
+
+
   it('renderStatusLine returns a string', () => {
     const mod = requireFresh();
     const state = JSON.parse(fs.readFileSync(MOCK_HEALTHY, 'utf8'));
@@ -158,6 +164,216 @@ describe('hud-engine module exports', () => {
     const originalRows = state.terminal.rows;
     mod.renderStatusLine(state, 6);
     expect(state.terminal.rows).toBe(originalRows);
+  });
+
+  it('renderStatusLine expands fresh reactive events with catalog-backed zone output', () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'hud-statusline-reactive-'));
+    const previousStatePath = process.env.COMPANION_STATE_PATH;
+    process.env.COMPANION_STATE_PATH = path.join(tmpDir, '_runs', 'os', '.companion-state.json');
+    try {
+      const mod = requireFresh();
+      const state = JSON.parse(fs.readFileSync(MOCK_HEALTHY, 'utf8'));
+      state.projectRoot = tmpDir;
+      state.terminal = { cols: 120, rows: 24 };
+      state.reactive = {
+        event: 'commit',
+        triggeredAt: new Date(1_700_000_000_000).toISOString(),
+        ageMs: 1_000,
+      };
+      state.git = {
+        branch: 'main',
+        dirty: false,
+        ahead: 1,
+        behind: 0,
+        recentCommits: [{ subject: 'refactor(hud): unify zone catalog dispatch' }],
+      };
+
+      const output = stripAnsi(mod.renderStatusLine(state, 7));
+      expect(output).toContain('reactive commit');
+      expect(output).toContain('git main');
+      expect(output).toContain('clean');
+    } finally {
+      if (previousStatePath === undefined) delete process.env.COMPANION_STATE_PATH;
+      else process.env.COMPANION_STATE_PATH = previousStatePath;
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it('exposes optional compact renderers on persistent statusline zones', () => {
+    const mod = requireFresh();
+    const context = mod.ZONE_CATALOG.find((entry) => entry.key === 'context');
+    const rate = mod.ZONE_CATALOG.find((entry) => entry.key === 'rate');
+    const health = mod.ZONE_CATALOG.find((entry) => entry.key === 'health');
+
+    expect(typeof context.compact).toBe('function');
+    expect(typeof rate.compact).toBe('function');
+    expect(health.compact).toBeUndefined();
+  });
+
+  it('renders compact zone rows only within spare statusline row budget', () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'hud-statusline-compact-'));
+    const previousStatePath = process.env.COMPANION_STATE_PATH;
+    process.env.COMPANION_STATE_PATH = path.join(tmpDir, '_runs', 'os', '.companion-state.json');
+    try {
+      const mod = requireFresh();
+      const state = JSON.parse(fs.readFileSync(MOCK_HEALTHY, 'utf8'));
+      state.projectRoot = tmpDir;
+      state.terminal = { cols: 120, rows: 24 };
+      state.session.contextPct = 62;
+      state.session.contextPctHistory = [8, 16, 25, 37, 50, 62];
+      state.session.rateLimits = { fiveHour: 88, sevenDay: 20 };
+      state.session.rateLimitHistory = [
+        { fiveHour: 40, sevenDay: 10 },
+        { fiveHour: 52, sevenDay: 12 },
+        { fiveHour: 70, sevenDay: 15 },
+        { fiveHour: 88, sevenDay: 20 },
+      ];
+
+      const clipped = stripAnsi(mod.renderStatusLine(state, 3));
+      const oneSpare = stripAnsi(mod.renderStatusLine(state, 4));
+      const expanded = stripAnsi(mod.renderStatusLine(state, 5));
+
+      expect(clipped).not.toContain('ctx trend');
+      expect(clipped).not.toContain('rate trend');
+      expect(oneSpare).toContain('ctx trend');
+      expect(oneSpare).not.toContain('rate trend');
+      expect(expanded).toContain('ctx trend');
+      expect(expanded).toContain('rate trend');
+    } finally {
+      if (previousStatePath === undefined) delete process.env.COMPANION_STATE_PATH;
+      else process.env.COMPANION_STATE_PATH = previousStatePath;
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it('suppresses compact zone rows during the fresh boot pulse', () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'hud-statusline-boot-compact-'));
+    const previousStatePath = process.env.COMPANION_STATE_PATH;
+    process.env.COMPANION_STATE_PATH = path.join(tmpDir, '_runs', 'os', '.companion-state.json');
+    fs.mkdirSync(path.join(tmpDir, '_runs', 'os'), { recursive: true });
+    fs.writeFileSync(path.join(tmpDir, '_runs', 'os', 'boot-status.json'), JSON.stringify({
+      booted_at: new Date().toISOString(),
+      total_boot_ms: 42,
+      capabilities: {
+        memory: { status: 'ready', init_ms: 5 },
+      },
+    }));
+    try {
+      const mod = requireFresh();
+      const state = JSON.parse(fs.readFileSync(MOCK_HEALTHY, 'utf8'));
+      state.projectRoot = tmpDir;
+      state.terminal = { cols: 120, rows: 24 };
+      state.session.contextPct = 62;
+      state.session.contextPctHistory = [8, 16, 25, 37, 50, 62];
+      state.session.rateLimits = { fiveHour: 88, sevenDay: 20 };
+      state.session.rateLimitHistory = [
+        { fiveHour: 40, sevenDay: 10 },
+        { fiveHour: 52, sevenDay: 12 },
+        { fiveHour: 70, sevenDay: 15 },
+        { fiveHour: 88, sevenDay: 20 },
+      ];
+
+      const output = stripAnsi(mod.renderStatusLine(state, 8));
+
+      expect(output).toContain('OS BOOT');
+      expect(output).not.toContain('ctx trend');
+      expect(output).not.toContain('rate trend');
+    } finally {
+      if (previousStatePath === undefined) delete process.env.COMPANION_STATE_PATH;
+      else process.env.COMPANION_STATE_PATH = previousStatePath;
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it('renders compact statusline rows fail-soft in catalog order', () => {
+    const mod = requireFresh();
+    const state = JSON.parse(fs.readFileSync(MOCK_HEALTHY, 'utf8'));
+    state.session.rateLimits = { fiveHour: 88, sevenDay: 20 };
+    const palette = state.palette || {};
+    const entries = [
+      mod.ZONE_CATALOG.find((entry) => entry.key === 'context'),
+      mod.ZONE_CATALOG.find((entry) => entry.key === 'rate'),
+    ];
+    const originals = entries.map((entry) => entry.compact);
+
+    try {
+      entries[0].compact = () => ['  first', '', '  second'];
+      entries[1].compact = () => { throw new Error('boom'); };
+
+      expect(mod.renderCompactStatuslineRows(state, palette, 3)).toEqual(['  first', '  second']);
+
+      entries[0].compact = () => 'not-an-array';
+      entries[1].compact = () => ['  third'];
+
+      expect(mod.renderCompactStatuslineRows(state, palette, 3)).toEqual(['  third']);
+    } finally {
+      for (let i = 0; i < entries.length; i += 1) {
+        entries[i].compact = originals[i];
+      }
+    }
+  });
+
+  it('renders anomaly rows ahead of reactive and compact rows under tight statusline budget', () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'hud-statusline-anomaly-'));
+    const previousStatePath = process.env.COMPANION_STATE_PATH;
+    process.env.COMPANION_STATE_PATH = path.join(tmpDir, '_runs', 'os', '.companion-state.json');
+    try {
+      const mod = requireFresh();
+      const state = JSON.parse(fs.readFileSync(MOCK_HEALTHY, 'utf8'));
+      state.projectRoot = tmpDir;
+      state.terminal = { cols: 120, rows: 24 };
+      state.anomaly = {
+        type: 'stale-dirty-work',
+        severity: 'signal',
+        reason: '3 dirty files',
+        metrics: { dirty: 3 },
+        updatedAt: '2026-06-14T09:20:00.000Z',
+      };
+      state.reactive = {
+        event: 'commit',
+        triggeredAt: '2026-06-14T09:20:00.000Z',
+        ageMs: 1_000,
+      };
+      state.session.contextPctHistory = [8, 16, 25, 37, 50, 62];
+      state.session.rateLimits = { fiveHour: 88, sevenDay: 20 };
+      state.session.rateLimitHistory = [
+        { fiveHour: 40, sevenDay: 10 },
+        { fiveHour: 52, sevenDay: 12 },
+        { fiveHour: 70, sevenDay: 15 },
+        { fiveHour: 88, sevenDay: 20 },
+      ];
+
+      const output = stripAnsi(mod.renderStatusLine(state, 4));
+
+      expect(output).toContain('anomaly signal stale-dirty-work');
+      expect(output).toContain('3 dirty files');
+      expect(output).not.toContain('reactive commit');
+      expect(output).not.toContain('ctx trend');
+      expect(output).not.toContain('rate trend');
+    } finally {
+      if (previousStatePath === undefined) delete process.env.COMPANION_STATE_PATH;
+      else process.env.COMPANION_STATE_PATH = previousStatePath;
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it('renders anomaly rows without live age stamps', () => {
+    const mod = requireFresh();
+    const state = {
+      anomaly: {
+        type: 'rate-limit-approaching',
+        severity: 'critical',
+        reason: '5h 88% used',
+        metrics: {},
+        updatedAt: '2026-06-14T09:20:00.000Z',
+      },
+    };
+
+    const output = stripAnsi(mod.renderAnomalyStatuslineRows(state, {}, 1).join('\n'));
+
+    expect(output).toContain('anomaly critical rate-limit-approaching');
+    expect(output).toContain('5h 88% used');
+    expect(output).not.toContain('ago');
   });
 
   it('renderByMode routes statusline to renderStatusLine', () => {
@@ -201,8 +417,14 @@ describe('hud-engine module exports', () => {
     const previousStatePath = process.env.COMPANION_STATE_PATH;
     const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000);
     process.env.COMPANION_STATE_PATH = path.join(tmpDir, '_runs', 'os', '.companion-state.json');
+    let cfgSpy;
     try {
       const mod = requireFresh();
+      // Hermetic config (S441): repo .4ge/config.json now defaults to animate:false,
+      // under which the statusline face is frozen to a static model-identity glyph
+      // (no gaze projection). This test asserts ANIMATED gaze, so pin animate:true.
+      const ccMod = _require(path.resolve(__dirname, '../companion-config.cjs'));
+      cfgSpy = vi.spyOn(ccMod, 'loadCompanionConfig').mockReturnValue({ ...ccMod.loadCompanionConfig(), animate: true, zen: false });
       const state = JSON.parse(fs.readFileSync(MOCK_HEALTHY, 'utf8'));
       state.projectRoot = tmpDir;
       state.terminal = { cols: 120, rows: 24 };
@@ -211,11 +433,129 @@ describe('hud-engine module exports', () => {
       expect(firstLine).toContain('[▌ ▆]');
       expect(firstLine).not.toContain('[█ ▆]');
     } finally {
+      if (cfgSpy) cfgSpy.mockRestore();
       nowSpy.mockRestore();
       if (previousStatePath === undefined) delete process.env.COMPANION_STATE_PATH;
       else process.env.COMPANION_STATE_PATH = previousStatePath;
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
+  });
+});
+
+// ── Wave 1: faceMotion gate (e4d905d2 revert) ────────────────────────────────
+// The per-tool eye SWAP for thinking/exhausted is OFF by default (calm steady
+// eyes). It only runs when companion.faceMotion === true AND zen !== true.
+describe('hud-engine resolveCompanionFace — faceMotion gate (Wave 1)', () => {
+  let cfgRoot;
+  let statePath;
+  let prevProjectDir;
+  let prevStatePath;
+
+  const { stripAnsi } = _require(path.resolve(__dirname, '../hud-palette.cjs'));
+
+  function freshEngine() {
+    for (const key of Object.keys(_require.cache)) {
+      if (key.includes('hud-engine') || key.includes('hud-palette') || key.includes('hud-zone') ||
+          key.includes('companion-state') || key.includes('companion-config') || key.includes('companion-insights')) {
+        delete _require.cache[key];
+      }
+    }
+    return _require(ENGINE_PATH);
+  }
+
+  function setFaceMotion(val) {
+    const dir = path.join(cfgRoot, '.4ge');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify({ companion: { faceMotion: val } }));
+    process.env.CLAUDE_PROJECT_DIR = cfgRoot;
+  }
+
+  // stdin that drives detectState → 'tool-running' (outputTokens grew past prev 100).
+  const thinkingStdin = {
+    session: { id: 'sess-w1', outputTokens: 5000, toolCount: 5 },
+    context_window: { total_output_tokens: 5000, used_percentage: 10 },
+  };
+
+  function seedPrevState() {
+    fs.writeFileSync(statePath, JSON.stringify({
+      expression: 'idle', stateKey: 'idle', gaze: 'forward', mode: 'standard',
+      changedAt: Date.now() - 99999, lastToolAt: Date.now(), totalOutputTokens: 100,
+      toolCount: 5, blinkAt: Date.now(), lastSessionId: 'sess-w1',
+    }));
+  }
+
+  beforeEach(() => {
+    cfgRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'eng-w1-'));
+    statePath = path.join(cfgRoot, '.companion-state.json');
+    prevProjectDir = process.env.CLAUDE_PROJECT_DIR;
+    prevStatePath = process.env.COMPANION_STATE_PATH;
+    process.env.COMPANION_STATE_PATH = statePath;
+  });
+
+  afterEach(() => {
+    if (prevProjectDir === undefined) delete process.env.CLAUDE_PROJECT_DIR;
+    else process.env.CLAUDE_PROJECT_DIR = prevProjectDir;
+    if (prevStatePath === undefined) delete process.env.COMPANION_STATE_PATH;
+    else process.env.COMPANION_STATE_PATH = prevStatePath;
+    fs.rmSync(cfgRoot, { recursive: true, force: true });
+  });
+
+  it('faceMotion OFF → steady thinking face (no per-tool swap)', () => {
+    setFaceMotion(false);
+    seedPrevState();
+    const mod = freshEngine();
+    const modelFace = { expr: 'thinking', color: 'accent' };
+    const a = stripAnsi(mod.resolveCompanionFace(thinkingStdin, {}, modelFace));
+    seedPrevState();
+    const b = stripAnsi(mod.resolveCompanionFace(thinkingStdin, {}, modelFace));
+    // Steady: same face both calls, and it is the model/thinking face, not a swap glyph.
+    expect(a).toBe(b);
+  });
+
+  it('faceMotion OFF thinking face uses the steady COMPACT_FACES.thinking when no modelFace', () => {
+    setFaceMotion(false);
+    seedPrevState();
+    const mod = freshEngine();
+    const face = stripAnsi(mod.resolveCompanionFace(thinkingStdin, {}, null));
+    const expected = mod.COMPACT_FACES.thinking; // [◠ ▅]
+    // The gradient renderer reassembles the bracketed glyphs; both glyphs must appear.
+    const m = expected.match(/^\[(.+) (.+)\]$/);
+    expect(face).toContain(m[1]);
+    expect(face).toContain(m[2]);
+  });
+
+  it('faceMotion ON → swap glyphs differ from the steady face', () => {
+    setFaceMotion(false);
+    seedPrevState();
+    let mod = freshEngine();
+    const modelFace = { expr: 'thinking', color: 'accent' };
+    const steady = stripAnsi(mod.resolveCompanionFace(thinkingStdin, {}, modelFace));
+
+    setFaceMotion(true);
+    seedPrevState();
+    mod = freshEngine();
+    const swap = stripAnsi(mod.resolveCompanionFace(thinkingStdin, {}, modelFace));
+    // The swap path renders [▅ ▃]/[▃ ▅] — different from the steady model face.
+    expect(swap).not.toBe(steady);
+  });
+
+  it('zen forces calm even when faceMotion is true (swap suppressed)', () => {
+    // faceMotion true BUT zen true → gate is `faceMotion===true && zen!==true` → false → steady.
+    const dir = path.join(cfgRoot, '.4ge');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify({ companion: { faceMotion: true, zen: true } }));
+    process.env.CLAUDE_PROJECT_DIR = cfgRoot;
+    seedPrevState();
+    let mod = freshEngine();
+    const modelFace = { expr: 'thinking', color: 'accent' };
+    const zenFace = stripAnsi(mod.resolveCompanionFace(thinkingStdin, {}, modelFace));
+
+    // Compare against pure faceMotion:false (calm) — should match (zen ⇒ calm).
+    fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify({ companion: { faceMotion: false } }));
+    seedPrevState();
+    mod = freshEngine();
+    const calmFace = stripAnsi(mod.resolveCompanionFace(thinkingStdin, {}, modelFace));
+    expect(zenFace).toBe(calmFace);
   });
 });
 

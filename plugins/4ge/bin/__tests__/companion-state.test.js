@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import path from 'path';
 import fs from 'fs';
+import os from 'os';
 
 // Helpers to isolate state file per test
 const TEST_STATE_DIR = path.resolve(process.cwd(), '_runs/os');
@@ -302,6 +303,33 @@ describe('companion-state', () => {
   });
 
   describe('applyIdleAnimation', () => {
+    // Hermetic config (S441): the repo's .4ge/config.json now defaults to
+    // animate:false (mobile freeze). applyIdleAnimation bails early when
+    // animate===false, so these ANIMATED-behavior tests must pin animate:true in
+    // an isolated temp project config rather than inherit the repo default.
+    let idleCfgRoot, idlePrevDir;
+    beforeEach(() => {
+      idleCfgRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'cs-idle-'));
+      fs.mkdirSync(path.join(idleCfgRoot, '.4ge'), { recursive: true });
+      fs.writeFileSync(
+        path.join(idleCfgRoot, '.4ge', 'config.json'),
+        JSON.stringify({ companion: { animate: true, zen: false } }),
+      );
+      idlePrevDir = process.env.CLAUDE_PROJECT_DIR;
+      process.env.CLAUDE_PROJECT_DIR = idleCfgRoot;
+      const ccPath = path.resolve(__dirname, '../companion-config.cjs');
+      delete require.cache[ccPath];
+      require(ccPath).clearCache();
+    });
+    afterEach(() => {
+      if (idlePrevDir === undefined) delete process.env.CLAUDE_PROJECT_DIR;
+      else process.env.CLAUDE_PROJECT_DIR = idlePrevDir;
+      const ccPath = path.resolve(__dirname, '../companion-config.cjs');
+      delete require.cache[ccPath];
+      try { require(ccPath).clearCache(); } catch { /* ok */ }
+      try { fs.rmSync(idleCfgRoot, { recursive: true, force: true }); } catch { /* ok */ }
+    });
+
     it('triggers blink only during long-idle', () => {
       const { applyIdleAnimation } = requireFresh();
       const result = { expression: 'neutral alive', gaze: 'forward', mode: 'standard' };
@@ -355,6 +383,94 @@ describe('companion-state', () => {
       const at15s = (Math.floor(now / 60000) * 60000) + 15000; // 15s into current minute
       applyIdleAnimation(result, state, at15s);
       expect(result.gaze).toBe('left');
+    });
+  });
+
+  describe('Wave 1: zen forces calm in applyIdleAnimation', () => {
+    let cfgRoot;
+    let prevProjectDir;
+
+    function writeCompanionConfig(companion) {
+      const dir = path.join(cfgRoot, '.4ge');
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify({ companion }));
+      // The config loader keys off CLAUDE_PROJECT_DIR || cwd; point it at our temp root.
+      process.env.CLAUDE_PROJECT_DIR = cfgRoot;
+      // Bust the 10s loader cache so the new config is read.
+      const ccPath = path.resolve(__dirname, '../companion-config.cjs');
+      delete require.cache[ccPath];
+      require(ccPath).clearCache();
+    }
+
+    beforeEach(() => {
+      cfgRoot = fs.mkdtempSync(path.join(require('os').tmpdir(), 'cs-zen-'));
+      prevProjectDir = process.env.CLAUDE_PROJECT_DIR;
+    });
+
+    afterEach(() => {
+      if (prevProjectDir === undefined) delete process.env.CLAUDE_PROJECT_DIR;
+      else process.env.CLAUDE_PROJECT_DIR = prevProjectDir;
+      const ccPath = path.resolve(__dirname, '../companion-config.cjs');
+      delete require.cache[ccPath];
+      try { require(ccPath).clearCache(); } catch { /* ok */ }
+      fs.rmSync(cfgRoot, { recursive: true, force: true });
+    });
+
+    it('suppresses gaze drift when zen is true (calm, no drift)', () => {
+      writeCompanionConfig({ zen: true });
+      const { applyIdleAnimation } = requireFresh();
+      const result = { expression: 'neutral alive', gaze: 'forward', mode: 'standard' };
+      const state = { stateKey: 'idle', blinkAt: Date.now(), gazePhase: 0 };
+      const now = Math.floor(Date.now() / 1000) * 1000;
+      const at15s = (Math.floor(now / 60000) * 60000) + 15000;
+      applyIdleAnimation(result, state, at15s);
+      expect(result.gaze).toBe('forward'); // no drift under zen
+    });
+
+    it('suppresses long-idle blink when zen is true', () => {
+      writeCompanionConfig({ zen: true });
+      const { applyIdleAnimation } = requireFresh();
+      const result = { expression: 'neutral alive', gaze: 'forward', mode: 'standard' };
+      const state = { stateKey: 'long-idle', blinkAt: 0, gazePhase: 0 };
+      applyIdleAnimation(result, state, Date.now());
+      expect(result.expression).toBe('neutral alive'); // no blink under zen
+    });
+
+    it('still animates when zen is false and animate is true (control)', () => {
+      writeCompanionConfig({ zen: false, animate: true });
+      const { applyIdleAnimation } = requireFresh();
+      const result = { expression: 'neutral alive', gaze: 'forward', mode: 'standard' };
+      const state = { stateKey: 'idle', blinkAt: Date.now(), gazePhase: 0 };
+      const now = Math.floor(Date.now() / 1000) * 1000;
+      const at15s = (Math.floor(now / 60000) * 60000) + 15000;
+      applyIdleAnimation(result, state, at15s);
+      expect(result.gaze).toBe('left'); // drift fires normally
+    });
+  });
+
+  describe('Wave 1: signalMessage maxLen override', () => {
+    it('truncates to 60 chars by default', () => {
+      const { signalMessage, activeMessage } = requireFresh();
+      const long = 'x'.repeat(120);
+      signalMessage(long, { tier: 'critical' });
+      const am = activeMessage();
+      expect([...am.text].length).toBe(60);
+    });
+
+    it('honors an elevated maxLen so the long update notice renders in full', () => {
+      const { signalMessage, activeMessage } = requireFresh();
+      const notice = '⚙ Face/motion settings updated — yours: calm. Change: /hud face lively · /hud zen · keep: /hud face ok';
+      signalMessage(notice, { tier: 'critical', maxLen: 110 });
+      const am = activeMessage();
+      expect(am.text).toContain('/hud face ok'); // the tail survives (default 60-cap would cut it)
+    });
+
+    it('caps maxLen at 200 to bound statusline width', () => {
+      const { signalMessage, activeMessage } = requireFresh();
+      const huge = 'y'.repeat(400);
+      signalMessage(huge, { tier: 'critical', maxLen: 999 });
+      const am = activeMessage();
+      expect([...am.text].length).toBe(200);
     });
   });
 
@@ -492,7 +608,7 @@ describe('companion-state', () => {
   });
 
   describe('message tiers (S302)', () => {
-    it('signalMessage with tier=flash uses 8s TTL', () => {
+    it('signalMessage with tier=flash uses the flash dwell TTL (15s)', () => {
       const { signalMessage, TIER_TTL } = requireFresh();
       signalMessage('test flash', { tier: 'flash' });
       const state = readState();
@@ -611,6 +727,123 @@ describe('companion-state', () => {
       const state = readState();
       // Tab and newline are informational, not injection vectors
       expect(state.message.text).toMatch(/tab/);
+    });
+  });
+
+  describe('message cooldown (rate limiter — "slow the messages down")', () => {
+    it('suppresses a non-critical message within the cooldown window', () => {
+      const { signalMessage } = requireFresh();
+      // A flash message was just posted (default cooldown is 45s).
+      writeState({ message: { text: 'first', at: Date.now(), ttl: 8000, tier: 'flash' } });
+      signalMessage('second', { tier: 'flash' });
+      expect(readState().message.text).toBe('first');
+    });
+
+    it('lets a critical message bypass the cooldown', () => {
+      const { signalMessage } = requireFresh();
+      writeState({ message: { text: 'first', at: Date.now(), ttl: 8000, tier: 'flash' } });
+      signalMessage('urgent', { tier: 'critical' });
+      expect(readState().message.text).toBe('urgent');
+    });
+
+    it('allows a new message once the cooldown has elapsed', () => {
+      const { signalMessage } = requireFresh();
+      writeState({ message: { text: 'first', at: Date.now() - 60000, ttl: 8000, tier: 'flash' } });
+      signalMessage('second', { tier: 'flash' });
+      expect(readState().message.text).toBe('second');
+    });
+
+    it('always posts the first message (no prior message to gate against)', () => {
+      const { signalMessage } = requireFresh();
+      signalMessage('hello', { tier: 'flash' });
+      expect(readState().message.text).toBe('hello');
+    });
+  });
+
+  describe('S440: message min-dwell replacement floor', () => {
+    let cfgRoot;
+    let prevProjectDir;
+
+    function writeCompanionConfig(companion) {
+      const dir = path.join(cfgRoot, '.4ge');
+      fs.mkdirSync(dir, { recursive: true });
+      fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify({ companion }));
+      process.env.CLAUDE_PROJECT_DIR = cfgRoot;
+      const ccPath = path.resolve(__dirname, '../companion-config.cjs');
+      delete require.cache[ccPath];
+      require(ccPath).clearCache();
+    }
+
+    beforeEach(() => {
+      cfgRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'cs-dwell-'));
+      prevProjectDir = process.env.CLAUDE_PROJECT_DIR;
+    });
+
+    afterEach(() => {
+      if (prevProjectDir === undefined) delete process.env.CLAUDE_PROJECT_DIR;
+      else process.env.CLAUDE_PROJECT_DIR = prevProjectDir;
+      const ccPath = path.resolve(__dirname, '../companion-config.cjs');
+      delete require.cache[ccPath];
+      try { require(ccPath).clearCache(); } catch { /* ok */ }
+      fs.rmSync(cfgRoot, { recursive: true, force: true });
+    });
+
+    it('does not replace an active critical message before its dwell floor', () => {
+      const { signalMessage } = requireFresh();
+      writeState({
+        message: {
+          text: 'first critical',
+          at: Date.now() - 10000,
+          ttl: 120000,
+          tier: 'critical',
+        },
+      });
+      signalMessage('second critical', { tier: 'critical' });
+      expect(readState().message.text).toBe('first critical');
+    });
+
+    it('allows same-tier replacement after the active message dwell floor has elapsed', () => {
+      const { signalMessage } = requireFresh();
+      writeState({
+        message: {
+          text: 'first critical',
+          at: Date.now() - 16000,
+          ttl: 120000,
+          tier: 'critical',
+        },
+      });
+      signalMessage('second critical', { tier: 'critical' });
+      expect(readState().message.text).toBe('second critical');
+    });
+
+    it('does not replace active flash chatter before its dwell floor when cooldown is disabled', () => {
+      writeCompanionConfig({ messageCooldownS: 0, minDwellFlashMs: 6000 });
+      const { signalMessage } = requireFresh();
+      writeState({
+        message: {
+          text: 'first flash',
+          at: Date.now() - 2000,
+          ttl: 15000,
+          tier: 'flash',
+        },
+      });
+      signalMessage('second flash', { tier: 'flash' });
+      expect(readState().message.text).toBe('first flash');
+    });
+
+    it('allows flash replacement after its dwell floor when cooldown is disabled', () => {
+      writeCompanionConfig({ messageCooldownS: 0, minDwellFlashMs: 6000 });
+      const { signalMessage } = requireFresh();
+      writeState({
+        message: {
+          text: 'first flash',
+          at: Date.now() - 7000,
+          ttl: 15000,
+          tier: 'flash',
+        },
+      });
+      signalMessage('second flash', { tier: 'flash' });
+      expect(readState().message.text).toBe('second flash');
     });
   });
 });

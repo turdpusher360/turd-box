@@ -61,6 +61,9 @@ describe('companion-config', () => {
       expect(typeof DEFAULTS.dwellMs).toBe('number');
       expect(typeof DEFAULTS.idleThresholdS).toBe('number');
       expect(typeof DEFAULTS.longIdleS).toBe('number');
+      expect(typeof DEFAULTS.minDwellFlashMs).toBe('number');
+      expect(typeof DEFAULTS.minDwellSignalMs).toBe('number');
+      expect(typeof DEFAULTS.minDwellCriticalMs).toBe('number');
     });
 
     it('has colorTop and colorBot as 3-element arrays', () => {
@@ -262,6 +265,116 @@ describe('companion-config', () => {
       clearCache();
       const cfg = loadCompanionConfig(tmpRoot);
       expect(cfg.decayMs).toBe(DEFAULTS.decayMs);
+    });
+  });
+
+  describe('Wave 1: faceMotion / zen / messages defaults + coercion', () => {
+    it('DEFAULTS include faceMotion=false, zen=false, messages="all", anomalyRow=false', () => {
+      const { DEFAULTS } = requireFresh();
+      expect(DEFAULTS.faceMotion).toBe(false);
+      expect(DEFAULTS.zen).toBe(false);
+      expect(DEFAULTS.messages).toBe('all');
+      expect(DEFAULTS.anomalyRow).toBe(false);
+    });
+
+    it('preserves the existing message timing knobs (messageCooldownS=45, dwellMs)', () => {
+      const { DEFAULTS } = requireFresh();
+      expect(DEFAULTS.messageCooldownS).toBe(45);
+      expect(typeof DEFAULTS.dwellMs).toBe('number');
+    });
+
+    it('coerces faceMotion to boolean — only literal true enables (default-false idiom)', () => {
+      writeConfig(tmpRoot, { faceMotion: true });
+      const { loadCompanionConfig, clearCache } = requireFresh();
+      clearCache();
+      expect(loadCompanionConfig(tmpRoot).faceMotion).toBe(true);
+    });
+
+    it('coerces a bad faceMotion string to calm (false), never lively', () => {
+      writeConfig(tmpRoot, { faceMotion: 'yes' });
+      const { loadCompanionConfig, clearCache } = requireFresh();
+      clearCache();
+      // 'yes' is truthy but NOT literal true → must coerce to false (calm)
+      expect(loadCompanionConfig(tmpRoot).faceMotion).toBe(false);
+    });
+
+    it('coerces zen the same way — bad string → false', () => {
+      writeConfig(tmpRoot, { zen: 'true' });
+      const { loadCompanionConfig, clearCache } = requireFresh();
+      clearCache();
+      expect(loadCompanionConfig(tmpRoot).zen).toBe(false);
+    });
+
+    it('zen=true (literal) enables', () => {
+      writeConfig(tmpRoot, { zen: true });
+      const { loadCompanionConfig, clearCache } = requireFresh();
+      clearCache();
+      expect(loadCompanionConfig(tmpRoot).zen).toBe(true);
+    });
+
+    it('accepts valid messages enum values', () => {
+      for (const lvl of ['all', 'major', 'off']) {
+        writeConfig(tmpRoot, { messages: lvl });
+        const { loadCompanionConfig, clearCache } = requireFresh();
+        clearCache();
+        expect(loadCompanionConfig(tmpRoot).messages).toBe(lvl);
+      }
+    });
+
+    it('falls back to "all" on an invalid messages level', () => {
+      writeConfig(tmpRoot, { messages: 'loud' });
+      const { loadCompanionConfig, clearCache } = requireFresh();
+      clearCache();
+      expect(loadCompanionConfig(tmpRoot).messages).toBe('all');
+    });
+
+    it('coerces anomalyRow with the default-false literal-true idiom', () => {
+      writeConfig(tmpRoot, { anomalyRow: true });
+      let { loadCompanionConfig, clearCache } = requireFresh();
+      clearCache();
+      expect(loadCompanionConfig(tmpRoot).anomalyRow).toBe(true);
+
+      writeConfig(tmpRoot, { anomalyRow: 'true' });
+      ({ loadCompanionConfig, clearCache } = requireFresh());
+      clearCache();
+      expect(loadCompanionConfig(tmpRoot).anomalyRow).toBe(false);
+    });
+  });
+
+  describe('S440: message min-dwell knobs', () => {
+    it('DEFAULTS protect visible messages long enough to read by tier', () => {
+      const { DEFAULTS } = requireFresh();
+      expect(DEFAULTS.minDwellFlashMs).toBe(6000);
+      expect(DEFAULTS.minDwellSignalMs).toBe(10000);
+      expect(DEFAULTS.minDwellCriticalMs).toBe(15000);
+    });
+
+    it('accepts valid min-dwell overrides', () => {
+      writeConfig(tmpRoot, {
+        minDwellFlashMs: 1000,
+        minDwellSignalMs: 2000,
+        minDwellCriticalMs: 3000,
+      });
+      const { loadCompanionConfig, clearCache } = requireFresh();
+      clearCache();
+      const cfg = loadCompanionConfig(tmpRoot);
+      expect(cfg.minDwellFlashMs).toBe(1000);
+      expect(cfg.minDwellSignalMs).toBe(2000);
+      expect(cfg.minDwellCriticalMs).toBe(3000);
+    });
+
+    it('falls back to defaults on invalid min-dwell overrides', () => {
+      writeConfig(tmpRoot, {
+        minDwellFlashMs: -1,
+        minDwellSignalMs: 'slow',
+        minDwellCriticalMs: 999999,
+      });
+      const { loadCompanionConfig, clearCache, DEFAULTS } = requireFresh();
+      clearCache();
+      const cfg = loadCompanionConfig(tmpRoot);
+      expect(cfg.minDwellFlashMs).toBe(DEFAULTS.minDwellFlashMs);
+      expect(cfg.minDwellSignalMs).toBe(DEFAULTS.minDwellSignalMs);
+      expect(cfg.minDwellCriticalMs).toBe(DEFAULTS.minDwellCriticalMs);
     });
   });
 

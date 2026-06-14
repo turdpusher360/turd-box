@@ -212,7 +212,14 @@ function renderColoredOrb(healthPct, opts) {
     // During active: color wave sweeps through all 6 cells using only B(39) and P(63).
     // 12-frame cycle: cells flip B↔P one at a time (6 frames to flip all, 6 to flip back).
     // Creates a visible diagonal cascade, not a simultaneous swap.
-    const allColors = isActive
+    // Freeze gate (mobile-freeze): the color wave is a live Date.now() animation. When the
+    // statusline is frozen (animate:false or idle-freeze → opts.outerActive===false),
+    // skip the wave and fall through to the static idle palette so two consecutive
+    // renders are byte-identical (mobile Termius freeze invariant, vocabulary Entry 5).
+    // renderOrb already freezes shape+shimmer via freezeTimeMs; the color layer
+    // previously bypassed the gate (Entry 3), which is the mobile scroll-bounce source.
+    const waveActive = isActive && !(opts && opts.outerActive === false);
+    const allColors = waveActive
       ? (() => {
           const base = [39, 63, 39, 63, 39, 63]; // starting pattern
           const tick = Math.floor(Date.now() / _cc().colorWaveSpeed) % _cc().colorWaveFrames;

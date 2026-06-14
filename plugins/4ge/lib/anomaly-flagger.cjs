@@ -25,9 +25,14 @@ const RAPID_ERROR_WINDOW_MS       = 2 * 60 * 1000;  // 2 minutes
 const RAPID_ERROR_COUNT            = 3;               // ≥3 errors in window
 const STALE_DIRTY_THRESHOLD_MS    = 30 * 60 * 1000; // 30 minutes without commit
 const CTX_BURN_RATE_PCT_PER_MIN   = 10;              // >10%/min extrapolated
+const CTX_HISTORY_MIN_SAMPLES     = 3;               // enough points for a recent trend
+const CTX_HISTORY_SAMPLE_MS       = 60 * 1000;       // conservative cadence for value-only history
 const RATE_LIMIT_USED_THRESHOLD   = 0.70;            // >70% of 5h window
 const RATE_LIMIT_RESET_MIN_MS     = 2 * 60 * 60 * 1000; // reset ≥2h away
 const LONG_IDLE_THRESHOLD_MS      = 5 * 60 * 1000;  // 5 minutes with no tool
+const VRAM_LOW_THRESHOLD_MIB      = 1024;            // <1GiB free GPU memory
+const PROCESS_BLOAT_TOTAL_COUNT   = 150;             // total process count high-water mark
+const PROCESS_BLOAT_MCP_COUNT     = 8;               // MCP process count high-water mark
 
 // ── Helpers ──
 
@@ -54,6 +59,35 @@ function getRateLimits(state) {
 /** Safely read git state. */
 function getGit(state) {
   return (state && state.git) || null;
+}
+
+function getOs(state) {
+  return (state && state.os && typeof state.os === 'object') ? state.os : null;
+}
+
+function normalizePct(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return null;
+  return Math.max(0, Math.min(100, n));
+}
+
+function contextHistorySlope(history) {
+  if (!Array.isArray(history)) return null;
+  const samples = history
+    .map(normalizePct)
+    .filter((value) => value !== null)
+    .slice(-6);
+  if (samples.length < CTX_HISTORY_MIN_SAMPLES) return null;
+  const first = samples[0];
+  const last = samples[samples.length - 1];
+  const elapsedMs = (samples.length - 1) * CTX_HISTORY_SAMPLE_MS;
+  if (elapsedMs <= 0) return null;
+  return {
+    first,
+    last,
+    sampleCount: samples.length,
+    ratePctPerMin: ((last - first) / elapsedMs) * 60000,
+  };
 }
 
 // ── Anomaly Checkers ──
@@ -116,12 +150,31 @@ function checkStaleDirtyWork(state, now) {
 }
 
 /**
- * ctx-burn-rate-high — contextPct growing >CTX_BURN_RATE_PCT_PER_MIN extrapolated.
- * Requires state.session.contextPct (current) + state.session.uptime (ms since session start).
+ * ctx-burn-rate-high — contextPct growing >CTX_BURN_RATE_PCT_PER_MIN.
+ * Prefer bounded recent history when present; fall back to session-average
+ * contextPct / uptime only when history is unavailable.
  */
 function checkCtxBurnRate(state, _now) {
   const session = state && state.session;
   if (!session) return null;
+  const historySlope = contextHistorySlope(session.contextPctHistory);
+  if (historySlope) {
+    if (historySlope.ratePctPerMin > CTX_BURN_RATE_PCT_PER_MIN) {
+      return {
+        type: 'ctx-burn-rate-high',
+        severity: SEVERITY_SIGNAL,
+        reason: `context burning at ${historySlope.ratePctPerMin.toFixed(1)}%/min (${historySlope.first.toFixed(0)}%→${historySlope.last.toFixed(0)}% over ${historySlope.sampleCount} samples)`,
+        metrics: {
+          source: 'history',
+          firstContextPct: historySlope.first,
+          lastContextPct: historySlope.last,
+          sampleCount: historySlope.sampleCount,
+          ratePctPerMin: historySlope.ratePctPerMin,
+        },
+      };
+    }
+    return null;
+  }
   const pct    = Number(session.contextPct);
   const uptime = Number(session.uptime);
   if (!Number.isFinite(pct) || !Number.isFinite(uptime) || uptime <= 0) return null;
@@ -192,6 +245,77 @@ function checkRateLimitApproaching(state, now) {
 }
 
 /**
+ * vram-low — cached free GPU memory below VRAM_LOW_THRESHOLD_MIB.
+ * Uses _runs/os/vram-cache.json via hud-data-loader; no subprocess here.
+ */
+function checkVramLow(state) {
+  const os = getOs(state);
+  const vram = os && os.vram;
+  if (!vram || typeof vram !== 'object') return null;
+  const freeMiB = Number(vram.freeMiB);
+  if (!Number.isFinite(freeMiB) || freeMiB >= VRAM_LOW_THRESHOLD_MIB) return null;
+  return {
+    type: 'vram-low',
+    severity: SEVERITY_SIGNAL,
+    reason: `GPU VRAM low: ${Math.round(freeMiB)} MiB free`,
+    metrics: {
+      freeMiB: Math.round(freeMiB),
+      thresholdMiB: VRAM_LOW_THRESHOLD_MIB,
+      totalMiB: Number.isFinite(Number(vram.totalMiB)) ? Math.round(Number(vram.totalMiB)) : null,
+    },
+  };
+}
+
+/**
+ * process-reaped-kill — session reaper killed one or more stale processes.
+ */
+function checkProcessReapedKill(state) {
+  const os = getOs(state);
+  const processes = os && os.processes;
+  if (!processes || typeof processes !== 'object') return null;
+  const killed = Number(processes.killed);
+  if (!Number.isFinite(killed) || killed <= 0) return null;
+  return {
+    type: 'process-reaped-kill',
+    severity: SEVERITY_SIGNAL,
+    reason: `session reaper killed ${Math.round(killed)} stale process(es)`,
+    metrics: {
+      killed: Math.round(killed),
+      totalProcs: Number.isFinite(Number(processes.totalProcs)) ? Math.round(Number(processes.totalProcs)) : 0,
+      mcpProcs: Number.isFinite(Number(processes.mcpProcs)) ? Math.round(Number(processes.mcpProcs)) : 0,
+    },
+  };
+}
+
+/**
+ * process-bloat — total or MCP process counts are unusually high.
+ */
+function checkProcessBloat(state) {
+  const os = getOs(state);
+  const processes = os && os.processes;
+  if (!processes || typeof processes !== 'object') return null;
+  const totalProcs = Number(processes.totalProcs);
+  const mcpProcs = Number(processes.mcpProcs);
+  const totalHigh = Number.isFinite(totalProcs) && totalProcs >= PROCESS_BLOAT_TOTAL_COUNT;
+  const mcpHigh = Number.isFinite(mcpProcs) && mcpProcs >= PROCESS_BLOAT_MCP_COUNT;
+  if (!totalHigh && !mcpHigh) return null;
+  const parts = [];
+  if (totalHigh) parts.push(`${Math.round(totalProcs)} total processes`);
+  if (mcpHigh) parts.push(`${Math.round(mcpProcs)} MCP processes`);
+  return {
+    type: 'process-bloat',
+    severity: SEVERITY_FLASH,
+    reason: `process pressure elevated: ${parts.join(', ')}`,
+    metrics: {
+      totalProcs: Number.isFinite(totalProcs) ? Math.round(totalProcs) : 0,
+      mcpProcs: Number.isFinite(mcpProcs) ? Math.round(mcpProcs) : 0,
+      totalThreshold: PROCESS_BLOAT_TOTAL_COUNT,
+      mcpThreshold: PROCESS_BLOAT_MCP_COUNT,
+    },
+  };
+}
+
+/**
  * error-regression — a test-pass event followed by a test-fail event (regression).
  * Detects from bash command strings matching vitest/jest with pass/fail indicators.
  */
@@ -243,6 +367,18 @@ function checkLongIdle(events, now) {
   return null;
 }
 
+const CHECKERS = [
+  { type: 'rapid-error-cascade', run: ({ events, now }) => checkRapidErrorCascade(events, now) },
+  { type: 'stale-dirty-work', run: ({ state, now }) => checkStaleDirtyWork(state, now) },
+  { type: 'ctx-burn-rate-high', run: ({ state, now }) => checkCtxBurnRate(state, now) },
+  { type: 'rate-limit-approaching', run: ({ state, now }) => checkRateLimitApproaching(state, now) },
+  { type: 'vram-low', run: ({ state }) => checkVramLow(state) },
+  { type: 'process-reaped-kill', run: ({ state }) => checkProcessReapedKill(state) },
+  { type: 'process-bloat', run: ({ state }) => checkProcessBloat(state) },
+  { type: 'error-regression', run: ({ events }) => checkErrorRegression(events) },
+  { type: 'long-idle', run: ({ events, now }) => checkLongIdle(events, now) },
+];
+
 // ── Top Severity ──
 
 function resolveTopSeverity(anomalies) {
@@ -270,39 +406,18 @@ function detectAnomalies(opts) {
   const events = (opts && Array.isArray(opts.recentTools)) ? opts.recentTools : [];
   const state  = (opts && opts.state) || {};
   const now    = (opts && typeof opts.now === 'number') ? opts.now : Date.now();
+  const checkers = (opts && Array.isArray(opts.checkers)) ? opts.checkers : CHECKERS;
 
   const results = [];
 
-  // Run all checkers; each is independently fail-safe
-  try {
-    const r = checkRapidErrorCascade(events, now);
-    if (r) results.push(r);
-  } catch { /* fail-safe */ }
-
-  try {
-    const r = checkStaleDirtyWork(state, now);
-    if (r) results.push(r);
-  } catch { /* fail-safe */ }
-
-  try {
-    const r = checkCtxBurnRate(state, now);
-    if (r) results.push(r);
-  } catch { /* fail-safe */ }
-
-  try {
-    const r = checkRateLimitApproaching(state, now);
-    if (r) results.push(r);
-  } catch { /* fail-safe */ }
-
-  try {
-    const r = checkErrorRegression(events);
-    if (r) results.push(r);
-  } catch { /* fail-safe */ }
-
-  try {
-    const r = checkLongIdle(events, now);
-    if (r) results.push(r);
-  } catch { /* fail-safe */ }
+  // Run all checkers; each is independently fail-safe.
+  for (const checker of checkers) {
+    if (!checker || typeof checker.run !== 'function') continue;
+    try {
+      const r = checker.run({ events, state, now });
+      if (r) results.push(r);
+    } catch { /* fail-safe */ }
+  }
 
   // Sort: critical first, then signal, then flash
   results.sort((a, b) => (SEVERITY_RANK[b.severity] || 0) - (SEVERITY_RANK[a.severity] || 0));
@@ -324,15 +439,25 @@ module.exports = {
   RAPID_ERROR_COUNT,
   STALE_DIRTY_THRESHOLD_MS,
   CTX_BURN_RATE_PCT_PER_MIN,
+  CTX_HISTORY_MIN_SAMPLES,
+  CTX_HISTORY_SAMPLE_MS,
   RATE_LIMIT_USED_THRESHOLD,
   RATE_LIMIT_RESET_MIN_MS,
   LONG_IDLE_THRESHOLD_MS,
+  VRAM_LOW_THRESHOLD_MIB,
+  PROCESS_BLOAT_TOTAL_COUNT,
+  PROCESS_BLOAT_MCP_COUNT,
+  CHECKERS,
   // Helper (exported for tests)
   resolveTopSeverity,
   checkRapidErrorCascade,
   checkStaleDirtyWork,
   checkCtxBurnRate,
+  contextHistorySlope,
   checkRateLimitApproaching,
+  checkVramLow,
+  checkProcessReapedKill,
+  checkProcessBloat,
   checkErrorRegression,
   checkLongIdle,
 };

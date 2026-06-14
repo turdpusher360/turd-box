@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import fs from 'node:fs';
@@ -106,6 +106,20 @@ describe('renderStrip model-specific faces', () => {
     const dir = path.dirname(TEST_COMPANION_PATH);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(TEST_COMPANION_PATH, JSON.stringify(freshState));
+
+    // Hermetic config (S441): the repo .4ge/config.json now defaults to
+    // animate:false (mobile freeze), under which resolveCompanionFace returns a
+    // STATIC model-identity face. These tests assert the EXPRESSIVE companion idle
+    // face, so pin animate:true via a spy that survives requireFresh (which does
+    // not clear companion-config from the module cache).
+    const ccMod = _require(path.resolve(__dirname, '../companion-config.cjs'));
+    ccMod.clearCache?.();
+    const realCfg = ccMod.loadCompanionConfig();
+    vi.spyOn(ccMod, 'loadCompanionConfig').mockReturnValue({ ...realCfg, animate: true, zen: false });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
   });
 
   function makeHealthyState(modelId) {

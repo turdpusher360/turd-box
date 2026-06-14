@@ -204,6 +204,16 @@ function readForgeConfig(cwd) {
         || path.join(__dirname, '..');
       const companionState = require(path.join(pluginRoot, 'bin', 'companion-state.cjs'));
       companionState.startBoot(8);
+
+      // Update-aware preference notice (Wave 1): once per session (SessionStart is
+      // inherently once-per-session, so no sentinel needed) surface the "settings
+      // may have changed" notice if the plugin version differs from the acked
+      // version. The /hud setter (or /hud face ok) stamps the ack to silence it
+      // until the next plugin bump. Critical-tier so it survives boot chatter.
+      try {
+        const ack = require(path.join(pluginRoot, 'bin', 'companion-ack.cjs'));
+        ack.postDriftNoticeIfNeeded(companionState);
+      } catch { /* non-fatal — ack surfacing is best-effort */ }
     } catch { /* non-fatal — companion not installed */ }
 
     // AISLE hook server: OPT-IN only for plugin-managed boots. Spawning a

@@ -2,6 +2,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const { reactiveTtlMap } = require('../lib/hud-events.cjs');
 
 function readJsonSafe(filePath) {
   try {
@@ -10,6 +11,53 @@ function readJsonSafe(filePath) {
   } catch {
     return null;
   }
+}
+
+function timestampMs(value) {
+  if (typeof value === 'number') return value;
+  if (typeof value === 'string') {
+    const parsed = Date.parse(value);
+    return Number.isFinite(parsed) ? parsed : NaN;
+  }
+  return NaN;
+}
+
+function hasOwn(obj, key) {
+  return Object.prototype.hasOwnProperty.call(obj, key);
+}
+
+function readFreshJson(filePath, options = {}) {
+  const fallback = hasOwn(options, 'fallback') ? options.fallback : null;
+  const raw = readJsonSafe(filePath);
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return fallback;
+
+  const ttlMs = Number(options.ttlMs);
+  if (!Number.isFinite(ttlMs)) return raw;
+
+  const now = Number.isFinite(options.now) ? Number(options.now) : Date.now();
+  const timestampKeys = Array.isArray(options.timestampKeys) ? options.timestampKeys : [];
+  let ts = NaN;
+
+  if (typeof options.getTimestampMs === 'function') {
+    ts = Number(options.getTimestampMs(raw, filePath));
+  } else {
+    for (const key of timestampKeys) {
+      ts = timestampMs(raw[key]);
+      if (Number.isFinite(ts)) break;
+    }
+  }
+
+  if (!Number.isFinite(ts) && options.mtimeFallback === true) {
+    try {
+      ts = fs.statSync(filePath).mtimeMs;
+    } catch {
+      return fallback;
+    }
+  }
+
+  if (!Number.isFinite(ts)) return fallback;
+  if (now - ts > ttlMs) return fallback;
+  return raw;
 }
 
 // hud-context.json carries an event label set by os-accounting when a forge /
@@ -22,14 +70,11 @@ function readJsonSafe(filePath) {
 const HUD_CTX_TTL_MS = 6 * 60 * 60 * 1000;
 
 function readFreshHudContext(filePath) {
-  const raw = readJsonSafe(filePath);
-  if (!raw || typeof raw !== 'object') return {};
-  const updatedAt = raw.updated_at;
-  if (typeof updatedAt !== 'string') return {};
-  const t = Date.parse(updatedAt);
-  if (!Number.isFinite(t)) return {};
-  if (Date.now() - t > HUD_CTX_TTL_MS) return {};
-  return raw;
+  return readFreshJson(filePath, {
+    ttlMs: HUD_CTX_TTL_MS,
+    timestampKeys: ['updated_at'],
+    fallback: {},
+  });
 }
 
 // Forge-progress.json uses top-level `startedAt` (ISO, written by forge-progress-writer.cjs).
@@ -39,20 +84,11 @@ function readFreshHudContext(filePath) {
 const FORGE_PROGRESS_TTL_MS = 10 * 60 * 1000;
 
 function readFreshForgeProgress(filePath) {
-  const raw = readJsonSafe(filePath);
-  if (!raw || typeof raw !== 'object') return null;
-  const t = Date.parse(raw.startedAt);
-  // No valid in-JSON timestamp → fall back to file mtime (forge-progress-writer didn't
-  // include startedAt in early format; mtime is close enough for staleness detection).
-  if (!Number.isFinite(t)) {
-    try {
-      const mtime = fs.statSync(filePath).mtimeMs;
-      if (Date.now() - mtime > FORGE_PROGRESS_TTL_MS) return null;
-    } catch { return null; }
-    return raw;
-  }
-  if (Date.now() - t > FORGE_PROGRESS_TTL_MS) return null;
-  return raw;
+  return readFreshJson(filePath, {
+    ttlMs: FORGE_PROGRESS_TTL_MS,
+    timestampKeys: ['startedAt'],
+    mtimeFallback: true,
+  });
 }
 
 // .forge-session.json uses top-level `started` (ISO) per SKILL.md Phase-5 schema.
@@ -61,19 +97,271 @@ function readFreshForgeProgress(filePath) {
 const FORGE_SESSION_TTL_MS = FORGE_PROGRESS_TTL_MS;
 
 function readFreshForgeSession(filePath) {
+  return readFreshJson(filePath, {
+    ttlMs: FORGE_SESSION_TTL_MS,
+    timestampKeys: ['started'],
+    mtimeFallback: true,
+  });
+}
+
+const REACTIVE_EVENT_TTL_MS = reactiveTtlMap();
+const DEFAULT_REACTIVE_EVENT_TTL_MS = 30000;
+const ANOMALY_TTL_MS = 10 * 60 * 1000;
+const VRAM_CACHE_TTL_MS = 10 * 60 * 1000;
+const REAPER_LOG_TTL_MS = 2 * 60 * 60 * 1000;
+
+const HUD_HISTORY_TTL_MS = 6 * 60 * 60 * 1000;
+const HUD_HISTORY_MAX_SAMPLES = 120;
+const HUD_HISTORY_MIN_SAMPLE_MS = 30000;
+
+function clampPct(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return null;
+  return Math.max(0, Math.min(100, n));
+}
+
+function readFreshReactiveState(filePath, now = Date.now()) {
   const raw = readJsonSafe(filePath);
   if (!raw || typeof raw !== 'object') return null;
-  const t = Date.parse(raw.started);
-  if (!Number.isFinite(t)) {
-    // No in-JSON timestamp: defer to mtime.
-    try {
-      const mtime = fs.statSync(filePath).mtimeMs;
-      if (Date.now() - mtime > FORGE_SESSION_TTL_MS) return null;
-    } catch { return null; }
-    return raw;
+
+  let event = '';
+  let ts = 0;
+  if (raw.lastEvent && typeof raw.lastEvent === 'object') {
+    event = typeof raw.lastEvent.event === 'string' ? raw.lastEvent.event : '';
+    const rawTs = raw.lastEvent.triggeredAt || raw.lastEvent.triggered_at || raw.lastEvent.ts;
+    ts = typeof rawTs === 'number' ? rawTs : Date.parse(rawTs);
   }
-  if (Date.now() - t > FORGE_SESSION_TTL_MS) return null;
-  return raw;
+
+  if (!event && raw.events && typeof raw.events === 'object') {
+    for (const [name, value] of Object.entries(raw.events)) {
+      if (typeof name !== 'string' || !name) continue;
+      if (name.startsWith('anomaly:')) continue;
+      const candidate = typeof value === 'number' ? value : Date.parse(value);
+      if (Number.isFinite(candidate) && candidate > ts) {
+        event = name;
+        ts = candidate;
+      }
+    }
+  }
+
+  if (!event || !Number.isFinite(ts) || ts <= 0) return null;
+  const ageMs = Math.max(0, now - ts);
+  const ttlMs = REACTIVE_EVENT_TTL_MS[event] || DEFAULT_REACTIVE_EVENT_TTL_MS;
+  if (ageMs > ttlMs) return null;
+  return {
+    event,
+    triggeredAt: new Date(ts).toISOString(),
+    ageMs,
+  };
+}
+
+function normalizeAnomalyState(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const type = typeof raw.type === 'string' ? raw.type.trim() : '';
+  const reason = typeof raw.reason === 'string' ? raw.reason.replace(/\s+/g, ' ').trim() : '';
+  if (!type || !reason) return null;
+  const severity = raw.severity === 'critical' || raw.severity === 'flash'
+    ? raw.severity
+    : 'signal';
+  return {
+    type,
+    severity,
+    reason,
+    metrics: (raw.metrics && typeof raw.metrics === 'object' && !Array.isArray(raw.metrics)) ? raw.metrics : {},
+    updatedAt: typeof raw.updatedAt === 'string'
+      ? raw.updatedAt
+      : (typeof raw.updated_at === 'string' ? raw.updated_at : ''),
+  };
+}
+
+function readFreshAnomalyState(filePath, now = Date.now()) {
+  const raw = readFreshJson(filePath, {
+    ttlMs: ANOMALY_TTL_MS,
+    timestampKeys: ['updatedAt', 'updated_at', 'ts'],
+    fallback: null,
+    now,
+  });
+  return normalizeAnomalyState(raw);
+}
+
+function normalizeVramState(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const freeMiB = Number(raw.freeMiB ?? raw.free_mib ?? raw.free);
+  if (!Number.isFinite(freeMiB) || freeMiB < 0) return null;
+  const totalMiB = Number(raw.totalMiB ?? raw.total_mib ?? raw.total);
+  const ts = timestampMs(raw.updatedAt ?? raw.updated_at ?? raw.ts);
+  const out = { freeMiB: Math.round(freeMiB) };
+  if (Number.isFinite(totalMiB) && totalMiB >= 0) out.totalMiB = Math.round(totalMiB);
+  out.updatedAt = Number.isFinite(ts) ? new Date(ts).toISOString() : '';
+  return out;
+}
+
+function readFreshVramState(filePath, now = Date.now()) {
+  const raw = readFreshJson(filePath, {
+    ttlMs: VRAM_CACHE_TTL_MS,
+    timestampKeys: ['updatedAt', 'updated_at', 'ts'],
+    fallback: null,
+    now,
+  });
+  return normalizeVramState(raw);
+}
+
+function readTailText(filePath, maxBytes = 64 * 1024) {
+  let fd;
+  try {
+    const stat = fs.statSync(filePath);
+    if (!stat.isFile() || stat.size <= 0) return '';
+    const size = Math.min(stat.size, maxBytes);
+    const buffer = Buffer.alloc(size);
+    fd = fs.openSync(filePath, 'r');
+    fs.readSync(fd, buffer, 0, size, stat.size - size);
+    return buffer.toString('utf8');
+  } catch {
+    return '';
+  } finally {
+    if (fd !== undefined) {
+      try { fs.closeSync(fd); } catch { /* ignore */ }
+    }
+  }
+}
+
+function normalizeReaperState(raw, now = Date.now()) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const ts = timestampMs(raw.updatedAt ?? raw.updated_at ?? raw.ts);
+  if (!Number.isFinite(ts) || now - ts > REAPER_LOG_TTL_MS) return null;
+
+  const totalProcs = Number(raw.totalProcs ?? raw.total_procs);
+  const mcpProcs = Number(raw.mcpProcs ?? raw.mcp_procs);
+  const killed = Number(raw.killed);
+  if (!Number.isFinite(totalProcs) && !Number.isFinite(mcpProcs) && !Number.isFinite(killed)) return null;
+
+  return {
+    event: typeof raw.event === 'string' ? raw.event : '',
+    sessionId: typeof raw.sessionId === 'string'
+      ? raw.sessionId
+      : (typeof raw.session_id === 'string' ? raw.session_id : ''),
+    totalProcs: Number.isFinite(totalProcs) && totalProcs >= 0 ? Math.round(totalProcs) : 0,
+    mcpProcs: Number.isFinite(mcpProcs) && mcpProcs >= 0 ? Math.round(mcpProcs) : 0,
+    killed: Number.isFinite(killed) && killed >= 0 ? Math.round(killed) : 0,
+    kills: Array.isArray(raw.kills) ? raw.kills : [],
+    updatedAt: new Date(ts).toISOString(),
+  };
+}
+
+function readFreshReaperState(filePath, now = Date.now()) {
+  const text = readTailText(filePath);
+  if (!text) return null;
+  const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  for (const line of lines.slice(-20).reverse()) {
+    try {
+      const normalized = normalizeReaperState(JSON.parse(line), now);
+      if (normalized) return normalized;
+    } catch { /* ignore partial or malformed tail lines */ }
+  }
+  return null;
+}
+
+function normalizeHudHistorySample(sample, now = Date.now()) {
+  if (!sample || typeof sample !== 'object') return null;
+  const tsRaw = sample.ts || sample.capturedAt || sample.captured_at;
+  const tsMs = typeof tsRaw === 'number' ? tsRaw : Date.parse(tsRaw);
+  if (!Number.isFinite(tsMs) || tsMs <= 0) return null;
+  if (now - tsMs > HUD_HISTORY_TTL_MS) return null;
+
+  const normalized = { ts: new Date(tsMs).toISOString() };
+  const contextPct = clampPct(sample.contextPct);
+  const rateFiveHour = clampPct(sample.rateFiveHour);
+  const rateSevenDay = clampPct(sample.rateSevenDay);
+  if (contextPct !== null) normalized.contextPct = contextPct;
+  if (rateFiveHour !== null) normalized.rateFiveHour = rateFiveHour;
+  if (rateSevenDay !== null) normalized.rateSevenDay = rateSevenDay;
+  if (normalized.contextPct === undefined && normalized.rateFiveHour === undefined && normalized.rateSevenDay === undefined) return null;
+  return normalized;
+}
+
+function readFreshHudHistory(filePath, now = Date.now()) {
+  const raw = readJsonSafe(filePath);
+  if (!raw || typeof raw !== 'object' || !Array.isArray(raw.samples)) return { v: 1, samples: [] };
+  const samples = raw.samples
+    .map((sample) => normalizeHudHistorySample(sample, now))
+    .filter(Boolean)
+    .slice(-HUD_HISTORY_MAX_SAMPLES);
+  return { v: 1, samples };
+}
+
+function hudHistorySessionFields(history) {
+  const samples = history && Array.isArray(history.samples) ? history.samples : [];
+  const contextPctHistory = samples
+    .map((sample) => sample.contextPct)
+    .filter((value) => Number.isFinite(value));
+  const rateLimitHistory = samples
+    .filter((sample) => Number.isFinite(sample.rateFiveHour) || Number.isFinite(sample.rateSevenDay))
+    .map((sample) => ({
+      ts: sample.ts,
+      fiveHour: Number.isFinite(sample.rateFiveHour) ? sample.rateFiveHour : 0,
+      sevenDay: Number.isFinite(sample.rateSevenDay) ? sample.rateSevenDay : 0,
+    }));
+
+  const fields = {};
+  if (contextPctHistory.length > 0) fields.contextPctHistory = contextPctHistory;
+  if (rateLimitHistory.length > 0) fields.rateLimitHistory = rateLimitHistory;
+  return fields;
+}
+
+function hydrateHudHistoryState(state, history) {
+  if (!state || typeof state !== 'object') return state;
+  state.session = state.session || {};
+  Object.assign(state.session, hudHistorySessionFields(history));
+  return state;
+}
+
+function sameHudHistoryValues(a, b) {
+  if (!a || !b) return false;
+  return a.contextPct === b.contextPct
+    && a.rateFiveHour === b.rateFiveHour
+    && a.rateSevenDay === b.rateSevenDay;
+}
+
+function appendHudHistorySample(state, options = {}) {
+  if (!state || typeof state !== 'object' || !state.projectRoot || !state.session) return state;
+  const now = options.now || Date.now();
+  const sample = { ts: new Date(now).toISOString() };
+
+  if (options.includeContext === true) {
+    const contextPct = clampPct(state.session.contextPct);
+    if (contextPct !== null) sample.contextPct = contextPct;
+  }
+
+  if (options.includeRate === true && state.session.rateLimits && typeof state.session.rateLimits === 'object') {
+    const rateFiveHour = clampPct(state.session.rateLimits.fiveHour);
+    const rateSevenDay = clampPct(state.session.rateLimits.sevenDay);
+    if (rateFiveHour !== null) sample.rateFiveHour = rateFiveHour;
+    if (rateSevenDay !== null) sample.rateSevenDay = rateSevenDay;
+  }
+
+  if (sample.contextPct === undefined && sample.rateFiveHour === undefined && sample.rateSevenDay === undefined) return state;
+
+  const historyPath = path.join(state.projectRoot, '_runs', 'os', 'hud-history.json');
+  const history = readFreshHudHistory(historyPath, now);
+  const last = history.samples[history.samples.length - 1];
+  const lastMs = last ? Date.parse(last.ts) : 0;
+  const tooSoonSame = last
+    && sameHudHistoryValues(last, sample)
+    && Number.isFinite(lastMs)
+    && now - lastMs < HUD_HISTORY_MIN_SAMPLE_MS;
+
+  const nextHistory = tooSoonSame
+    ? history
+    : { v: 1, samples: [...history.samples, sample].slice(-HUD_HISTORY_MAX_SAMPLES) };
+
+  if (!tooSoonSame) {
+    try {
+      fs.mkdirSync(path.dirname(historyPath), { recursive: true });
+      fs.writeFileSync(historyPath, JSON.stringify(nextHistory, null, 2) + '\n');
+    } catch { /* best-effort -- HUD history must never break statusline render */ }
+  }
+
+  return hydrateHudHistoryState(state, nextHistory);
 }
 
 function clipHudText(value, max = 160) {
@@ -219,6 +507,11 @@ function loadHudData(opts = {}) {
   const hudCtx = readFreshHudContext(path.join(stateDir, 'hud-context.json'));
   const forgeSession = readFreshForgeSession(path.join(cwd, '.forge-session.json'));
   const forgeProgress = readFreshForgeProgress(path.join(stateDir, 'forge-progress.json'));
+  const reactive = readFreshReactiveState(path.join(stateDir, 'hud-last-reactive.json'));
+  const anomaly = readFreshAnomalyState(path.join(stateDir, 'hud-last-anomaly.json'));
+  const vram = readFreshVramState(path.join(stateDir, 'vram-cache.json'));
+  const processes = readFreshReaperState(path.join(stateDir, 'reaper-log.jsonl'));
+  const hudHistory = readFreshHudHistory(path.join(stateDir, 'hud-history.json'));
   const sessionMemory = loadSessionMemory(cwd, forgeSession);
 
   const capabilities = buildCapabilities(bootStatus, health);
@@ -258,11 +551,14 @@ function loadHudData(opts = {}) {
       toolCount: meta.tool_count_running || 0,
       uptime,
       rateLimits: 'N/A',
+      ...hudHistorySessionFields(hudHistory),
     },
     os: {
       overallHealth,
       bootTime: (bootStatus && bootStatus.total_boot_ms) || 0,
       capabilities,
+      vram,
+      processes,
     },
     forge: forgeSession ? {
       active: true,
@@ -283,6 +579,8 @@ function loadHudData(opts = {}) {
     badges: readJsonSafe(path.join(cwd, 'plugins/4ge/.data/badges.json')) || {},
     memory: sessionMemory,
     forgeProgress: forgeProgress || null,
+    reactive,
+    anomaly,
     transcript,
   };
 
@@ -320,6 +618,8 @@ function loadHudData(opts = {}) {
  */
 function mergeHarnessStdin(state, harness) {
   if (!harness || typeof harness !== 'object') return state;
+  let includeHistoryContext = false;
+  let includeHistoryRate = false;
 
   // Model label
   if (harness.model) {
@@ -334,6 +634,7 @@ function mergeHarnessStdin(state, harness) {
     const cw = harness.context_window;
     if (typeof cw.used_percentage === 'number') {
       state.session.contextPct = cw.used_percentage;
+      includeHistoryContext = true;
       // Harness provides real data — clear the estimate label if still default
       if (state.session.contextLabel === 'est.') state.session.contextLabel = '';
     }
@@ -356,6 +657,7 @@ function mergeHarnessStdin(state, harness) {
   // Rate limits — replace 'N/A' sentinel with live object
   if (harness.rate_limits) {
     const rl = harness.rate_limits;
+    includeHistoryRate = true;
     state.session.rateLimits = {
       fiveHour:
         (rl.five_hour && typeof rl.five_hour.used_percentage === 'number')
@@ -452,6 +754,13 @@ function mergeHarnessStdin(state, harness) {
     state.session.thinkingEnabled = harness.thinking.enabled;
   }
 
+  if (includeHistoryContext || includeHistoryRate) {
+    appendHudHistorySample(state, {
+      includeContext: includeHistoryContext,
+      includeRate: includeHistoryRate,
+    });
+  }
+
   return state;
 }
 
@@ -461,5 +770,21 @@ module.exports = {
   computeUptime,
   deriveOverall,
   readJsonSafe,
+  readFreshJson,
+  readFreshReactiveState,
+  readFreshAnomalyState,
+  normalizeAnomalyState,
+  readFreshVramState,
+  normalizeVramState,
+  readFreshReaperState,
+  normalizeReaperState,
+  readFreshHudHistory,
+  REACTIVE_EVENT_TTL_MS,
+  ANOMALY_TTL_MS,
+  VRAM_CACHE_TTL_MS,
+  REAPER_LOG_TTL_MS,
+  HUD_HISTORY_TTL_MS,
+  HUD_HISTORY_MAX_SAMPLES,
+  appendHudHistorySample,
   mergeHarnessStdin,
 };

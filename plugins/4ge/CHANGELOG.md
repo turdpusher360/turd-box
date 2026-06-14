@@ -3,6 +3,23 @@
 All notable public changes to the 4ge Claude Code plugin are documented here.
 Versions follow Semantic Versioning.
 
+## [2.6.0] - 2026-06-14
+
+### Added
+- Added companion calm controls: `faceMotion` (per-tool eye motion, off by default), `zen` (master quiet mode), and `messages` (`all`/`major`/`off`) config toggles, with matching `/hud` setters.
+- Added a persistent anomaly statusline row so detected anomalies surface in the always-on HUD instead of only as a transient companion message.
+- Added compact statusline trend rows (context burn and rate-limit) that render within the existing row budget.
+- Added file-backed anomaly signals for low VRAM cache, reaped runaway processes, and process bloat.
+- Added a `/4ge hud substrate` command door that surfaces the manual substrate render mode.
+
+### Changed
+- Context burn-rate anomaly now prefers the recent context-history slope over the uptime heuristic, reducing early-session false positives.
+- Git statusline state now refreshes off the reactive hook after write-capable tools (throttled), so the branch / ahead-behind / dirty row reflects live state without slowing the render path.
+- Tiered companion message dwell floors (flash / signal / critical) so a higher-priority message can no longer be swallowed before its minimum visible time.
+
+### Fixed
+- Fixed the `animate:false` mobile escape hatch so the statusline renders byte-identically across polls. The orb color wave, orb breath/shimmer, and the companion face expression now all honor the freeze flag, eliminating mobile-terminal scroll-bounce.
+
 ## [2.5.0] - 2026-06-14
 
 ### Added

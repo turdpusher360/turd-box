@@ -13,6 +13,8 @@ const DEFAULT_SESSION = {
   uptime: 0,
   toolCount: 0,
   contextLabel: '',
+  contextPctHistory: [],
+  rateLimitHistory: [],
   branch: '',
   worktreePath: '',
   workspace: '',
@@ -29,14 +31,98 @@ const DEFAULT_SESSION = {
   remainingTokens: 0,
   cost: 0,
 };
-const DEFAULT_OS = { overallHealth: 'unknown', bootTime: 0, capabilities: {} };
+const DEFAULT_OS = { overallHealth: 'unknown', bootTime: 0, capabilities: {}, vram: null, processes: null };
 const DEFAULT_FORGE = { active: false, phase: null, teammates: [], scope: null };
 const DEFAULT_CONTEXT = { trigger: 'unknown', event: null, zone: null, agentId: '', agentType: '', agentName: '' };
+const DEFAULT_REACTIVE = null;
+const DEFAULT_ANOMALY = null;
 
 // --- Clamp ---
 function clamp(val, min, max) {
   if (typeof val !== 'number' || isNaN(val)) return min;
   return Math.min(max, Math.max(min, val));
+}
+
+function clampPercentValue(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return null;
+  return clamp(n, 0, 100);
+}
+
+function coercePercentHistory(values) {
+  if (!Array.isArray(values)) return [];
+  return values
+    .map(clampPercentValue)
+    .filter((value) => value !== null);
+}
+
+function coerceRateLimitHistory(values) {
+  if (!Array.isArray(values)) return [];
+  return values
+    .map((sample) => {
+      if (!sample || typeof sample !== 'object') return null;
+      const fiveHour = clampPercentValue(sample.fiveHour);
+      const sevenDay = clampPercentValue(sample.sevenDay);
+      if (fiveHour === null && sevenDay === null) return null;
+      return {
+        ts: typeof sample.ts === 'string' ? sample.ts : '',
+        fiveHour: fiveHour === null ? 0 : fiveHour,
+        sevenDay: sevenDay === null ? 0 : sevenDay,
+      };
+    })
+    .filter(Boolean);
+}
+
+function normalizeAnomalyState(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return DEFAULT_ANOMALY;
+  const type = typeof raw.type === 'string' ? raw.type.trim() : '';
+  const reason = typeof raw.reason === 'string' ? raw.reason.replace(/\s+/g, ' ').trim() : '';
+  if (!type || !reason) return DEFAULT_ANOMALY;
+  const severity = raw.severity === 'critical' || raw.severity === 'flash'
+    ? raw.severity
+    : 'signal';
+  return {
+    type,
+    severity,
+    reason,
+    metrics: (raw.metrics && typeof raw.metrics === 'object' && !Array.isArray(raw.metrics)) ? raw.metrics : {},
+    updatedAt: typeof raw.updatedAt === 'string' ? raw.updatedAt : '',
+  };
+}
+
+function nonNegativeNumber(value) {
+  const n = Number(value);
+  return Number.isFinite(n) && n >= 0 ? n : null;
+}
+
+function normalizeVramState(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const freeMiB = nonNegativeNumber(raw.freeMiB);
+  if (freeMiB === null) return null;
+  const totalMiB = nonNegativeNumber(raw.totalMiB);
+  const out = {
+    freeMiB: Math.round(freeMiB),
+    updatedAt: typeof raw.updatedAt === 'string' ? raw.updatedAt : '',
+  };
+  if (totalMiB !== null) out.totalMiB = Math.round(totalMiB);
+  return out;
+}
+
+function normalizeProcessState(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const totalProcs = nonNegativeNumber(raw.totalProcs);
+  if (totalProcs === null) return null;
+  const mcpProcs = nonNegativeNumber(raw.mcpProcs);
+  const killed = nonNegativeNumber(raw.killed);
+  return {
+    event: typeof raw.event === 'string' ? raw.event : '',
+    sessionId: typeof raw.sessionId === 'string' ? raw.sessionId : '',
+    totalProcs: Math.round(totalProcs),
+    mcpProcs: mcpProcs === null ? 0 : Math.round(mcpProcs),
+    killed: killed === null ? 0 : Math.round(killed),
+    kills: Array.isArray(raw.kills) ? raw.kills : [],
+    updatedAt: typeof raw.updatedAt === 'string' ? raw.updatedAt : '',
+  };
 }
 
 // --- Count degraded capabilities ---
@@ -79,6 +165,8 @@ function buildCanonicalState(raw) {
     uptime: (typeof rawSession.uptime === 'number' && rawSession.uptime >= 0) ? rawSession.uptime : 0,
     toolCount: (typeof rawSession.toolCount === 'number' && rawSession.toolCount >= 0) ? rawSession.toolCount : 0,
     contextLabel: typeof rawSession.contextLabel === 'string' ? rawSession.contextLabel : '',
+    contextPctHistory: coercePercentHistory(rawSession.contextPctHistory),
+    rateLimitHistory: coerceRateLimitHistory(rawSession.rateLimitHistory),
     branch: typeof rawSession.branch === 'string' ? rawSession.branch : '',
     worktreePath: typeof rawSession.worktreePath === 'string' ? rawSession.worktreePath : '',
     workspace: typeof rawSession.workspace === 'string' ? rawSession.workspace : '',
@@ -103,6 +191,8 @@ function buildCanonicalState(raw) {
     overallHealth: rawOs.overallHealth || DEFAULT_OS.overallHealth,
     bootTime: (typeof rawOs.bootTime === 'number') ? rawOs.bootTime : 0,
     capabilities: (rawOs.capabilities && typeof rawOs.capabilities === 'object') ? rawOs.capabilities : {},
+    vram: normalizeVramState(rawOs.vram),
+    processes: normalizeProcessState(rawOs.processes),
   };
 
   const rawForge = r.forge || {};
@@ -150,17 +240,36 @@ function buildCanonicalState(raw) {
   // Git state — passthrough (validated by zone renderer)
   const git = r.git || null;
 
-  return { terminal, session, os, forge, context, badges, memory, transcript, forgeProgress, git, theme: themeConfig, mode, palette };
+  const rawReactive = r.reactive || null;
+  const reactive = (rawReactive && typeof rawReactive === 'object' && typeof rawReactive.event === 'string' && rawReactive.event)
+    ? {
+        event: rawReactive.event,
+        triggeredAt: typeof rawReactive.triggeredAt === 'string' ? rawReactive.triggeredAt : '',
+        ageMs: typeof rawReactive.ageMs === 'number' ? rawReactive.ageMs : 0,
+      }
+    : DEFAULT_REACTIVE;
+
+  const anomaly = normalizeAnomalyState(r.anomaly);
+
+  return { terminal, session, os, forge, context, badges, memory, transcript, forgeProgress, git, reactive, anomaly, theme: themeConfig, mode, palette };
 }
 
 module.exports = {
   buildCanonicalState,
   countDegraded,
   clamp,
+  clampPercentValue,
+  coercePercentHistory,
+  coerceRateLimitHistory,
+  normalizeAnomalyState,
+  normalizeVramState,
+  normalizeProcessState,
   MAX_BASH_COLS,
   DEFAULT_TERMINAL,
   DEFAULT_SESSION,
   DEFAULT_OS,
   DEFAULT_FORGE,
   DEFAULT_CONTEXT,
+  DEFAULT_REACTIVE,
+  DEFAULT_ANOMALY,
 };

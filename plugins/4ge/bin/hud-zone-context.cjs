@@ -1,6 +1,7 @@
 'use strict';
 
 const { colorize, stripAnsi } = require('./hud-palette.cjs');
+const { sparkline } = require('../lib/substrate-render.cjs');
 
 const ZONE_META = { priority: 9, minRows: 1, idealRows: 3 };
 const SUB_BLOCKS = [' ', '\u258F', '\u258E', '\u258D', '\u258C', '\u258B', '\u258A', '\u2589', '\u2588'];
@@ -46,6 +47,39 @@ function renderBar(pct, width, palette, warnThreshold) {
   const empty = width - filled;
   const color = pct >= warnThreshold ? 'warn' : 'ok';
   return colorize(palette, color, '\u2588'.repeat(filled)) + colorize(palette, 'muted', '\u2591'.repeat(empty));
+}
+
+function coerceContextHistory(session) {
+  const candidates = [
+    session.contextPctHistory,
+    session.contextHistory,
+    session.context && session.context.pctHistory,
+    session.context && session.context.history,
+  ];
+  const raw = candidates.find((value) => Array.isArray(value));
+  if (!raw) return [];
+  return raw
+    .map((value) => Number(value))
+    .filter((value) => Number.isFinite(value))
+    .map((value) => Math.max(0, Math.min(100, value)));
+}
+
+function renderContextTrend(session, palette) {
+  const values = coerceContextHistory(session);
+  if (values.length < 2) return '';
+  const recent = values.slice(-24);
+  const line = sparkline(recent, 18);
+  const latest = recent[recent.length - 1];
+  return [
+    '  ',
+    colorize(palette, 'muted', 'ctx trend '),
+    colorize(palette, latest >= 40 ? 'warn' : 'ok', line),
+  ].join('');
+}
+
+function renderContextCompact(state, palette) {
+  const trend = renderContextTrend((state && state.session) || {}, palette);
+  return trend ? [trend] : [];
 }
 
 // Map model name/id to a semantic color role.
@@ -101,7 +135,19 @@ function renderContextZone(state, palette) {
   if (session.inputTokens && session.inputTokens > 0) {
     lines.push('  ' + renderTokenBreakdown(state, palette, 40));
   }
+  const trend = renderContextTrend(session, palette);
+  if (trend) lines.push(trend);
   return lines;
 }
 
-module.exports = { renderContextZone, renderBar, renderTokenBreakdown, fmtTokens, ZONE_META, resolveModelColor };
+module.exports = {
+  renderContextZone,
+  renderBar,
+  renderTokenBreakdown,
+  fmtTokens,
+  ZONE_META,
+  resolveModelColor,
+  coerceContextHistory,
+  renderContextTrend,
+  renderContextCompact,
+};

@@ -3,7 +3,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { execSync } = require('child_process');
+const { renderSurface } = require('./hud-surface-host.cjs');
 
 // --- Arg Parsing ---
 const args = process.argv.slice(2);
@@ -28,10 +28,13 @@ const cols = colsOverride ? parseInt(colsOverride, 10) : (process.stdout.columns
 const rows = rowsOverride ? parseInt(rowsOverride, 10) : (process.stdout.rows || 24);
 
 // --- State Loading ---
-function loadState() {
+function loadState(options = {}) {
+  const targetStateFile = Object.prototype.hasOwnProperty.call(options, 'stateFile')
+    ? options.stateFile
+    : stateFile;
   const mocksDir = path.join(__dirname, 'mocks');
-  const target = stateFile
-    ? (path.isAbsolute(stateFile) ? stateFile : path.join(process.cwd(), stateFile))
+  const target = targetStateFile
+    ? (path.isAbsolute(targetStateFile) ? targetStateFile : path.join(process.cwd(), targetStateFile))
     : path.join(mocksDir, 'healthy.json');
   try {
     return JSON.parse(fs.readFileSync(target, 'utf8'));
@@ -41,35 +44,35 @@ function loadState() {
   }
 }
 
-// --- Engine Invocation ---
-const ENGINE_PATH = path.join(__dirname, 'hud-engine.cjs');
-
-function renderFrame(mode) {
-  const state = loadState();
+function renderFrame(options = {}) {
+  const mode = options.mode || modeOverride;
+  const frameCols = options.cols || cols;
+  const frameRows = options.rows || rows;
+  const state = loadState(options);
   if (!state) return '(no state loaded)';
 
-  // Inject terminal dimensions into state
-  state.terminal = { cols, rows };
-  state.context = state.context || {};
-  state.context.trigger = 'preview';
-
   try {
-    const input = JSON.stringify(state);
-    const result = execSync(
-      `node "${ENGINE_PATH}" --mode=${mode} --cols=${cols} --rows=${rows}`,
-      { input, encoding: 'utf8', timeout: 5000, env: { ...process.env, COLUMNS: String(cols), LINES: String(rows) } }
-    );
-    return result;
+    return renderSurface({
+      rawState: state,
+      mode,
+      terminal: { cols: frameCols, rows: frameRows },
+      context: { trigger: 'preview' },
+    }).output;
   } catch (e) {
-    return `[hud-preview] Engine error: ${e.message}`;
+    return `[hud-preview] Render error: ${e.message}`;
   }
 }
 
 // --- Display ---
-function display(mode) {
+function display(mode, options = {}) {
+  const frameCols = options.cols || cols;
+  const frameRows = options.rows || rows;
+  const targetStateFile = Object.prototype.hasOwnProperty.call(options, 'stateFile')
+    ? options.stateFile
+    : stateFile;
   const modeLabel = mode.toUpperCase();
-  const dimLabel = `${cols}x${rows}`;
-  const stateLabel = stateFile || 'healthy.json';
+  const dimLabel = `${frameCols}x${frameRows}`;
+  const stateLabel = targetStateFile || 'healthy.json';
 
   // Clear screen
   process.stdout.write('\x1b[2J\x1b[H');
@@ -78,7 +81,12 @@ function display(mode) {
   process.stdout.write(`\x1b[90m--- HUD Preview | mode=${modeLabel} | ${dimLabel} | state=${stateLabel} ---\x1b[0m\n\n`);
 
   // Render engine output
-  const output = renderFrame(mode);
+  const output = renderFrame({
+    mode,
+    stateFile: targetStateFile,
+    cols: frameCols,
+    rows: frameRows,
+  });
   process.stdout.write(output);
 
   process.stdout.write(`\n\n\x1b[90m--- end (${new Date().toLocaleTimeString()}) ---\x1b[0m\n`);
@@ -97,61 +105,65 @@ function runCycle() {
     for (const mode of modes) {
       process.stdout.write('\x1b[2J\x1b[H');
       process.stdout.write(`\x1b[90m--- CYCLE: ${size.label} (${size.cols}x${size.rows}) mode=${mode} ---\x1b[0m\n\n`);
-      const state = loadState();
-      if (state) {
-        state.terminal = { cols: size.cols, rows: size.rows };
-        state.context = state.context || {};
-        state.context.trigger = 'preview';
-        try {
-          const input = JSON.stringify(state);
-          const result = execSync(
-            `node "${ENGINE_PATH}" --mode=${mode} --cols=${size.cols} --rows=${size.rows}`,
-            { input, encoding: 'utf8', timeout: 5000, env: { ...process.env, COLUMNS: String(size.cols), LINES: String(size.rows) } }
-          );
-          process.stdout.write(result);
-        } catch (e) {
-          process.stdout.write(`[error] ${e.message}\n`);
-        }
-      }
+      process.stdout.write(renderFrame({
+        mode,
+        stateFile,
+        cols: size.cols,
+        rows: size.rows,
+      }));
       process.stdout.write(`\n\x1b[90m--- end ---\x1b[0m\n`);
 
       // Pause 2s between frames
-      execSync('sleep 2 || timeout /t 2 >nul 2>&1', { stdio: 'ignore' });
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 2000);
     }
   }
 }
 
 // --- Main ---
-if (cycleMode) {
-  runCycle();
-} else if (watchMode) {
-  display(modeOverride);
+function main() {
+  if (cycleMode) {
+    runCycle();
+  } else if (watchMode) {
+    display(modeOverride);
 
-  // Watch engine source files for changes
-  const watchTargets = [
-    path.join(__dirname, 'hud-engine.cjs'),
-    path.join(__dirname, 'hud-palette.cjs'),
-    path.join(__dirname, 'hud-state.cjs'),
-    path.join(__dirname, 'hud-canvas.cjs'),
-    path.join(__dirname, 'hud-zone-face.cjs'),
-    path.join(__dirname, 'hud-zone-health.cjs'),
-  ];
+    // Watch engine source files for changes
+    const watchTargets = [
+      path.join(__dirname, 'hud-engine.cjs'),
+      path.join(__dirname, 'hud-palette.cjs'),
+      path.join(__dirname, 'hud-state.cjs'),
+      path.join(__dirname, 'hud-canvas.cjs'),
+      path.join(__dirname, 'hud-zone-face.cjs'),
+      path.join(__dirname, 'hud-zone-health.cjs'),
+    ];
 
-  const debounceMs = 300;
-  let timer = null;
+    const debounceMs = 300;
+    let timer = null;
 
-  for (const target of watchTargets) {
-    try {
-      fs.watch(target, () => {
-        if (timer) clearTimeout(timer);
-        timer = setTimeout(() => display(modeOverride), debounceMs);
-      });
-    } catch {
-      // File may not exist yet — skip silently
+    for (const target of watchTargets) {
+      try {
+        fs.watch(target, () => {
+          if (timer) clearTimeout(timer);
+          timer = setTimeout(() => display(modeOverride), debounceMs);
+        });
+      } catch {
+        // File may not exist yet — skip silently
+      }
     }
-  }
 
-  process.stdout.write('\x1b[90mWatching for changes... (Ctrl+C to exit)\x1b[0m\n');
-} else {
-  display(modeOverride);
+    process.stdout.write('\x1b[90mWatching for changes... (Ctrl+C to exit)\x1b[0m\n');
+  } else {
+    display(modeOverride);
+  }
 }
+
+if (require.main === module) {
+  main();
+}
+
+module.exports = {
+  loadState,
+  renderFrame,
+  display,
+  runCycle,
+  usesSurfaceHost: true,
+};

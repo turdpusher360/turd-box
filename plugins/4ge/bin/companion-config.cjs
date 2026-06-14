@@ -17,6 +17,16 @@ const DEFAULTS = {
   contextSleepyPct: 35,
   highToolCount: 200,
   blinkInterval: 25000,
+  messageCooldownS: 45,        // min seconds between non-critical popup messages (global rate limiter; critical bypasses)
+  minDwellFlashMs: 6000,       // minimum visible time before peer flash messages can replace it
+  minDwellSignalMs: 10000,     // minimum visible time before peer signal messages can replace it
+  minDwellCriticalMs: 15000,   // minimum visible time before peer critical messages can replace it
+
+  // motion / message control (Wave 1)
+  faceMotion: false,           // false = calm steady eyes (default); true = per-tool thinking/exhausted glyph swap (e4d905d2 behavior)
+  zen: false,                  // master quiet flag: forces calm idle + MAJOR-only messages + faceMotion off
+  messages: 'all',             // 'all' (flash+signal+critical) | 'major' (MAJOR events only) | 'off' (suppress all companion messages)
+  anomalyRow: false,           // false = legacy anomaly text bubble; true = persistent statusline row suppresses anomaly bubble
 
   // hud-braille-orb.cjs rendering
   animate: true,               // master gate: false = byte-identical frozen statusline (mobile escape hatch)
@@ -101,6 +111,10 @@ function loadCompanionConfig(projectRoot) {
   clamp('contextSleepyPct', 5, 90);
   clamp('highToolCount', 10, 10000);
   clamp('blinkInterval', 1000, 120000);
+  clamp('messageCooldownS', 0, 600);
+  clamp('minDwellFlashMs', 0, 120000);
+  clamp('minDwellSignalMs', 0, 120000);
+  clamp('minDwellCriticalMs', 0, 120000);
   // Ensure breathScaleMin <= breathScaleMax
   if (merged.breathScaleMin > merged.breathScaleMax) {
     merged.breathScaleMin = DEFAULTS.breathScaleMin;
@@ -108,6 +122,17 @@ function loadCompanionConfig(projectRoot) {
   }
   // Coerce animate to a real boolean — a stray string can't read as truthy accidentally
   merged.animate = (merged.animate !== false);   // default true; only explicit false disables
+  // Coerce faceMotion + zen to real booleans. These are DEFAULT-FALSE flags, so use
+  // the `=== true` idiom (NOT animate's `!== false`): a bad/typo'd value must fall to
+  // calm (false), never accidentally enable motion. Only an explicit literal true enables.
+  merged.faceMotion = (merged.faceMotion === true);
+  merged.zen = (merged.zen === true);
+  merged.anomalyRow = (merged.anomalyRow === true);
+  // Validate messages enum — restrict to known levels, default 'all' on bad input
+  const VALID_MESSAGE_LEVELS = ['all', 'major', 'off'];
+  if (!VALID_MESSAGE_LEVELS.includes(merged.messages)) {
+    merged.messages = DEFAULTS.messages;
+  }
   // Validate insights.tone — restrict to known values
   const VALID_TONES = ['warm', 'technical', 'minimal'];
   if (!VALID_TONES.includes(merged.insights.tone)) {

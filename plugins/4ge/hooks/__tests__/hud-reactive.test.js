@@ -617,3 +617,273 @@ describe('signalCompanion and COMPANION_EVENT_MAP', () => {
     expect(() => signalCompanion(null, { tool_name: 'Read' })).not.toThrow();
   });
 });
+
+// ── Wave 4: live git refresh writer ─────────────────────────────────────────
+describe('Wave 4: live git refresh writer', () => {
+  it('refreshes git state for write-class tools when the cache is stale', () => {
+    const { refreshGitState } = requireFresh();
+    const calls = [];
+    const smartOrder = {
+      readGitState: (opts = {}) => {
+        calls.push(opts);
+        if (opts.refresh) return { branch: 'main', dirty: true, timestamp: new Date().toISOString() };
+        return { branch: 'main', dirty: false, uncommittedFiles: 0, timestamp: new Date(Date.now() - 60_000).toISOString() };
+      },
+    };
+
+    const result = refreshGitState({ tool_name: 'Write' }, Date.now(), smartOrder);
+
+    expect(result).toMatchObject({ branch: 'main', dirty: true });
+    expect(calls).toEqual([{ refresh: false }, { refresh: true }]);
+  });
+
+  it('does not refresh git state for read-only tools', () => {
+    const { refreshGitState } = requireFresh();
+    const smartOrder = { readGitState: vi.fn() };
+
+    expect(refreshGitState({ tool_name: 'Read' }, Date.now(), smartOrder)).toBeNull();
+    expect(refreshGitState({ tool_name: 'Grep' }, Date.now(), smartOrder)).toBeNull();
+    expect(refreshGitState({ tool_name: 'Glob' }, Date.now(), smartOrder)).toBeNull();
+    expect(smartOrder.readGitState).not.toHaveBeenCalled();
+  });
+
+  it('does not refresh when the cached git state is still inside throttle', () => {
+    const { refreshGitState } = requireFresh();
+    const now = Date.now();
+    const calls = [];
+    const smartOrder = {
+      readGitState: (opts = {}) => {
+        calls.push(opts);
+        return { branch: 'main', dirty: false, uncommittedFiles: 0, timestamp: new Date(now - 2_000).toISOString() };
+      },
+    };
+
+    expect(refreshGitState({ tool_name: 'Bash' }, now, smartOrder)).toBeNull();
+    expect(calls).toEqual([{ refresh: false }]);
+  });
+
+  it('refreshes when cached git state is unknown even if its timestamp is recent', () => {
+    const { refreshGitState } = requireFresh();
+    const calls = [];
+    const smartOrder = {
+      readGitState: (opts = {}) => {
+        calls.push(opts);
+        if (opts.refresh) return { branch: 'main', dirty: false, timestamp: new Date().toISOString() };
+        return { branch: null, dirty: null, uncommittedFiles: null, recentCommits: [], timestamp: new Date().toISOString() };
+      },
+    };
+
+    const result = refreshGitState({ tool_name: 'Edit' }, Date.now(), smartOrder);
+
+    expect(result).toMatchObject({ branch: 'main', dirty: false });
+    expect(calls).toEqual([{ refresh: false }, { refresh: true }]);
+  });
+
+  it('fails open when git refresh throws', () => {
+    const { refreshGitState } = requireFresh();
+    const smartOrder = {
+      readGitState: (opts = {}) => {
+        if (opts.refresh) throw new Error('git timeout');
+        return { branch: 'main', dirty: false, uncommittedFiles: 0, timestamp: new Date(Date.now() - 60_000).toISOString() };
+      },
+    };
+
+    expect(() => refreshGitState({ tool_name: 'Write' }, Date.now(), smartOrder)).not.toThrow();
+    expect(refreshGitState({ tool_name: 'Write' }, Date.now(), smartOrder)).toBeNull();
+  });
+});
+
+// ── Wave 1: messages-level filter (off / major / all) ────────────────────────
+// _messageAllowed / _anomalyMessageAllowed gate the TEXT bubble (signalMessage),
+// keyed on companion.messages. zen collapses the level to 'major'. cwd is mocked
+// to tmpDir (see top-level beforeEach), so the companion config is read from
+// tmpDir/.4ge/config.json.
+describe('Wave 1: messages-level filter', () => {
+  function setLevel(level, zen) {
+    const dir = path.join(tmpDir, '.4ge');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify({ companion: { messages: level, zen: !!zen } }));
+    // Bust the companion-config 10s cache so the new level is read.
+    const pluginRoot = path.resolve(__dirname, '..', '..');
+    const ccPath = path.join(pluginRoot, 'bin', 'companion-config.cjs');
+    delete require.cache[ccPath];
+    try { require(ccPath).clearCache(); } catch { /* ok */ }
+  }
+
+  it('resolves the effective messages level from config', () => {
+    setLevel('major', false);
+    const { _messagesLevel } = requireFresh();
+    expect(_messagesLevel()).toBe('major');
+  });
+
+  it('zen collapses the level to "major" regardless of the messages value', () => {
+    setLevel('all', true);
+    const { _messagesLevel } = requireFresh();
+    expect(_messagesLevel()).toBe('major');
+  });
+
+  it('"all" allows every event (MAJOR and minor)', () => {
+    setLevel('all', false);
+    const { _messageAllowed } = requireFresh();
+    expect(_messageAllowed('commit')).toBe(true);
+    expect(_messageAllowed('export')).toBe(true);
+  });
+
+  it('"major" allows only MAJOR events', () => {
+    setLevel('major', false);
+    const { _messageAllowed, MAJOR_EVENTS } = requireFresh();
+    expect([...MAJOR_EVENTS].sort()).toEqual(
+      ['commit', 'error-state', 'rate-limit-warn', 'test-fail', 'test-pass'].sort(),
+    );
+    expect(_messageAllowed('commit')).toBe(true);
+    expect(_messageAllowed('test-fail')).toBe(true);
+    expect(_messageAllowed('export')).toBe(false);
+    expect(_messageAllowed('badge-earned')).toBe(false);
+  });
+
+  it('"off" suppresses ALL companion messages (even MAJOR ones)', () => {
+    setLevel('off', false);
+    const { _messageAllowed } = requireFresh();
+    expect(_messageAllowed('commit')).toBe(false);
+    expect(_messageAllowed('error-state')).toBe(false);
+    expect(_messageAllowed('export')).toBe(false);
+  });
+
+  it('anomaly messages under "major" surface only when riding a MAJOR named event', () => {
+    setLevel('major', false);
+    const { _anomalyMessageAllowed } = requireFresh();
+    expect(_anomalyMessageAllowed('commit')).toBe(true);     // MAJOR event
+    expect(_anomalyMessageAllowed('export')).toBe(false);    // minor event
+    expect(_anomalyMessageAllowed(null)).toBe(false);        // bare tool activity
+  });
+
+  it('anomaly messages under "off" never surface', () => {
+    setLevel('off', false);
+    const { _anomalyMessageAllowed } = requireFresh();
+    expect(_anomalyMessageAllowed('commit')).toBe(false);
+    expect(_anomalyMessageAllowed(null)).toBe(false);
+  });
+
+  it('falls back to "all" when config is unreadable', () => {
+    // No .4ge/config.json written → loader returns DEFAULTS (messages:'all').
+    const dir = path.join(tmpDir, '.4ge');
+    try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* ok */ }
+    const pluginRoot = path.resolve(__dirname, '..', '..');
+    const ccPath = path.join(pluginRoot, 'bin', 'companion-config.cjs');
+    delete require.cache[ccPath];
+    try { require(ccPath).clearCache(); } catch { /* ok */ }
+    const { _messagesLevel } = requireFresh();
+    expect(_messagesLevel()).toBe('all');
+  });
+});
+
+describe('S440 persistent anomaly row', () => {
+  function setCompanionConfig(companion) {
+    const dir = path.join(tmpDir, '.4ge');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify({ companion }));
+    const pluginRoot = path.resolve(__dirname, '..', '..');
+    const ccPath = path.join(pluginRoot, 'bin', 'companion-config.cjs');
+    delete require.cache[ccPath];
+    try { require(ccPath).clearCache(); } catch { /* ok */ }
+  }
+
+  function anomalyFilePath() {
+    return path.join(tmpDir, '_runs', 'os', 'hud-last-anomaly.json');
+  }
+
+  it('keeps current anomaly bubble behavior when anomalyRow is disabled', () => {
+    setCompanionConfig({ anomalyRow: false });
+    const { _emitAnomalyIfWorthy } = requireFresh();
+    const cs = { signalMessage: vi.fn() };
+    const extra = [];
+
+    _emitAnomalyIfWorthy({
+      anomalies: [
+        { type: 'stale-dirty-work', severity: 'signal', reason: '3 dirty files', metrics: { dirty: 3 } },
+      ],
+    }, null, cs, extra);
+
+    expect(cs.signalMessage).toHaveBeenCalledWith('3 dirty files', { tier: 'signal' });
+    expect(extra).toEqual(['anomaly:stale-dirty-work']);
+    expect(fs.existsSync(anomalyFilePath())).toBe(false);
+  });
+
+  it('writes the persistent anomaly row and suppresses the transient bubble when anomalyRow is enabled', () => {
+    setCompanionConfig({ anomalyRow: true });
+    const { _emitAnomalyIfWorthy } = requireFresh();
+    const cs = { signalMessage: vi.fn() };
+    const extra = [];
+
+    _emitAnomalyIfWorthy({
+      anomalies: [
+        { type: 'stale-dirty-work', severity: 'signal', reason: '3 dirty files', metrics: { dirty: 3 } },
+      ],
+    }, null, cs, extra);
+
+    const saved = JSON.parse(fs.readFileSync(anomalyFilePath(), 'utf8'));
+    expect(saved).toMatchObject({
+      type: 'stale-dirty-work',
+      severity: 'signal',
+      reason: '3 dirty files',
+      metrics: { dirty: 3 },
+    });
+    expect(typeof saved.updatedAt).toBe('string');
+    expect(cs.signalMessage).not.toHaveBeenCalled();
+    expect(extra).toEqual([]);
+  });
+
+  it('persists state-backed anomalies from ordinary no-event tool activity', () => {
+    setCompanionConfig({ anomalyRow: true });
+    const stateDir = path.join(tmpDir, '_runs', 'os');
+    fs.mkdirSync(stateDir, { recursive: true });
+    fs.writeFileSync(
+      path.join(stateDir, 'tool-ring.json'),
+      JSON.stringify({ tool: 'Read', ts: Date.now(), filePath: 'README.md' }) + '\n',
+    );
+    const { signalCompanion } = requireFresh();
+
+    signalCompanion(null, { tool_name: 'Read' }, {
+      os: {
+        vram: { freeMiB: 768, totalMiB: 8192 },
+        processes: { totalProcs: 75, mcpProcs: 0, killed: 0 },
+      },
+    }, []);
+
+    const saved = JSON.parse(fs.readFileSync(anomalyFilePath(), 'utf8'));
+    expect(saved).toMatchObject({
+      type: 'vram-low',
+      severity: 'signal',
+      reason: 'GPU VRAM low: 768 MiB free',
+      metrics: { freeMiB: 768, thresholdMiB: 1024, totalMiB: 8192 },
+    });
+  });
+
+  it('persists the highest-severity anomaly when multiple are active', () => {
+    setCompanionConfig({ anomalyRow: true });
+    const { recordAnomalyResult } = requireFresh();
+
+    recordAnomalyResult({
+      anomalies: [
+        { type: 'ctx-burn-rate-high', severity: 'signal', reason: 'context burn', metrics: {} },
+        { type: 'rate-limit-approaching', severity: 'critical', reason: '5h 88% used', metrics: {} },
+      ],
+    });
+
+    const saved = JSON.parse(fs.readFileSync(anomalyFilePath(), 'utf8'));
+    expect(saved.type).toBe('rate-limit-approaching');
+    expect(saved.severity).toBe('critical');
+  });
+
+  it('clears the persistent anomaly file when anomalyRow is enabled and no anomalies remain', () => {
+    setCompanionConfig({ anomalyRow: true });
+    const filePath = anomalyFilePath();
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, JSON.stringify({ type: 'stale-dirty-work', severity: 'signal', reason: 'old', updatedAt: new Date().toISOString() }));
+    const { recordAnomalyResult } = requireFresh();
+
+    recordAnomalyResult({ anomalies: [] });
+
+    expect(fs.existsSync(filePath)).toBe(false);
+  });
+});

@@ -73,6 +73,32 @@ describe('hud-braille-orb', () => {
     it('uses red for critical', () => {
       expect(renderColoredOrb(20, { angle: 0 })[0]).toContain('\x1b[38;5;167m');
     });
+
+    // S441 mobile-freeze regression: the active-state color wave (Date.now-driven)
+    // must NOT animate when the statusline is frozen (outerActive === false).
+    // Before the fix the wave keyed off stateKey alone, so the orb color-cycled
+    // every render even under animate:false — the mobile Termius scroll-bounce.
+    it('S441: color wave is frozen when outerActive is false (byte-stable)', () => {
+      const opts = { companionState: { stateKey: 'tool-running' }, outerActive: false, freezeTimeMs: null };
+      const spy = vi.spyOn(Date, 'now');
+      spy.mockReturnValue(1000);
+      const a = renderColoredOrb(90, opts);
+      spy.mockReturnValue(1000 + 5000); // 5s later — would advance the 400ms wave tick
+      const b = renderColoredOrb(90, opts);
+      spy.mockRestore();
+      expect(a).toEqual(b);
+    });
+
+    it('S441: color wave still animates when active and not frozen', () => {
+      const opts = { companionState: { stateKey: 'tool-running' }, outerActive: true };
+      const spy = vi.spyOn(Date, 'now');
+      spy.mockReturnValue(0);
+      const a = renderColoredOrb(90, opts);
+      spy.mockReturnValue(2000); // 2s later — wave tick should advance
+      const b = renderColoredOrb(90, opts);
+      spy.mockRestore();
+      expect(a).not.toEqual(b);
+    });
   });
 
   describe('getBreathPeriod', () => {

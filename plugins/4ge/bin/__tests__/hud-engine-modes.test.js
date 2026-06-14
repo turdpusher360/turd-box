@@ -170,6 +170,37 @@ describe('renderFull with degraded state', () => {
 });
 
 describe('renderZone with specific zones', () => {
+  it('exports a single zone catalog with unique keys and aliases', () => {
+    const mod = requireFresh();
+    expect(Array.isArray(mod.ZONE_CATALOG)).toBe(true);
+    expect(mod.ZONE_CATALOG.length).toBeGreaterThan(10);
+
+    const keys = mod.ZONE_CATALOG.map((entry) => entry.key);
+    expect(new Set(keys).size).toBe(keys.length);
+
+    const names = new Set();
+    for (const entry of mod.ZONE_CATALOG) {
+      expect(entry.meta).toBeTruthy();
+      expect(typeof entry.render).toBe('function');
+      for (const name of [entry.key, ...(entry.aliases || [])]) {
+        expect(names.has(name)).toBe(false);
+        names.add(name);
+      }
+    }
+  });
+
+  it('distinguishes composite zones from on-demand-only zones', () => {
+    const mod = requireFresh();
+    const state = JSON.parse(fs.readFileSync(MOCK_HEALTHY, 'utf8'));
+    const entries = mod.getCompositeZoneEntries(state);
+    const keys = entries.map((entry) => entry.key);
+
+    expect(keys).toContain('face');
+    expect(keys).toContain('health');
+    expect(keys).not.toContain('caps');
+    expect(keys).not.toContain('forgeProgress');
+  });
+
   it('renders health zone', () => {
     const mod = requireFresh();
     const state = JSON.parse(fs.readFileSync(MOCK_HEALTHY, 'utf8'));
@@ -185,6 +216,25 @@ describe('renderZone with specific zones', () => {
     state.context = { trigger: 'command', event: null, zone: 'caps' };
     const output = mod.renderZone(state);
     expect(typeof output).toBe('string');
+  });
+
+  it('routes zone aliases through the catalog', () => {
+    const mod = requireFresh();
+    const state = JSON.parse(fs.readFileSync(MOCK_HEALTHY, 'utf8'));
+    const canonical = { ...state, context: { trigger: 'command', event: null, zone: 'gitStatus' } };
+    const alias = { ...state, context: { trigger: 'command', event: null, zone: 'git-status' } };
+
+    expect(stripAnsi(mod.renderZone(alias))).toBe(stripAnsi(mod.renderZone(canonical)));
+    expect(mod.getZoneEntry('git').key).toBe('gitStatus');
+  });
+
+  it('exposes the weasley zone through zone mode', () => {
+    const mod = requireFresh();
+    const state = JSON.parse(fs.readFileSync(MOCK_HEALTHY, 'utf8'));
+    state.context = { trigger: 'command', event: null, zone: 'weasley' };
+    const output = mod.renderZone(state);
+    expect(typeof output).toBe('string');
+    expect(mod.getZoneEntry('weasley').key).toBe('weasley');
   });
 
   it('renders forge zone', () => {

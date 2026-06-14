@@ -156,7 +156,11 @@ function detectState(stdin, prevState) {
 function applyIdleAnimation(result, state, now) {
   if (result.mode !== 'standard' && result.mode !== 'expanded') return;
   if (PRIORITY[state.stateKey] > PRIORITY.idle) return; // don't animate during events
-  if (cc().animate === false) return; // escape hatch: no idle blink/gaze drift when animation is off
+  // Escape hatch: no idle blink/gaze drift when animation is off OR zen is engaged.
+  // zen forces calm — it treats faceMotion false (see hud-engine resolveCompanionFace
+  // gate `cc.faceMotion === true && cc.zen !== true`) and suppresses idle motion here.
+  const _cfg = cc();
+  if (_cfg.animate === false || _cfg.zen === true) return;
 
   // Blink: only during long-idle (5min+). Not a regular idle animation.
   if (state.stateKey === 'long-idle') {
@@ -412,47 +416,80 @@ function advanceBoot(state) {
 
 // Message priority tiers — drive TTL and replacement behavior
 const TIER_TTL = {
-  flash:    8000,    // trivial status chatter — disappears fast
+  flash:    15000,   // trivial status chatter — 15s dwell so it can be read (was 8s, too fast to read — S439)
   signal:   30000,   // meaningful observations — 30s dwell
   critical: 120000,  // important warnings (rate-limit, errors, session-end) — 2min dwell
 };
+
+const TIER_RANK = { flash: 1, signal: 2, critical: 3 };
+
+function minDwellForTier(tier) {
+  const cfg = cc();
+  if (tier === 'critical') return Math.max(0, cfg.minDwellCriticalMs || 0);
+  if (tier === 'signal') return Math.max(0, cfg.minDwellSignalMs || 0);
+  return Math.max(0, cfg.minDwellFlashMs || 0);
+}
 
 /**
  * Signal a companion message to display in the Braille field.
  * Message auto-expires after tier-based TTL unless refreshed.
  *
- * @param {string} text - Message text (truncated to 60 chars)
+ * @param {string} text - Message text (truncated to maxLen, default 60 chars)
  * @param {number|object} [opts] - Legacy number (ttlMs) OR options object:
  *   {string} [tier='flash'] - flash|signal|critical
  *   {number} [ttlMs] - explicit TTL override (ignores tier default)
+ *   {number} [maxLen=60] - max chars before truncation. The Wave 1 update-ack
+ *     notice carries a long control-hint string (~100 chars) that the default
+ *     60-cap would cut mid-word, losing every command — it passes a higher maxLen
+ *     so the full notice renders. Sanitization still runs regardless of maxLen.
  *
  * Replacement policy: higher-tier message cannot be overwritten by lower-tier
- * while still active. Same-tier or higher always wins.
+ * while still active. Same-tier replacement waits for the active message's
+ * min-dwell floor; higher-tier escalation still wins immediately.
  */
 function signalMessage(text, opts) {
   // Backward-compat: if opts is a number, treat as ttlMs with flash tier
   let tier = 'flash';
   let ttlMs;
+  let maxLen = 60;
   if (typeof opts === 'number') {
     ttlMs = opts;
   } else if (opts && typeof opts === 'object') {
     tier = opts.tier || 'flash';
     ttlMs = opts.ttlMs;
+    if (typeof opts.maxLen === 'number' && opts.maxLen > 0) maxLen = Math.min(opts.maxLen, 200);
   }
   if (!TIER_TTL[tier]) tier = 'flash';
   const effectiveTtl = ttlMs || TIER_TTL[tier] || 15000;
 
   const state = loadState();
 
-  // Priority check: reject lower-tier overwrites while a higher-tier message is still fresh
+  // Priority check: reject lower-tier overwrites while a higher-tier message is still fresh.
+  // Same-tier churn waits for the active message's min-dwell floor so visible
+  // text does not repaint faster than the operator can read it.
   if (state.message && state.message.text) {
-    const age = Date.now() - (state.message.at || 0);
+    const now = Date.now();
+    const activeTier = state.message.tier || 'flash';
+    const age = now - (state.message.at || 0);
     const stillFresh = age < (state.message.ttl || 15000);
-    const TIER_RANK = { flash: 1, signal: 2, critical: 3 };
     const incomingRank = TIER_RANK[tier] || 1;
-    const activeRank = TIER_RANK[state.message.tier] || 1;
+    const activeRank = TIER_RANK[activeTier] || 1;
     if (stillFresh && incomingRank < activeRank) {
       // Lower-tier incoming; keep the existing higher-tier message
+      return;
+    }
+    if (stillFresh && incomingRank === activeRank && age < minDwellForTier(activeTier)) {
+      return;
+    }
+  }
+
+  // Global rate limit ("slow the messages down"): suppress non-critical messages
+  // that arrive too soon after the last posted one, so the companion bubble does
+  // not repaint on every tool call. Critical-tier (rate-limit / errors /
+  // session-end) always bypasses. Tunable via companion.messageCooldownS.
+  if (tier !== 'critical' && state.message && state.message.at) {
+    const cooldownMs = Math.max(0, cc().messageCooldownS || 0) * 1000;
+    if (cooldownMs > 0 && (Date.now() - state.message.at) < cooldownMs) {
       return;
     }
   }
@@ -465,7 +502,7 @@ function signalMessage(text, opts) {
     .replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '')  // CSI sequences
     .replace(/\x1b[()].|\x1b\].*?\x07|\x1b\].*?\x1b\\/g, '')  // charset / OSC
     .replace(/[\x00-\x08\x0b-\x1f\x7f]/g, '')  // control chars except \t\n
-    .slice(0, 60);
+    .slice(0, maxLen);
 
   state.message = {
     text: sanitized,

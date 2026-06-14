@@ -12,6 +12,7 @@ const path = require('path');
 // Resolve plugin bin/ via CLAUDE_PLUGIN_ROOT so requires survive PLUGIN_DATA migration.
 // __dirname-relative ../bin/ breaks when hooks are copied to PLUGIN_DATA/hooks/ (no bin/ sibling there).
 const _hudPluginRoot = process.env.CLAUDE_PLUGIN_DATA || process.env.CLAUDE_PLUGIN_ROOT || path.resolve(__dirname, '..');
+const hudEvents = require(path.join(_hudPluginRoot, 'lib', 'hud-events.cjs'));
 let loadHudData, buildD5Output;
 let toolRing, intentDetector, messageComposer, companionState;
 let mergeHarnessStdin = null;
@@ -39,26 +40,18 @@ try { companionState = require(path.join(_hudPluginRoot, 'bin', 'companion-state
 
 // --- Throttle State ---
 const THROTTLE_FILE = path.join(process.cwd(), '_runs', 'os', 'hud-last-reactive.json');
+const ANOMALY_FILE = path.join(path.dirname(THROTTLE_FILE), 'hud-last-anomaly.json');
 const DEFAULT_THROTTLE_MS = 30000;
 // Anomaly re-spam guard: same anomaly type cannot re-fire within this window.
 // Prevents persistent conditions (rate-limit at 80% for 3h) from spamming the
 // statusline every signaling event. (dumb-fuck W2 P1-1).
 const ANOMALY_THROTTLE_MS = 5 * 60 * 1000;  // 5 min per anomaly type
+const GIT_REFRESH_THROTTLE_MS = 10 * 1000;
+const GIT_REFRESH_TOOLS = new Set(['Bash', 'Write', 'Edit', 'MultiEdit', 'Agent', 'Task']);
 
 // Per-event throttle overrides (only events reachable via detectEvent)
-const EVENT_THROTTLE = {
-  'rate-limit-warn': 120000,
-  'error-state': 10000,
-  'context-high': 60000,
-  'commit': 30000,
-  'test-pass': 30000,
-  'test-fail': 30000,
-  'forge-phase': 30000,
-  'badge-earned': 60000,
-  'export': 60000,
-  'zone-change': 30000,
-  'session-end': 0,
-};
+const EVENT_THROTTLE = hudEvents.eventThrottleMap();
+const ANOMALY_SEVERITY_RANK = { critical: 3, signal: 2, flash: 1 };
 
 function shouldThrottle(event, thresholdMs) {
   try {
@@ -98,6 +91,90 @@ function recordRender(eventOrEvents) {
     }
   } catch {
     // Non-critical
+  }
+}
+
+function isUnknownGitState(state) {
+  return !state
+    || (state.branch == null && state.dirty == null && state.uncommittedFiles == null);
+}
+
+function refreshGitState(input, now = Date.now(), smartOrderOverride = null) {
+  const tool = (input && input.tool_name) || '';
+  if (!GIT_REFRESH_TOOLS.has(tool)) return null;
+  try {
+    const smartOrder = smartOrderOverride || require(path.join(_hudPluginRoot, 'lib', 'smart-order.cjs'));
+    if (!smartOrder || typeof smartOrder.readGitState !== 'function') return null;
+    const cached = smartOrder.readGitState({ refresh: false });
+    if (!isUnknownGitState(cached)) {
+      const ts = cached && typeof cached.timestamp === 'string' ? Date.parse(cached.timestamp) : NaN;
+      if (Number.isFinite(ts) && now - ts < GIT_REFRESH_THROTTLE_MS) return null;
+    }
+    return smartOrder.readGitState({ refresh: true }) || null;
+  } catch {
+    return null;
+  }
+}
+
+function _loadCompanionConfig() {
+  try {
+    return require(path.join(_hudPluginRoot, 'bin', 'companion-config.cjs')).loadCompanionConfig();
+  } catch {
+    return {};
+  }
+}
+
+function anomalyRowEnabled() {
+  const cfg = _loadCompanionConfig();
+  return cfg.anomalyRow === true;
+}
+
+function selectTopAnomaly(anomalyResult) {
+  const anomalies = anomalyResult && Array.isArray(anomalyResult.anomalies)
+    ? anomalyResult.anomalies
+    : [];
+  const valid = anomalies.filter((a) => (
+    a && typeof a.type === 'string' && a.type &&
+    typeof a.reason === 'string' && a.reason
+  ));
+  if (valid.length === 0) return null;
+  return [...valid].sort((a, b) => (
+    (ANOMALY_SEVERITY_RANK[b.severity] || 0) - (ANOMALY_SEVERITY_RANK[a.severity] || 0)
+  ))[0];
+}
+
+function writeAtomicJson(filePath, payload) {
+  const content = JSON.stringify(payload);
+  if (writeFileAtomic) {
+    writeFileAtomic(filePath, content);
+    return;
+  }
+  const tmp = `${filePath}.${process.pid}.tmp`;
+  fs.writeFileSync(tmp, content);
+  fs.renameSync(tmp, filePath);
+}
+
+function recordAnomalyResult(anomalyResult, now = Date.now()) {
+  if (!anomalyRowEnabled()) return null;
+  try {
+    const anomaly = selectTopAnomaly(anomalyResult);
+    if (!anomaly) {
+      try { fs.rmSync(ANOMALY_FILE, { force: true }); } catch { /* best-effort clear */ }
+      return null;
+    }
+    const dir = path.dirname(ANOMALY_FILE);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    const payload = {
+      updatedAt: new Date(now).toISOString(),
+      type: anomaly.type,
+      severity: ANOMALY_SEVERITY_RANK[anomaly.severity] ? anomaly.severity : 'signal',
+      reason: anomaly.reason,
+      metrics: (anomaly.metrics && typeof anomaly.metrics === 'object') ? anomaly.metrics : {},
+    };
+    writeAtomicJson(ANOMALY_FILE, payload);
+    return payload;
+  } catch {
+    return null;
   }
 }
 
@@ -238,26 +315,46 @@ function renderReactive(event, state) {
 }
 
 // --- Companion Event Signaling ---
-const COMPANION_EVENT_MAP = {
-  'commit': 'commit', 'test-pass': 'tests-pass', 'test-fail': 'tests-fail',
-  'agent-spawn': 'agent-dispatch', 'agent-complete': 'agent-return',
-  'error-state': 'error', 'rate-limit-warn': 'rate-limited', 'context-high': 'context-warn',
-};
+const COMPANION_EVENT_MAP = hudEvents.companionEventMap();
 const TOOL_ACTIVITY_SET = new Set(['Bash', 'Read', 'Write', 'Edit', 'Grep', 'Glob', 'Agent', 'Task']);
 
+// Wave 1 messages filter. MAJOR events are the consequential ones a user always
+// wants surfaced in the companion bubble. The companion.messages knob gates the
+// TEXT bubble only (signalMessage) — NOT the face/expression (signalEvent), so the
+// error/rate-limited FACE still fires under 'off'; only the text is silenced.
+//   'off'   → suppress ALL companion messages
+//   'major' → emit messages only for MAJOR events (zen forces this too)
+//   'all'   → unchanged (default)
+const MAJOR_EVENTS = hudEvents.majorEventSet();
+
+// Resolve the effective messages level, collapsing zen → 'major'. Fail-soft to 'all'.
+function _messagesLevel() {
+  const cc = _loadCompanionConfig();
+  if (cc.zen === true) return 'major';
+  const lvl = cc.messages;
+  return (lvl === 'off' || lvl === 'major' || lvl === 'all') ? lvl : 'all';
+}
+
+// True when a companion TEXT message for `event` should be posted under the current level.
+function _messageAllowed(event) {
+  const lvl = _messagesLevel();
+  if (lvl === 'off') return false;
+  if (lvl === 'major') return MAJOR_EVENTS.has(event);
+  return true; // 'all'
+}
+
+// Anomaly messages are not named events. Under 'off' suppress all; under 'major'
+// allow only when the anomaly rides a MAJOR named event (eventName); bare-tool-
+// activity anomalies (eventName === null) are non-MAJOR and surface only under 'all'.
+function _anomalyMessageAllowed(eventName) {
+  const lvl = _messagesLevel();
+  if (lvl === 'off') return false;
+  if (lvl === 'major') return eventName != null && MAJOR_EVENTS.has(eventName);
+  return true; // 'all'
+}
+
 // Map events to message priority tiers. Critical = survives palette, signal = 30s dwell, flash = short.
-const EVENT_TIER = {
-  'rate-limit-warn': 'critical',
-  'error-state':     'critical',
-  'session-end':     'critical',
-  'test-fail':       'signal',
-  'forge-phase':     'signal',
-  'context-high':    'signal',
-  'commit':          'signal',
-  'test-pass':       'flash',
-  'badge-earned':    'flash',
-  'export':          'flash',
-};
+const EVENT_TIER = hudEvents.eventTierMap();
 
 // Build composer context from hook input — per-event extras the composer templates use
 function buildComposerContext(input, event, state) {
@@ -302,7 +399,7 @@ function signalCompanion(event, input, state, extraThrottleKeys) {
         try {
           const ctx = buildComposerContext(input, event, state);
           const msg = messageComposer.composeMessage(event, state, ctx);
-          if (msg) {
+          if (msg && _messageAllowed(event)) {
             const tier = EVENT_TIER[event] || 'flash';
             companionState.signalMessage(msg, { tier });
           }
@@ -354,6 +451,10 @@ function signalCompanion(event, input, state, extraThrottleKeys) {
  * conditions. extraThrottleKeys receives any keys emitted for batched recordRender.
  */
 function _emitAnomalyIfWorthy(anomalyResult, eventName, cs, extraThrottleKeys) {
+  if (anomalyRowEnabled()) {
+    recordAnomalyResult(anomalyResult);
+    return;
+  }
   if (!anomalyResult || !Array.isArray(anomalyResult.anomalies) || !anomalyResult.anomalies.length) return;
   const eventTier = eventName ? (EVENT_TIER[eventName] || 'flash') : null;
   const crit = anomalyResult.anomalies.find(a => a.severity === 'critical');
@@ -368,6 +469,7 @@ function _emitAnomalyIfWorthy(anomalyResult, eventName, cs, extraThrottleKeys) {
     anomaly = anomalyResult.anomalies.find(a => a.severity === 'signal');
   }
   if (anomaly && anomaly.reason && anomaly.type &&
+      _anomalyMessageAllowed(eventName) &&
       !shouldThrottle('anomaly:' + anomaly.type, ANOMALY_THROTTLE_MS)) {
     const anomalyTier = anomaly.severity === 'critical' ? 'critical' : 'signal';
     cs.signalMessage(anomaly.reason, { tier: anomalyTier });
@@ -398,6 +500,8 @@ async function main() {
   if (toolRing) {
     try { toolRing.appendTool(input); } catch { /* best-effort */ }
   }
+
+  refreshGitState(input);
 
   const event = detectEvent(input);
   if (!event) {
@@ -434,4 +538,22 @@ if (require.main === module) {
 }
 
 // Exported for testing — does not affect hook execution
-module.exports = { detectEvent, shouldThrottle, recordRender, signalCompanion, _emitAnomalyIfWorthy, COMPANION_EVENT_MAP, EVENT_THROTTLE };
+module.exports = {
+  detectEvent,
+  shouldThrottle,
+  recordRender,
+  signalCompanion,
+  _emitAnomalyIfWorthy,
+  recordAnomalyResult,
+  selectTopAnomaly,
+  anomalyRowEnabled,
+  COMPANION_EVENT_MAP,
+  EVENT_THROTTLE,
+  GIT_REFRESH_THROTTLE_MS,
+  GIT_REFRESH_TOOLS,
+  refreshGitState,
+  MAJOR_EVENTS,
+  _messagesLevel,
+  _messageAllowed,
+  _anomalyMessageAllowed,
+};

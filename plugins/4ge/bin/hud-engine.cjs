@@ -9,21 +9,28 @@ const { renderHealthZone, ZONE_META: HEALTH_META, computeHealthScore } = require
 const { renderColoredOrb } = require('./hud-braille-orb.cjs');
 const path = require('node:path');
 const { isActive: isSessionActive, getFreezeTime } = require('../lib/hud-active-flag.cjs');
-const { renderContextZone, ZONE_META: CONTEXT_META } = require('./hud-zone-context.cjs');
+const { renderContextZone, renderContextCompact, ZONE_META: CONTEXT_META } = require('./hud-zone-context.cjs');
 const { renderForgeZone, ZONE_META: FORGE_META } = require('./hud-zone-forge.cjs');
-const { renderCapsZone } = require('./hud-zone-caps.cjs');
-const { renderBadgesZone } = require('./hud-zone-badges.cjs');
-const { renderSessionZone } = require('./hud-zone-session.cjs');
-const { renderCommandCards } = require('./hud-zone-cards.cjs');
-const { renderRateLimitZone, RATE_META, rateVisible } = require('./hud-zone-rate-limit.cjs');
-const { renderActivityZone } = require('./hud-zone-activity.cjs');
-const { renderForgeProgressZone } = require('./hud-zone-forge-progress.cjs');
+const { renderCapsZone, ZONE_META: CAPS_META } = require('./hud-zone-caps.cjs');
+const { renderBadgesZone, ZONE_META: BADGES_META } = require('./hud-zone-badges.cjs');
+const { renderSessionZone, ZONE_META: SESSION_META } = require('./hud-zone-session.cjs');
+const { renderCommandCards, ZONE_META: CARDS_META } = require('./hud-zone-cards.cjs');
+const { renderRateLimitZone, renderRateLimitCompact, RATE_META, rateVisible } = require('./hud-zone-rate-limit.cjs');
+const { renderActivityZone, ZONE_META: ACTIVITY_META, activityVisible } = require('./hud-zone-activity.cjs');
+const { renderForgeProgressZone, ZONE_META: FORGE_PROGRESS_META, forgeProgressVisible } = require('./hud-zone-forge-progress.cjs');
 const { renderGitStatusZone, ZONE_META: GIT_STATUS_META, gitStatusVisible } = require('./hud-zone-git-status.cjs');
 const { renderMoonphaseZone, ZONE_META: MOONPHASE_META, moonphaseVisible } = require('./hud-zone-moonphase.cjs');
 const { renderWeasleyZone, ZONE_META: WEASLEY_META, weasleyVisible } = require('./hud-zone-weasley.cjs');
 const { loadHudData, mergeHarnessStdin } = require('./hud-data-loader.cjs');
 const { renderSubstrateZone } = require('./hud-zone-substrate.cjs');
 const { composeScene } = require('./scene-compositor.cjs');
+const {
+  statuslineZoneMap,
+  statuslineRoleMap,
+  zoneBoostMap,
+  compactCompanionHintMap,
+  compactMessageMap,
+} = require('../lib/hud-events.cjs');
 
 function firstNonEmptyPath(...values) {
   for (const value of values) {
@@ -39,6 +46,170 @@ function resolveProjectRoot({
   fallbackRoot = process.cwd(),
 } = {}) {
   return firstNonEmptyPath(envProjectDir, workspaceProjectDir, stdinCwd, fallbackRoot, process.cwd());
+}
+
+const ZONE_CATALOG = [
+  { key: 'face', meta: FACE_META, render: renderFaceZone },
+  { key: 'context', meta: CONTEXT_META, render: renderContextZone, compact: renderContextCompact },
+  {
+    key: 'health',
+    meta: HEALTH_META,
+    render: renderHealthZone,
+    renderZone: (state, palette) => renderHealthZone(state, palette, { detailed: true }),
+  },
+  { key: 'caps', aliases: ['capabilities'], meta: CAPS_META, render: renderCapsZone, composite: false },
+  { key: 'forge', meta: FORGE_META, render: renderForgeZone, visible: (state) => !!(state.forge && state.forge.active) },
+  { key: 'badges', meta: BADGES_META, render: renderBadgesZone, composite: false },
+  {
+    key: 'cards',
+    meta: CARDS_META,
+    render: (state) => renderCommandCards(state, (state.terminal && state.terminal.cols) || 80),
+    composite: false,
+  },
+  { key: 'session', meta: SESSION_META, render: renderSessionZone, composite: false },
+  { key: 'rate', meta: RATE_META, render: renderRateLimitZone, compact: renderRateLimitCompact, visible: rateVisible },
+  { key: 'activity', meta: ACTIVITY_META, render: renderActivityZone, visible: activityVisible, composite: false },
+  {
+    key: 'forgeProgress',
+    aliases: ['forge-progress'],
+    meta: FORGE_PROGRESS_META,
+    render: renderForgeProgressZone,
+    visible: forgeProgressVisible,
+    composite: false,
+  },
+  { key: 'gitStatus', aliases: ['git-status', 'git'], meta: GIT_STATUS_META, render: renderGitStatusZone, visible: gitStatusVisible },
+  { key: 'moonphase', meta: MOONPHASE_META, render: renderMoonphaseZone, visible: moonphaseVisible },
+  { key: 'weasley', meta: WEASLEY_META, render: renderWeasleyZone, visible: weasleyVisible },
+];
+
+const REACTIVE_STATUSLINE_ZONES = statuslineZoneMap();
+const REACTIVE_STATUSLINE_ROLE = statuslineRoleMap();
+const REACTIVE_ZONE_BOOST = zoneBoostMap();
+const COMPACT_EVENT_MESSAGES = compactMessageMap();
+
+function getZoneEntry(zoneName) {
+  const wanted = zoneName || 'face';
+  return ZONE_CATALOG.find((entry) => (
+    entry.key === wanted ||
+    (Array.isArray(entry.aliases) && entry.aliases.includes(wanted))
+  )) || ZONE_CATALOG[0];
+}
+
+function getCompositeZoneEntries(state) {
+  return ZONE_CATALOG.filter((entry) => (
+    entry.composite !== false && (!entry.visible || entry.visible(state))
+  ));
+}
+
+function renderCatalogEntry(entry, state, palette, options = {}) {
+  if (options.zoneMode && typeof entry.renderZone === 'function') {
+    return entry.renderZone(state, palette);
+  }
+  return entry.render(state, palette);
+}
+
+function getReactiveStatuslineZoneEntries(state) {
+  const reactive = state && state.reactive;
+  if (!reactive || !reactive.event) return [];
+  const zoneKeys = REACTIVE_STATUSLINE_ZONES[reactive.event] || ['context'];
+  const seen = new Set();
+  const entries = [];
+  for (const zoneKey of zoneKeys) {
+    const entry = getZoneEntry(zoneKey);
+    if (!entry || seen.has(entry.key)) continue;
+    seen.add(entry.key);
+    if (entry.visible && !entry.visible(state)) continue;
+    entries.push(entry);
+  }
+  return entries;
+}
+
+function formatReactiveAge(ageMs) {
+  const age = Math.max(0, Number(ageMs) || 0);
+  if (age < 1000) return 'now';
+  const seconds = Math.floor(age / 1000);
+  if (seconds < 60) return `${seconds}s`;
+  return `${Math.floor(seconds / 60)}m`;
+}
+
+function renderReactiveStatuslineRows(state, palette, maxRows) {
+  if (!state || !state.reactive || !state.reactive.event || maxRows <= 0) return [];
+  const event = state.reactive.event;
+  const role = REACTIVE_STATUSLINE_ROLE[event] || 'accent';
+  const rows = [
+    '  ' +
+      colorize(palette, 'muted', 'reactive ') +
+      colorize(palette, role, event) +
+      colorize(palette, 'muted', ` ${formatReactiveAge(state.reactive.ageMs)} ago`),
+  ];
+
+  for (const entry of getReactiveStatuslineZoneEntries(state)) {
+    if (rows.length >= maxRows) break;
+    let lines = [];
+    try {
+      lines = renderCatalogEntry(entry, state, palette, { zoneMode: true });
+    } catch {
+      lines = [];
+    }
+    for (const line of lines) {
+      if (rows.length >= maxRows) break;
+      if (!stripAnsi(line).trim()) continue;
+      rows.push(line);
+    }
+  }
+
+  return rows.slice(0, maxRows);
+}
+
+function clipStatusText(value, max = 96) {
+  if (typeof value !== 'string') return '';
+  const text = value.replace(/\s+/g, ' ').trim();
+  if (text.length <= max) return text;
+  return text.slice(0, max - 3).trimEnd() + '...';
+}
+
+function renderAnomalyStatuslineRows(state, palette, maxRows) {
+  if (maxRows <= 0) return [];
+  const anomaly = state && state.anomaly;
+  if (!anomaly || !anomaly.type || !anomaly.reason) return [];
+  const severity = anomaly.severity === 'critical' || anomaly.severity === 'flash'
+    ? anomaly.severity
+    : 'signal';
+  const role = severity === 'critical' ? 'error' : severity === 'flash' ? 'muted' : 'warn';
+  const type = clipStatusText(anomaly.type, 48);
+  const reason = clipStatusText(anomaly.reason, 96);
+  return [
+    '  ' +
+      colorize(palette, 'muted', 'anomaly ') +
+      colorize(palette, role, severity) +
+      colorize(palette, 'muted', ' ') +
+      colorize(palette, role, type) +
+      colorize(palette, 'muted', ': ') +
+      colorize(palette, 'text', reason),
+  ].slice(0, maxRows);
+}
+
+function renderCompactStatuslineRows(state, palette, maxRows) {
+  if (maxRows <= 0) return [];
+  const rows = [];
+  for (const entry of ZONE_CATALOG) {
+    if (rows.length >= maxRows) break;
+    if (typeof entry.compact !== 'function') continue;
+    if (entry.visible && !entry.visible(state)) continue;
+    let lines = [];
+    try {
+      lines = entry.compact(state, palette);
+    } catch {
+      lines = [];
+    }
+    if (!Array.isArray(lines)) continue;
+    for (const line of lines) {
+      if (rows.length >= maxRows) break;
+      if (typeof line !== 'string' || !stripAnsi(line).trim()) continue;
+      rows.push(line);
+    }
+  }
+  return rows;
 }
 
 // Breathing block: single character that cycles height based on health + time.
@@ -65,45 +236,23 @@ function renderFull(rawState) {
   const cols = state.terminal.cols;
   const rows = state.terminal.rows;
 
-  // Define all zones — allocator sorts by priority, drops low-priority when space is tight
+  // Define active composite zones — allocator sorts by priority, drops low-priority when space is tight
   // S396 companion-led restraint: the full HUD is a clean glance — companion eyes +
   // a tight data ledger, not a 30-row carnival.
   // DROPPED from the COMPOSITE (still reachable on demand via `/4ge os <zone>`):
   //   caps grid/histogram, badge grid, command-card sprites (the banned yellow
   //   block-face), session history, and the activity zone (which leaked the render
   //   command into the boot HUD).
-  // KEPT but self-hiding (visibility-gated ALERTS — render only when relevant, so
-  //   they cost nothing in the normal glance): rate-limit breach + live forge progress.
-  const zoneRenderers = [
-    { meta: FACE_META,    key: 'face',    render: renderFaceZone },
-    { meta: CONTEXT_META, key: 'context', render: renderContextZone },
-    { meta: HEALTH_META,  key: 'health',  render: renderHealthZone },
-    { meta: FORGE_META,   key: 'forge',   render: renderForgeZone, visible: (s) => !!(s.forge && s.forge.active) },
-    { meta: GIT_STATUS_META, key: 'gitStatus', render: renderGitStatusZone, visible: gitStatusVisible },
-    { meta: RATE_META, key: 'rate', render: renderRateLimitZone, visible: rateVisible },
-    // forgeProgress zone REMOVED from composite (S426): was orphaned consumer with no writer;
-    // never rendered (forgeProgressVisible always false). Still callable on demand via
-    // `renderByMode` zone dispatch ('forge-progress') — import kept intact above.
-    { meta: MOONPHASE_META, key: 'moonphase', render: renderMoonphaseZone, visible: moonphaseVisible },
-    { meta: WEASLEY_META, key: 'weasley', render: renderWeasleyZone, visible: weasleyVisible },
-  ];
-
-  // W3: Filter zones by visibility predicate before allocation.
-  // Zones without a visible() function are always visible (backward compat).
-  const activeRenderers = zoneRenderers.filter(z => !z.visible || z.visible(state));
+  // KEPT but self-hiding (visibility-gated alerts/status): forge, git, rate,
+  // moonphase, and weasley. Non-composite zones stay callable through renderZone.
+  const activeRenderers = getCompositeZoneEntries(state);
   const zones = activeRenderers.map(z => ({ ...z.meta, key: z.key }));
 
   // Context-aware zone priority boosting.
   // Adjust priority values based on the current event without mutating ZONE_META constants.
   const event = (state.context && state.context.event) || '';
   if (event) {
-    const boostMap = {
-      'forge-phase': { forge: 9, cards: 8 },
-      'badge-earned': { badges: 9, cards: 7 },
-      'test-pass':   { session: 8, cards: 6 },
-      'test-fail':   { session: 8, cards: 8 },
-    };
-    const boost = boostMap[event];
+    const boost = REACTIVE_ZONE_BOOST[event];
     if (boost) {
       for (const zone of zones) {
         if (boost[zone.key] !== undefined) {
@@ -226,14 +375,7 @@ const COMPACT_FACE_ALIASES = {
   blinking: 'blink',
 };
 
-const COMPACT_COMPANION_EVENT_HINTS = {
-  commit: 'commit',
-  'test-pass': 'tests-pass',
-  'test-fail': 'tests-fail',
-  'error-state': 'error',
-  'rate-limit-warn': 'rate-limited',
-  'context-high': 'context-warn',
-};
+const COMPACT_COMPANION_EVENT_HINTS = compactCompanionHintMap();
 
 function compactFaceForExpression(expression) {
   const key = COMPACT_FACES[expression]
@@ -291,29 +433,69 @@ function applyGazeToGlyphs(expression, leftGlyph, rightGlyph, gaze) {
   ];
 }
 
-function resolveCompanionFace(rawState, palette, _modelFace, options = {}) {
+function resolveCompanionFace(rawState, palette, modelFace, options = {}) {
   try {
     const companion = require('./companion-state.cjs');
     const stdinJson = rawState || {};
+
+    // Read companion config once: animate (master freeze) + faceMotion (eye-swap).
+    let animate = true;
+    let faceMotion = false;
+    try {
+      const cc = require('./companion-config.cjs').loadCompanionConfig();
+      animate = cc.animate !== false;
+      faceMotion = (cc.faceMotion === true && cc.zen !== true);
+    } catch { animate = true; faceMotion = false; }
+
+    // animate gate (S441 mobile freeze): when animate is OFF the face must be
+    // byte-identical across renders. resolveExpression() evolves on wall-clock
+    // dwell/decay timers — it oscillates between expressions (e.g. idle↔context-warn)
+    // on identical input and applies gaze drift. That was the residual mobile
+    // scroll-bounce source after the orb color-wave + breath/shimmer were frozen.
+    // Render a STATIC model-identity face and skip the time-evolving state machine.
+    if (!animate) {
+      const face = (modelFace && COMPACT_FACES[modelFace.expr]) || COMPACT_FACES.neutral;
+      const glyphs = face.match(/^\[(.+) (.+)\]$/);
+      if (glyphs) return renderGradientFace(glyphs[1], glyphs[2]);
+      return colorize(palette, (modelFace && modelFace.color) || 'accent', face);
+    }
+
     const resolved = companion.resolveExpression(stdinJson);
 
-    // When actively thinking (tool-running), eyes swap on each tool call — not a clock.
-    if (resolved.expression === 'thinking') {
-      const tc = (resolved.toolCount || resolved.lastToolAt || 0);
-      const even = tc % 2 === 0;
-      const leftGlyph = even ? '\u2585' : '\u2583';   // ▅ or ▃
-      const rightGlyph = even ? '\u2583' : '\u2585';   // ▃ or ▅
-      return renderGradientFace(leftGlyph, rightGlyph);
-    }
+    // faceMotion gate (Wave 1): the per-tool eye SWAP for thinking/exhausted is
+    // the e4d905d2 regression. It is OFF by default — calm steady eyes. The swap
+    // only runs when the operator opts in (companion.faceMotion === true) AND zen
+    // is not engaged. When OFF we restore the PRE-e4d905d2 STEADY behavior:
+    //   thinking  → a stable model-specific face (or COMPACT_FACES.thinking)
+    //   exhausted → steady base glyph (falls through to compactFaceForExpression)
 
-    // Exhausted: eyes drift on each action. Too tired to hold a face.
-    if (resolved.expression === 'exhausted') {
-      const tc = (resolved.toolCount || resolved.lastToolAt || 0);
-      const even = tc % 2 === 0;
-      const leftGlyph = even ? '\u2583' : '\u2582';   // ▃ or ▂
-      const rightGlyph = even ? '\u2582' : '\u2583';   // ▂ or ▃
-      return renderGradientFace(leftGlyph, rightGlyph);
+    if (faceMotion) {
+      // When actively thinking (tool-running), eyes swap on each tool call — not a clock.
+      if (resolved.expression === 'thinking') {
+        const tc = (resolved.toolCount || resolved.lastToolAt || 0);
+        const even = tc % 2 === 0;
+        const leftGlyph = even ? '\u2585' : '\u2583';   // ▅ or ▃
+        const rightGlyph = even ? '\u2583' : '\u2585';   // ▃ or ▅
+        return renderGradientFace(leftGlyph, rightGlyph);
+      }
+
+      // Exhausted: eyes drift on each action. Too tired to hold a face.
+      if (resolved.expression === 'exhausted') {
+        const tc = (resolved.toolCount || resolved.lastToolAt || 0);
+        const even = tc % 2 === 0;
+        const leftGlyph = even ? '\u2583' : '\u2582';   // ▃ or ▂
+        const rightGlyph = even ? '\u2582' : '\u2583';   // ▂ or ▃
+        return renderGradientFace(leftGlyph, rightGlyph);
+      }
+    } else if (resolved.expression === 'thinking') {
+      // STEADY thinking face (pre-e4d905d2): stable model-specific eyes, no swap.
+      const face = (modelFace && COMPACT_FACES[modelFace.expr]) || COMPACT_FACES.thinking;
+      const glyphs = face.match(/^\[(.+) (.+)\]$/);
+      if (glyphs) return renderGradientFace(glyphs[1], glyphs[2]);
+      return colorize(palette, (modelFace && modelFace.color) || 'accent', face);
     }
+    // exhausted (faceMotion off) intentionally falls through to the generic
+    // compactFaceForExpression path below → steady COMPACT_FACES.exhausted.
 
     const face = compactFaceForExpression(resolved.expression);
     const glyphs = face.match(/^\[(.+) (.+)\]$/);
@@ -442,28 +624,8 @@ function renderZone(rawState) {
   const state = buildCanonicalState(rawState);
   const zone = (state.context && state.context.zone) || 'face';
   const p = state.palette;
-
-  const zoneMap = {
-    face:     () => renderFaceZone(state, p),
-    context:  () => renderContextZone(state, p),
-    health:   () => renderHealthZone(state, p, { detailed: true }),
-    caps:     () => renderCapsZone(state, p),
-    capabilities: () => renderCapsZone(state, p),
-    forge:    () => renderForgeZone(state, p),
-    badges:   () => renderBadgesZone(state, p),
-    cards:    () => renderCommandCards(state, (state.terminal && state.terminal.cols) || 80),
-    session:  () => renderSessionZone(state, p),
-    activity: () => renderActivityZone(state, p),
-    forgeProgress: () => renderForgeProgressZone(state, p),
-    'forge-progress': () => renderForgeProgressZone(state, p),
-    gitStatus: () => renderGitStatusZone(state, p),
-    'git-status': () => renderGitStatusZone(state, p),
-    git: () => renderGitStatusZone(state, p),
-    moonphase: () => renderMoonphaseZone(state, p),
-  };
-
-  const renderer = zoneMap[zone] || zoneMap.face;
-  return renderer().join('\n');
+  const entry = getZoneEntry(zone);
+  return renderCatalogEntry(entry, state, p, { zoneMode: true }).join('\n');
 }
 
 // --- Compact Mode Renderer ---
@@ -491,16 +653,7 @@ function renderCompact(rawState) {
   const hColor = score >= 75 ? 'ok' : score >= 35 ? 'warn' : 'error';
   const bar = colorize(p, hColor, '\u2550'.repeat(filled)) + colorize(p, 'muted', '\u2500'.repeat(barLen - filled));
 
-  // Event-specific message
-  const eventMsg = {
-    'commit': 'committed',
-    'test-pass': 'all tests green',
-    'test-fail': 'tests failed',
-    'forge-phase': 'forge phase transition',
-    'zone-change': 'zone updated',
-    'badge-earned': 'badge earned',
-  };
-  const msg = eventMsg[event] || '';
+  const msg = COMPACT_EVENT_MESSAGES[event] || '';
 
   // Agent-type compact card emphasis (W5 T5.2)
   // Named-agent map drives color; substring fallback handles unknown agent types.
@@ -610,7 +763,11 @@ function renderStatusLine(rawState, maxRows) {
   const animate = require('./companion-config.cjs').loadCompanionConfig(engineCwd).animate;
   // animate OFF → force the idle/frozen branch regardless of session activity
   const outerActive = animate ? isSessionActive(engineCwd) : false;
-  const freezeTimeMs = outerActive ? null : getFreezeTime(engineCwd);
+  // animate OFF (mobile escape hatch) → force a null freeze time so the orb uses
+  // its REST pose (breathScale=min, shimmer disabled) and is fully byte-stable.
+  // getFreezeTime() can return a moving value while the session is live, which
+  // re-introduced breath/shimmer churn under animate:false (S441 mobile-bounce fix).
+  const freezeTimeMs = !animate ? null : (outerActive ? null : getFreezeTime(engineCwd));
   const orbLines = renderColoredOrb(score, { companionState, outerActive, freezeTimeMs });
 
   // Shared data
@@ -809,6 +966,21 @@ function renderStatusLine(rawState, maxRows) {
     ];
   }
 
+  const anomalyRows = renderAnomalyStatuslineRows(state, palette, Math.max(0, ceiling - rows.length));
+  if (anomalyRows.length > 0) {
+    rows = rows.concat(anomalyRows);
+  }
+
+  const reactiveRows = renderReactiveStatuslineRows(state, palette, Math.max(0, ceiling - rows.length));
+  if (reactiveRows.length > 0) {
+    rows = rows.concat(reactiveRows);
+  }
+
+  const compactRows = renderCompactStatuslineRows(state, palette, Math.max(0, ceiling - rows.length));
+  if (compactRows.length > 0) {
+    rows = rows.concat(compactRows);
+  }
+
   // --- Boot-pulse: expanded layout within the first 12 s after OS boot ---
   // Stateless: reads boot-status.json; no flag/state file written.
   // Failsafe: missing / unreadable / malformed / old timestamp → skip (compact normal).
@@ -980,7 +1152,15 @@ module.exports = {
   renderSubstrate,
   renderByMode,
   resolveProjectRoot,
+  ZONE_CATALOG,
+  getZoneEntry,
+  getCompositeZoneEntries,
+  getReactiveStatuslineZoneEntries,
+  renderReactiveStatuslineRows,
+  renderAnomalyStatuslineRows,
+  renderCompactStatuslineRows,
   MODEL_FACE,
   resolveModelFace,
+  resolveCompanionFace,
   COMPACT_FACES,
 };

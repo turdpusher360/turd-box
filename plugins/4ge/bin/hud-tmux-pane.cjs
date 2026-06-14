@@ -15,6 +15,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const { loadSurfaceState, renderSurface } = require('./hud-surface-host.cjs');
 
 // --- Resolve project root (walk up from bin/) ---
 const BIN_DIR = __dirname;
@@ -50,21 +51,7 @@ const HIDE_CURSOR = `${ESC}[?25l`;
 const SHOW_CURSOR = `${ESC}[?25h`;
 
 // --- Load HUD modules (resilient — prototype may run before all modules exist) ---
-let renderFull, loadHudData, resolvePalette, colorize, getTheme, setTheme;
-
-try {
-  const engine = require(path.join(BIN_DIR, 'hud-engine.cjs'));
-  renderFull = engine.renderFull;
-} catch {
-  renderFull = null;
-}
-
-try {
-  const loader = require(path.join(BIN_DIR, 'hud-data-loader.cjs'));
-  loadHudData = loader.loadHudData;
-} catch {
-  loadHudData = null;
-}
+let resolvePalette, colorize, getTheme, setTheme;
 
 try {
   const palette = require(path.join(BIN_DIR, 'hud-palette.cjs'));
@@ -139,32 +126,38 @@ function seedDemoState() {
 }
 
 // --- Build state from disk ---
-function buildState() {
-  if (loadHudData) {
-    const raw = loadHudData({
-      stateDir,
-      cwd: PROJECT_ROOT,
+function buildState(options = {}) {
+  const targetStateDir = options.stateDir || stateDir;
+  const targetProjectRoot = options.projectRoot || PROJECT_ROOT;
+  const terminal = options.terminal || {
+    cols: process.stdout.columns || 80,
+    rows: process.stdout.rows || 24,
+  };
+
+  try {
+    return loadSurfaceState({
+      projectRoot: targetProjectRoot,
+      stateDir: targetStateDir,
+      terminal,
+      context: { trigger: 'tmux-pane', event: null, zone: null },
       runExpensiveProbes: false,
     });
-    // Override terminal dimensions to match THIS pane
-    raw.terminal = {
-      cols: process.stdout.columns || 80,
-      rows: process.stdout.rows || 24,
-    };
-    return raw;
+  } catch {
+    // Fall through to manual JSON fallback.
   }
 
   // Fallback: manual JSON reads
   const readJson = (name) => {
     try {
-      return JSON.parse(fs.readFileSync(path.join(stateDir, name), 'utf8'));
+      return JSON.parse(fs.readFileSync(path.join(targetStateDir, name), 'utf8'));
     } catch {
       return {};
     }
   };
 
   return {
-    terminal: { cols: process.stdout.columns || 80, rows: process.stdout.rows || 24 },
+    projectRoot: targetProjectRoot,
+    terminal,
     session: { id: 'tmux', model: 'unknown', contextPct: 0, uptime: 0, toolCount: 0, rateLimits: 'N/A', contextLabel: '' },
     os: { overallHealth: 'unknown', bootTime: 0, capabilities: {} },
     forge: { active: false, phase: null, teammates: [], scope: null },
@@ -198,17 +191,17 @@ function renderMenu(palette) {
 }
 
 // --- Render the full scene ---
-function renderScene() {
-  const state = buildState();
-  const palette = resolvePalette({ name: themeName || getTheme() });
+function renderScene(options = {}) {
+  const state = buildState(options);
+  const palette = resolvePalette({ name: options.themeName || themeName || getTheme() });
   const cols = state.terminal.cols;
 
   let output = '';
 
   // Main HUD content
-  if (renderFull) {
-    output = renderFull(state);
-  } else {
+  try {
+    output = renderSurface({ rawState: state, mode: 'full' }).output;
+  } catch {
     // Fallback: minimal rendering
     const health = state.health || {};
     output += colorize(palette, 'accent', '  Agentic OS') + colorize(palette, 'muted', ' \u00B7 tmux pane') + '\n';
@@ -271,11 +264,6 @@ function startWatching() {
   }
 }
 
-// --- Handle terminal resize ---
-process.stdout.on('resize', () => {
-  scheduleRedraw();
-});
-
 // --- Handle keyboard input ---
 function setupKeyboard() {
   if (!process.stdin.isTTY) return;
@@ -328,9 +316,6 @@ function shutdown() {
   process.exit(0);
 }
 
-process.on('SIGINT', shutdown);
-process.on('SIGTERM', shutdown);
-
 // --- Startup banner ---
 function printStartupBanner() {
   const palette = resolvePalette({ name: themeName || getTheme() });
@@ -347,6 +332,12 @@ function printStartupBanner() {
 
 // --- Main ---
 function main() {
+  process.stdout.on('resize', () => {
+    scheduleRedraw();
+  });
+  process.on('SIGINT', shutdown);
+  process.on('SIGTERM', shutdown);
+
   ensureStateDir();
   seedDemoState();
   printStartupBanner();
@@ -359,4 +350,15 @@ function main() {
   }, 400);
 }
 
-main();
+if (require.main === module) {
+  main();
+}
+
+module.exports = {
+  buildState,
+  renderScene,
+  renderMenu,
+  ensureStateDir,
+  seedDemoState,
+  usesSurfaceHost: true,
+};
