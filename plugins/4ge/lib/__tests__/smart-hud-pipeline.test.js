@@ -17,10 +17,17 @@
  *   These are exercised in the dedicated sentinel suite below.
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+
+// Isolate companion-state writes BEFORE any require loads companion-state.cjs:
+// it resolves STATE_PATH from COMPANION_STATE_PATH || a __dirname-relative REAL
+// _runs/os/.companion-state.json (a cwd mock does NOT cover that path). Without
+// this, signalCompanion's companion-state writes hit the live HUD state file.
+// (S441 test-leak sweep.)
+process.env.COMPANION_STATE_PATH = path.join(os.tmpdir(), 'smart-hud-pipe-companion-state.json');
 
 // CJS modules under test — use require() as the execution-conventions rule requires
 const { appendTool, readRing, clearRing, normalizeEntry } = require('../tool-ring.cjs');
@@ -28,7 +35,13 @@ const { detectIntent }    = require('../intent-detector.cjs');
 const { detectArc }       = require('../session-arc.cjs');
 const { detectAnomalies, SEVERITY_CRITICAL, SEVERITY_SIGNAL, SEVERITY_FLASH } = require('../anomaly-flagger.cjs');
 const { composeMessage }  = require('../message-composer.cjs');
-const { detectEvent, signalCompanion, COMPANION_EVENT_MAP, EVENT_THROTTLE } = require('../../hooks/hud-reactive.cjs');
+// hud-reactive resolves THROTTLE_FILE / ANOMALY_FILE from process.cwd() at require
+// time. These are (re)bound in beforeEach AFTER cwd is mocked to stateDir, so the
+// rate-limit fixture's recordAnomalyResult writes into the tmpdir — NOT the real
+// _runs/os/hud-last-anomaly.json. (S441: that leak wrote a frozen "5h 80% used,
+// resets in 3.0h" fixture onto the live HUD on every suite run.) Matches the
+// cwd-before-require isolation in hud-reactive.test.js.
+let detectEvent, signalCompanion, COMPANION_EVENT_MAP, EVENT_THROTTLE;
 
 // ── Test harness setup ────────────────────────────────────────────────────────
 
@@ -37,6 +50,13 @@ let prevRateLimitEnv;
 
 beforeEach(() => {
   stateDir = fs.mkdtempSync(path.join(os.tmpdir(), 'smar-hud-pipe-'));
+  // Patch cwd BEFORE (re)requiring hud-reactive so its THROTTLE_FILE / ANOMALY_FILE
+  // consts resolve into stateDir — isolates recordAnomalyResult writes from the real
+  // _runs/os/ (the S441 live-HUD leak). Re-require fresh so the const re-binds.
+  vi.spyOn(process, 'cwd').mockReturnValue(stateDir);
+  const reactivePath = path.resolve(__dirname, '../../hooks/hud-reactive.cjs');
+  delete require.cache[reactivePath];
+  ({ detectEvent, signalCompanion, COMPANION_EVENT_MAP, EVENT_THROTTLE } = require(reactivePath));
   // Enable rate-limit anomaly detection for all tests.
   // Production default is off (ANOMALY_RATE_LIMIT !== '1') to suppress stale data popups.
   // Tests need it on to exercise the rate-limit-approaching code path.
@@ -45,6 +65,10 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.restoreAllMocks();
+  // Re-require hud-reactive under the real cwd so the stale tmpdir-bound module
+  // does not leak into other test files that import it.
+  try { delete require.cache[path.resolve(__dirname, '../../hooks/hud-reactive.cjs')]; } catch { /* ignore */ }
   try { fs.rmSync(stateDir, { recursive: true, force: true }); } catch { /* ignore */ }
   // Restore env var to avoid leaking into other test files
   if (prevRateLimitEnv === undefined) {

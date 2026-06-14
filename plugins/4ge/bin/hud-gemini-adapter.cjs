@@ -6,7 +6,7 @@
  *
  * Antigravity CLI (`agy`) statusLine adapter for the 4ge HUD engine.
  * Wire in ~/.gemini/antigravity-cli/settings.json:
- *   "statusLine": { "command": "node /mnt/o/Sand_Box_Dev/plugins/4ge/bin/hud-gemini-adapter.cjs", "enabled": true }
+ *   "statusLine": { "command": "node /absolute/path/to/plugins/4ge/bin/hud-gemini-adapter.cjs", "enabled": true }
  *
  * Antigravity pipes a JSON payload to stdin on every agent state change.
  * This adapter translates that payload into a hud-engine rawState and emits

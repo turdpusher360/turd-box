@@ -3,6 +3,11 @@
 All notable public changes to the 4ge Claude Code plugin are documented here.
 Versions follow Semantic Versioning.
 
+## [2.6.1] - 2026-06-14
+
+### Fixed
+- Genericized two absolute-path examples in code comments (the `hud-gemini-adapter.cjs` statusLine wiring snippet and the `weasley-utils.cjs` project-id doc example) so the published plugin no longer embeds a developer-machine path. No runtime behavior change — the comments now read as portable placeholders.
+
 ## [2.6.0] - 2026-06-14
 
 ### Added

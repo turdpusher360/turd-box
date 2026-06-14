@@ -3,6 +3,12 @@ import path from 'path';
 import fs from 'fs';
 import os from 'os';
 
+// Isolate companion-state writes: companion-state.cjs resolves STATE_PATH from
+// COMPANION_STATE_PATH || a __dirname-relative REAL _runs/os/.companion-state.json,
+// which the cwd mock below does NOT cover. signalCompanion writes companion-state,
+// so without this the throttle-test would touch the live HUD state file. (S441 sweep.)
+process.env.COMPANION_STATE_PATH = path.join(os.tmpdir(), 'hud-reactive-companion-state.json');
+
 // ── Real temp-dir approach for throttle state ────────────────────────────────
 // vi.mock('fs') doesn't reliably intercept CJS require('fs') across module
 // boundaries.  We instead point the throttle file at a real temp dir so
@@ -14,6 +20,13 @@ let originalCwd;
 beforeEach(() => {
   tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'hud-reactive-test-'));
   originalCwd = process.cwd();
+  // companion-config.cjs resolves its root as CLAUDE_PROJECT_DIR || cwd (companion-config.cjs:71).
+  // Under bg-verify (hook-spawned vitest), the hook env sets CLAUDE_PROJECT_DIR=<repo>, which WINS
+  // over the mocked cwd below — so config writes to tmpDir/.4ge are silently ignored and the module
+  // reads the REAL operator config (4 S440 anomaly-row tests flaked on exactly this). Stub it to ''
+  // (falsy -> falls through to the mocked cwd). S399 pattern (mem 1bb37258): a cwd mock alone is not
+  // enough for any module using CLAUDE_PROJECT_DIR||cwd resolution.
+  vi.stubEnv('CLAUDE_PROJECT_DIR', '');
   // The module resolves THROTTLE_FILE via process.cwd() at load time, so we
   // must patch cwd() BEFORE requiring the module.
   vi.spyOn(process, 'cwd').mockReturnValue(tmpDir);
@@ -21,6 +34,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.unstubAllEnvs(); // restoreAllMocks does NOT unstub envs (S399 mem 1bb37258)
   // Clean up temp dir
   try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch { /* ok */ }
 });

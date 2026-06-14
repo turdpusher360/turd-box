@@ -440,6 +440,37 @@ describe('hud-engine module exports', () => {
       fs.rmSync(tmpDir, { recursive: true, force: true });
     }
   });
+
+  it('freeze invariant: statusline byte-identical across renders under animate:false', () => {
+    // The mobile escape hatch (animate:false) must produce byte-identical output
+    // across the 2s statusline poll. Pin animate:false regardless of repo config,
+    // render twice 5s apart, and assert equality — this locks all three freeze
+    // gates at once (orb color wave, orb breath/shimmer, and face expression),
+    // which the orb-level unit tests do not cover.
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'hud-freeze-'));
+    const previousStatePath = process.env.COMPANION_STATE_PATH;
+    process.env.COMPANION_STATE_PATH = path.join(tmpDir, '_runs', 'os', '.companion-state.json');
+    let cfgSpy, nowSpy;
+    try {
+      const mod = requireFresh();
+      const ccMod = _require(path.resolve(__dirname, '../companion-config.cjs'));
+      cfgSpy = vi.spyOn(ccMod, 'loadCompanionConfig').mockReturnValue({ ...ccMod.loadCompanionConfig(), animate: false });
+      const state = JSON.parse(fs.readFileSync(MOCK_HEALTHY, 'utf8'));
+      state.projectRoot = tmpDir;
+      state.terminal = { cols: 120, rows: 24 };
+      nowSpy = vi.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000);
+      const first = mod.renderStatusLine(state, 8);
+      nowSpy.mockReturnValue(1_700_000_000_000 + 5_000); // advance 5s: would shift wave/breath if live
+      const second = mod.renderStatusLine(state, 8);
+      expect(second).toEqual(first);
+    } finally {
+      if (cfgSpy) cfgSpy.mockRestore();
+      if (nowSpy) nowSpy.mockRestore();
+      if (previousStatePath === undefined) delete process.env.COMPANION_STATE_PATH;
+      else process.env.COMPANION_STATE_PATH = previousStatePath;
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
 });
 
 // ── Wave 1: faceMotion gate (e4d905d2 revert) ────────────────────────────────

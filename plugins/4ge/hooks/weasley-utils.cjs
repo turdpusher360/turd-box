@@ -36,7 +36,7 @@ const MAX_FILES = 12;
  * CC-cache-immune, cross-session-shared location — NOT a _runs/ path (which is
  * per-checkout and subject to ghost reversion).
  *
- * cwd "/mnt/o/Sand_Box_Dev" -> "mnt-o-Sand-Box-Dev".
+ * cwd "/home/you/my_project" -> "home-you-my-project".
  * @param {string} [cwd] override for testing
  * @returns {string}
  */
