@@ -3,6 +3,14 @@
 All notable public changes to the 4ge Claude Code plugin are documented here.
 Versions follow Semantic Versioning.
 
+## [2.7.1] - 2026-06-15
+
+### Fixed
+- Hardened the secret-redaction hook so findings no longer include matching secret previews; the hook reports the secret class and location without echoing sensitive material.
+- Wrapped DFE GitHub Action review prompts with explicit untrusted-diff boundaries before model review, reducing prompt-injection risk from PR content.
+- Refreshed the vendored OS AISLE readiness path so the boot-status aggregate recomputes after capability recovery instead of leaving a stale `overall: degraded` once all capabilities are ready.
+- Neutralized public HUD, screenshot, and `/ship` model-label surfaces so shipped package code uses supported public model families instead of consumer-restricted internal identifiers.
+
 ## [2.7.0] - 2026-06-14
 
 ### Changed

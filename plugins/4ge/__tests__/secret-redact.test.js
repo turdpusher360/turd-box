@@ -50,6 +50,24 @@ describe('secret-redact hook', () => {
     expect(envText).toBe(`CLOUDFLARE_API_TOKEN=${token}\n`);
   });
 
+  it('does not include any secret preview in the block reason', () => {
+    const cwd = mkTempDir();
+    const token = 'abc1' + 'middle-secret-value'.repeat(3) + '9876';
+    const prompt = `##SECRET_CAPTURE##\nSENSITIVE_TOKEN=${token}\n##END_SECRET_CAPTURE##`;
+
+    const result = runHook(prompt, cwd);
+    const decision = JSON.parse(result.stdout);
+
+    expect(result.status).toBe(0);
+    expect(decision.decision).toBe('block');
+    expect(decision.reason).toContain('added SENSITIVE_TOKEN');
+    expect(decision.reason).toContain(`length ${token.length}`);
+    expect(decision.reason).not.toContain('preview');
+    expect(decision.reason).not.toContain(token);
+    expect(decision.reason).not.toContain(token.slice(0, 4));
+    expect(decision.reason).not.toContain(token.slice(-4));
+  });
+
   it('is wired before other UserPromptSubmit hooks in the plugin manifest', () => {
     const manifest = JSON.parse(fs.readFileSync(HOOKS_JSON, 'utf8'));
     const firstHook = manifest.hooks?.UserPromptSubmit?.[0]?.hooks?.[0];

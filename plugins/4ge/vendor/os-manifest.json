@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-06-13T10:50:20.299Z",
-  "sourceHead": "5fb63cbc5a7fd62a3621cef60fd9c8cc11febad5",
+  "generatedAt": "2026-06-15T04:10:26.157Z",
+  "sourceHead": "32e008435894a9710ba2b0f3ebaba2764178bb59",
   "files": {
     "lib/aisle/.gitignore": {
       "sourceSha256": "051f52b7c0fb350f7e8e5cd2e6aceb85e7cf198ff9062f9b52959eac14209671",
@@ -258,8 +258,8 @@
       "transformed": true
     },
     "lib/os/capabilities/aisle.cjs": {
-      "sourceSha256": "4a5e0498c8a4f45eb1ef88fd88403d8743d5de2b4bdee2661041102ae3d9863f",
-      "vendoredSha256": "f5b668fab979311619d957e16f2faaaf9b926e06b54bd326c293947162903eb6",
+      "sourceSha256": "11a5d527d57a8418b5ff7553ae48ead15784ed978caa849c91225254db58acc8",
+      "vendoredSha256": "c884e675ccbd94080953d98a9bc66597879cdc00a7821d2b3069a85ef8561869",
       "transformed": true
     },
     "lib/os/capabilities/audit.cjs": {

@@ -11,6 +11,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { buildReviewUserMessage } from './prompt-boundary.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -85,7 +86,7 @@ const client = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY,
 });
 
-const userMessage = `Review this pull request diff for the ${passDef.name} pass.\n\n\`\`\`diff\n${diffContent}\n\`\`\``;
+const userMessage = buildReviewUserMessage(passDef.name, diffContent);
 
 let responseText;
 

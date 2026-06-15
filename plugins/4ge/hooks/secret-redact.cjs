@@ -93,11 +93,6 @@ function upsertEnv(envPath, key, value) {
   return { existed };
 }
 
-function redact(value) {
-  if (value.length <= 8) return '***';
-  return value.slice(0, 4) + '...' + value.slice(-4);
-}
-
 function emit(obj) {
   process.stdout.write(JSON.stringify(obj) + '\n');
 }
@@ -143,7 +138,7 @@ async function main() {
   const action = result.existed ? 'updated' : 'added';
   const note = parsed.mode === 'auto' ? ' (key auto-detected from prefix)' : '';
   const reason = '[secret-redact] ' + action + ' ' + parsed.key +
-    ' in .env (length ' + parsed.value.length + ', preview ' + redact(parsed.value) + ')' + note;
+    ' in .env (length ' + parsed.value.length + ')' + note;
 
   emit({
     decision: 'block',

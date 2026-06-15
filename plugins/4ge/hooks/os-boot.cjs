@@ -277,7 +277,7 @@ function readForgeConfig(cwd) {
       if (!model && input && typeof input.model === 'string' && input.model) model = input.model;
       if (model) model = model.split('[1m]')[0].trim();
       if (!model) model = 'unknown';
-      const contextWindow = /opus|fable/i.test(model) ? 1000000 : 200000;
+      const contextWindow = /opus/i.test(model) ? 1000000 : 200000;
 
       let sessionNumber = 0;
       try { sessionNumber = deriveSessionNumber(cwd); } catch { /* 0 */ }

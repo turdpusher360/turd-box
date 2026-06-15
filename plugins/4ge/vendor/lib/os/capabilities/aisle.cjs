@@ -20,6 +20,15 @@ const { boot } = require('../../aisle/core/boot.cjs');
 const healthMonitor = require('../../aisle/core/health-monitor.cjs');
 const scannerRegistry = require('../../aisle/core/scanner-registry.cjs');
 
+function deriveOverallFromCapabilities(capabilities) {
+  const statuses = Object.values(capabilities || {})
+    .map((capability) => capability && capability.status)
+    .filter(Boolean);
+  if (statuses.includes('failed')) return 'failed';
+  if (statuses.includes('degraded')) return 'degraded';
+  return 'ready';
+}
+
 // ---------------------------------------------------------------------------
 // Report formatting helper
 // ---------------------------------------------------------------------------
@@ -182,7 +191,10 @@ module.exports = {
             // can recognize fail-closed as intentional posture.
             const cachedShelved = this._healthCache && this._healthCache.shelved === true;
             const newShelved = cachedShelved && !result.ok;
-            if (aisleEntry.status !== newStatus || aisleEntry.reason !== newReason || aisleEntry.shelved !== newShelved) {
+            const entryChanged = aisleEntry.status !== newStatus ||
+              aisleEntry.reason !== newReason ||
+              aisleEntry.shelved !== newShelved;
+            if (entryChanged) {
               aisleEntry.status = newStatus;
               if (newReason) {
                 aisleEntry.reason = newReason;
@@ -195,6 +207,11 @@ module.exports = {
                 delete aisleEntry.shelved;
               }
               aisleEntry.refreshed_at = new Date().toISOString();
+            }
+
+            const nextOverall = deriveOverallFromCapabilities(bootStatus.capabilities);
+            if (entryChanged || bootStatus.overall !== nextOverall) {
+              bootStatus.overall = nextOverall;
               // Atomic write (match capability-registry._writeJson pattern)
               const tmp = `${bootStatusPath}.${process.pid}.tmp`;
               fs.writeFileSync(tmp, JSON.stringify(bootStatus, null, 2), 'utf8');
