@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
-const PLUGIN_VERSION = '2.6.1';
+const PLUGIN_VERSION = '2.7.0';
 
 // ---------------------------------------------------------------------------
 // Internal paths

@@ -132,12 +132,22 @@ function formatReactiveAge(ageMs) {
   return `${Math.floor(seconds / 60)}m`;
 }
 
-function renderReactiveStatuslineRows(state, palette, maxRows) {
+// Feed rows (anomaly / reactive / compact) align under the header BODY text,
+// which sits past the creature sprite gutter (face + orb). The statusline
+// assembler passes the live gutter width (prefixWidth); standalone / test
+// callers default to a 2-space indent. Single source of truth for feed-row
+// left-alignment — keeps the ctx-trend row lined up with the header text feed.
+const DEFAULT_FEED_GUTTER = '  ';
+function reindentFeedRow(line, gutter) {
+  return (gutter || DEFAULT_FEED_GUTTER) + String(line).replace(/^\s+/, '');
+}
+
+function renderReactiveStatuslineRows(state, palette, maxRows, gutter = DEFAULT_FEED_GUTTER) {
   if (!state || !state.reactive || !state.reactive.event || maxRows <= 0) return [];
   const event = state.reactive.event;
   const role = REACTIVE_STATUSLINE_ROLE[event] || 'accent';
   const rows = [
-    '  ' +
+    gutter +
       colorize(palette, 'muted', 'reactive ') +
       colorize(palette, role, event) +
       colorize(palette, 'muted', ` ${formatReactiveAge(state.reactive.ageMs)} ago`),
@@ -154,7 +164,7 @@ function renderReactiveStatuslineRows(state, palette, maxRows) {
     for (const line of lines) {
       if (rows.length >= maxRows) break;
       if (!stripAnsi(line).trim()) continue;
-      rows.push(line);
+      rows.push(reindentFeedRow(line, gutter));
     }
   }
 
@@ -168,7 +178,7 @@ function clipStatusText(value, max = 96) {
   return text.slice(0, max - 3).trimEnd() + '...';
 }
 
-function renderAnomalyStatuslineRows(state, palette, maxRows) {
+function renderAnomalyStatuslineRows(state, palette, maxRows, gutter = DEFAULT_FEED_GUTTER) {
   if (maxRows <= 0) return [];
   const anomaly = state && state.anomaly;
   if (!anomaly || !anomaly.type || !anomaly.reason) return [];
@@ -179,7 +189,7 @@ function renderAnomalyStatuslineRows(state, palette, maxRows) {
   const type = clipStatusText(anomaly.type, 48);
   const reason = clipStatusText(anomaly.reason, 96);
   return [
-    '  ' +
+    gutter +
       colorize(palette, 'muted', 'anomaly ') +
       colorize(palette, role, severity) +
       colorize(palette, 'muted', ' ') +
@@ -189,7 +199,7 @@ function renderAnomalyStatuslineRows(state, palette, maxRows) {
   ].slice(0, maxRows);
 }
 
-function renderCompactStatuslineRows(state, palette, maxRows) {
+function renderCompactStatuslineRows(state, palette, maxRows, gutter = DEFAULT_FEED_GUTTER) {
   if (maxRows <= 0) return [];
   const rows = [];
   for (const entry of ZONE_CATALOG) {
@@ -206,7 +216,7 @@ function renderCompactStatuslineRows(state, palette, maxRows) {
     for (const line of lines) {
       if (rows.length >= maxRows) break;
       if (typeof line !== 'string' || !stripAnsi(line).trim()) continue;
-      rows.push(line);
+      rows.push(reindentFeedRow(line, gutter));
     }
   }
   return rows;
@@ -847,6 +857,9 @@ function renderStatusLine(rawState, maxRows) {
   const facePad = ' '.repeat(Math.max(0, prefixWidth - faceWidth));
   const orbPad0 = orbRow0 + ' '.repeat(Math.max(0, prefixWidth - orbWidth));
   const orbPad1 = orbRow1 + ' '.repeat(Math.max(0, prefixWidth - orbWidth));
+  // Feed rows (anomaly/reactive/compact) get a blank gutter the same width as the
+  // creature sprite, so their text lines up under the header body column.
+  const feedGutter = ' '.repeat(prefixWidth);
 
   // Row 1: face · model · caps · ctx% · 5h% ↻timer · effort · think:off
   const r1 = [
@@ -966,17 +979,17 @@ function renderStatusLine(rawState, maxRows) {
     ];
   }
 
-  const anomalyRows = renderAnomalyStatuslineRows(state, palette, Math.max(0, ceiling - rows.length));
+  const anomalyRows = renderAnomalyStatuslineRows(state, palette, Math.max(0, ceiling - rows.length), feedGutter);
   if (anomalyRows.length > 0) {
     rows = rows.concat(anomalyRows);
   }
 
-  const reactiveRows = renderReactiveStatuslineRows(state, palette, Math.max(0, ceiling - rows.length));
+  const reactiveRows = renderReactiveStatuslineRows(state, palette, Math.max(0, ceiling - rows.length), feedGutter);
   if (reactiveRows.length > 0) {
     rows = rows.concat(reactiveRows);
   }
 
-  const compactRows = renderCompactStatuslineRows(state, palette, Math.max(0, ceiling - rows.length));
+  const compactRows = renderCompactStatuslineRows(state, palette, Math.max(0, ceiling - rows.length), feedGutter);
   if (compactRows.length > 0) {
     rows = rows.concat(compactRows);
   }

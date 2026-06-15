@@ -64,21 +64,35 @@ function coerceContextHistory(session) {
     .map((value) => Math.max(0, Math.min(100, value)));
 }
 
-function renderContextTrend(session, palette) {
+function renderContextTrend(session, palette, opts = {}) {
   const values = coerceContextHistory(session);
   if (values.length < 2) return '';
   const recent = values.slice(-24);
   const line = sparkline(recent, 18);
   const latest = recent[recent.length - 1];
-  return [
+  const role = latest >= 40 ? 'warn' : 'ok';
+  const parts = [
     '  ',
     colorize(palette, 'muted', 'ctx trend '),
-    colorize(palette, latest >= 40 ? 'warn' : 'ok', line),
-  ].join('');
+    colorize(palette, role, line),
+  ];
+  if (opts.withMetric) {
+    // Trajectory the header's bare `ctx: N%` lacks: current % + net direction
+    // across the visible window (▲ climbing / ▼ easing / ▸ flat). Arrow is
+    // window-slope (first vs last sample) so a single-sample dip won't flip it.
+    const first = recent[0];
+    const arrow = latest > first ? '▲' : latest < first ? '▼' : '▸';
+    parts.push(
+      colorize(palette, 'muted', ' '),
+      colorize(palette, role, `${Math.round(latest)}%`),
+      colorize(palette, 'muted', ` ${arrow}`),
+    );
+  }
+  return parts.join('');
 }
 
 function renderContextCompact(state, palette) {
-  const trend = renderContextTrend((state && state.session) || {}, palette);
+  const trend = renderContextTrend((state && state.session) || {}, palette, { withMetric: true });
   return trend ? [trend] : [];
 }
 

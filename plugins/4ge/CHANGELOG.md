@@ -3,6 +3,11 @@
 All notable public changes to the 4ge Claude Code plugin are documented here.
 Versions follow Semantic Versioning.
 
+## [2.7.0] - 2026-06-14
+
+### Changed
+- The always-on context-trend statusline row now lines up with the header text feed (it was previously indented further left than the rows above it), and it shows the current context percentage plus a trend arrow (▲ climbing / ▼ easing / ▸ steady) next to the sparkline — so the row conveys both where context sits and which way it's heading, not just its shape. The transient anomaly and reactive feed rows share the same alignment.
+
 ## [2.6.1] - 2026-06-14
 
 ### Fixed
