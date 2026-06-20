@@ -49,8 +49,14 @@ describe('hud-braille-orb', () => {
     it('health 100% has more lit dots than 20%', () => {
       const popcount = n => { let c = 0; while (n) { c += n & 1; n >>= 1; } return c; };
       const bits = s => [...s].reduce((n, ch) => n + popcount(ch.codePointAt(0) - 0x2800), 0);
-      expect(bits(renderOrb(100, { angle: 0 }).join(''))).toBeGreaterThan(
-        bits(renderOrb(20, { angle: 0 }).join(''))
+      // Freeze the time reference (idle-pose path) so BOTH the breath scale and the
+      // shimmer (toggles 1-2 dots, seeded by timeMs) are deterministic. At live
+      // Date.now() an expanded+shimmered 20% orb can tie the 100% orb at the dot cap
+      // (CI flake: "expected 21 to be greater than 21"). Mirrors the clock freeze in
+      // the "distinct frames at different angles" test above.
+      const frozen = { angle: 0, outerActive: false, freezeTimeMs: 1_700_000_001_200 };
+      expect(bits(renderOrb(100, frozen).join(''))).toBeGreaterThan(
+        bits(renderOrb(20, frozen).join(''))
       );
     });
 

@@ -15,14 +15,18 @@ paths: ["**"]
 
 Run `mcp__dev-memory__memory_search` with `query` set to the 2-4 most specific keywords from the symptom description, `limit: 5`. Display any relevant prior context found.
 
-**Step 2: Invoke systematic debugging**
+**Step 2: Invoke 4ge debug investigation**
 
-INVOKE superpowers:systematic-debugging with:
+INVOKE debug-investigate with:
 - The symptom description as the primary input
 - Any memory search results as prior context
 - If `--trace` flag: add "collect and analyze stack traces" to the investigation steps
 - If `--bisect` flag: add "use git bisect to find the regression commit" to the investigation steps
 - If `--hypothesis` flag: seed the hypothesis list with the provided text
+
+Superpowers systematic debugging may remain an internal sub-protocol/fallback when the
+debug investigation needs stricter root-cause discipline, but `/debug` is the top-level
+Forge/4ge route and should not tell users to invoke Superpowers directly.
 
 **Step 3: Resolution**
 

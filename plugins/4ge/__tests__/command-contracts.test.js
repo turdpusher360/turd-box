@@ -62,4 +62,12 @@ describe('4ge command contracts', () => {
     expect(command).toContain('For `run`/`resume`/`park`: invoke the `4ge:forge` skill directly.');
     expect(command).not.toContain('`forge:forge`');
   });
+
+  it('routes /debug through 4ge debug-investigate before any Superpowers fallback', () => {
+    const command = readPluginFile('commands/debug.md');
+
+    expect(command).toContain('INVOKE debug-investigate');
+    expect(command).toContain('internal sub-protocol/fallback');
+    expect(command).not.toMatch(/INVOKE\s+superpowers:systematic-debugging/);
+  });
 });

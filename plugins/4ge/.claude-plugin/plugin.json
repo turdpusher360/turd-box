@@ -1,7 +1,7 @@
 {
   "name": "4ge",
-  "version": "2.7.1",
-  "description": "The production layer for Claude Code. 40 commands and 40 skills across 9 OS capabilities: multi-agent forge orchestration, 6-pass adversarial code review, AISLE security posture, persistent-memory support, systematic debugging, live HUD, and more.",
+  "version": "2.8.0",
+  "description": "The production layer for Claude Code. 41 commands and 41 skills across 9 OS capabilities: multi-agent forge orchestration, 6-pass adversarial code review, AISLE security posture, persistent-memory support, systematic debugging, live HUD, and more.",
   "author": {
     "name": "turdpusher360"
   },
@@ -241,6 +241,12 @@
       "model": "sonnet",
       "description": "[REDIRECT] Use /recall instead (memory search, repo map, context budget, deep search).",
       "argumentHint": ""
+    },
+    "reconcile": {
+      "source": "./commands/reconcile.md",
+      "model": "opus",
+      "description": "Fold handoffs into BACKLOG.md, re-surface gold mines, flag drift, archive stale _runs, and regenerate INDEX.md.",
+      "argumentHint": "[repo-path] (defaults to cwd)"
     },
     "signoff": {
       "source": "./commands/signoff.md",

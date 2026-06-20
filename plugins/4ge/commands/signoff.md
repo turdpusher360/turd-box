@@ -110,7 +110,37 @@ cat > _runs/session-cartridge.json << 'CARTRIDGE_EOF'
 CARTRIDGE_EOF
 ```
 
-## Step 7: Confirm
+## Step 7: Commit the continuity (so it can't strand)
+
+The cartridge, `TASKING.md`, and the decision/constraint logs are now updated on disk but **uncommitted**. Historically nothing committed them and the manual closeout commits lapsed — several sessions of continuity piled up uncommitted, making the repo look dead and letting a stale brief get trusted on the next boot. This step closes that hole. `/signoff` is operator-invoked, so the 1Password PIN is available for signing.
+
+Stage ONLY the continuity files (never `git add .` — `guard-git-scope` blocks it). Force-add the latest handoff if one was written this session (handoffs are gitignored):
+
+```bash
+git add TASKING.md _runs/.decisions.jsonl _runs/.constraints.jsonl _runs/session-cartridge.json 2>/dev/null
+LATEST_HO=$(ls _runs/HANDOFF-S*.md 2>/dev/null | sort -t S -k2 -n | tail -1)
+[ -n "$LATEST_HO" ] && git add -f "$LATEST_HO" 2>/dev/null
+git diff --cached --name-only
+```
+
+**If the staged list above is empty**, the continuity was already committed this session — report "continuity already committed — nothing to land" and skip to Step 8. Otherwise commit it **signed and timeout-boxed** (git commit is atomic — a killed signing makes no commit, so the timeout is safe). Use the session number you just enriched; if unknown, omit it:
+
+```bash
+timeout 120 git commit -m "docs(session): S<N> closeout — continuity (cartridge + TASKING + logs)"
+```
+
+Then branch on the result — do NOT improvise:
+- **rc == 0:** report the SHA + signature (`git log -1 --format='%h sig=%G?'`). Done.
+- **rc != 0** (timed out / 1Password locked / signing failed — the staged files printed above are real but uncommitted): do NOT retry with `-c commit.gpgsign=false`, and do NOT silently move on. Leave the files staged and print, verbatim:
+
+  ```
+  [signoff] Continuity is STAGED but NOT committed (signing unavailable).
+  Land it with:  git commit -m "docs(session): closeout — continuity"
+  ```
+
+**Never land an unsigned closeout here** — an unsigned commit is the exact anti-pattern `commit-signature-guard` exists to catch. Signed, or staged-with-a-loud-reminder — never unsigned, never silent. Do NOT push: pushing is operator-gated (main has PR-required branch protection).
+
+## Step 8: Confirm
 
 Print a brief confirmation:
 

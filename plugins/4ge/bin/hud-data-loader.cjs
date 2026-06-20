@@ -473,6 +473,59 @@ function computeUptime(bootStatus) {
   return Math.max(0, Date.now() - bootedAt);
 }
 
+/**
+ * Resolve THIS session's uptime, anchored to the live CC `session_id` instead of
+ * the OS/process boot time.
+ *
+ * Why this exists: the HUD uptime was `Date.now() - boot-status.booted_at`,
+ * and `booted_at` is stamped once at OS boot and never refreshed for the life of the
+ * harness process (os-boot's PID-sentinel skips re-boot on every same-process
+ * SessionStart re-fire). A terminal left open across conversations / `/clear` /
+ * resume therefore reported the whole PROCESS lifetime, not the session — a 15.8h-open
+ * terminal showed `947m`. The CC `session_id` (changes on `/clear` + relaunch) is the
+ * correct "this session" identity.
+ *
+ * We persist a per-session anchor `{ session_id, started_at_ms, tool_count_base }`
+ * in `session-uptime.json` and reset it whenever the live `session_id` changes.
+ * `tool_count_base` snapshots the cumulative all-caller `tool_count_running` at
+ * session start, so the HUD can show THIS session's tool count (running - base)
+ * the same way it shows this session's uptime — both were process-cumulative
+ * before (the inflated tool count shared the uptime bug's root cause).
+ *
+ * Returns `{ uptimeMs, sessionToolCount }` for the current session, or `null`
+ * when no live session_id is available (caller keeps the boot-time fallback).
+ * `sessionToolCount` is null when no running count was supplied. Write is
+ * best-effort + atomic; it only writes when the session changes (or to backfill
+ * `tool_count_base` on an anchor written before tool tracking existed).
+ */
+function resolveSessionUptime({ stateDir, sessionId, now = Date.now(), toolCountRunning = null } = {}) {
+  if (!sessionId || typeof sessionId !== 'string') return null;
+  const hasRunning = typeof toolCountRunning === 'number' && toolCountRunning >= 0;
+  const anchorPath = path.join(stateDir, 'session-uptime.json');
+  let anchor = readJsonSafe(anchorPath);
+  let dirty = false;
+  if (!anchor || anchor.session_id !== sessionId || typeof anchor.started_at_ms !== 'number') {
+    anchor = { session_id: sessionId, started_at_ms: now, tool_count_base: hasRunning ? toolCountRunning : 0 };
+    dirty = true;
+  } else if (typeof anchor.tool_count_base !== 'number' && hasRunning) {
+    // Backfill base for an anchor written before tool-count tracking existed.
+    anchor.tool_count_base = toolCountRunning;
+    dirty = true;
+  }
+  if (dirty) {
+    try {
+      const tmp = `${anchorPath}.${process.pid}.tmp`;
+      fs.writeFileSync(tmp, JSON.stringify(anchor, null, 2), 'utf8');
+      fs.renameSync(tmp, anchorPath);
+    } catch { /* best-effort — fall back to a fresh anchor in-memory */ }
+  }
+  const uptimeMs = Math.max(0, now - anchor.started_at_ms);
+  const sessionToolCount = (hasRunning && typeof anchor.tool_count_base === 'number')
+    ? Math.max(0, toolCountRunning - anchor.tool_count_base)
+    : null;
+  return { uptimeMs, sessionToolCount };
+}
+
 function deriveOverall(caps) {
   const statuses = Object.values(caps).map(c => c.status);
   if (statuses.includes('failed')) return 'failed';
@@ -768,6 +821,7 @@ module.exports = {
   loadHudData,
   buildCapabilities,
   computeUptime,
+  resolveSessionUptime,
   deriveOverall,
   readJsonSafe,
   readFreshJson,

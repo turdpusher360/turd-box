@@ -21,7 +21,7 @@ const { renderForgeProgressZone, ZONE_META: FORGE_PROGRESS_META, forgeProgressVi
 const { renderGitStatusZone, ZONE_META: GIT_STATUS_META, gitStatusVisible } = require('./hud-zone-git-status.cjs');
 const { renderMoonphaseZone, ZONE_META: MOONPHASE_META, moonphaseVisible } = require('./hud-zone-moonphase.cjs');
 const { renderWeasleyZone, ZONE_META: WEASLEY_META, weasleyVisible } = require('./hud-zone-weasley.cjs');
-const { loadHudData, mergeHarnessStdin } = require('./hud-data-loader.cjs');
+const { loadHudData, mergeHarnessStdin, resolveSessionUptime } = require('./hud-data-loader.cjs');
 const { renderSubstrateZone } = require('./hud-zone-substrate.cjs');
 const { composeScene } = require('./scene-compositor.cjs');
 const {
@@ -1115,6 +1115,23 @@ if (require.main === module) {
         });
       }
 
+      // Anchor uptime + tool-count to THIS session (live CC session_id), not the
+      // process boot. booted_at and tool_count_running both survive across
+      // conversations in a long-lived terminal (S465 bug: a 15.8h-open terminal
+      // showed 947m / ⊥ 2360). resolveSessionUptime resets on session_id change;
+      // returns null with no live session_id, leaving the boot-time fallback.
+      {
+        const sess = resolveSessionUptime({
+          stateDir: require('node:path').join(effectiveRoot, '_runs', 'os'),
+          sessionId: rawState.session && rawState.session.id,
+          toolCountRunning: rawState.session && rawState.session.toolCount,
+        });
+        if (sess) {
+          rawState.session.uptime = sess.uptimeMs;
+          if (sess.sessionToolCount !== null) rawState.session.toolCount = sess.sessionToolCount;
+        }
+      }
+
       if (zoneArg) {
         rawState.context = Object.assign({}, rawState.context, { zone: zoneArg });
       }
@@ -1128,6 +1145,17 @@ if (require.main === module) {
       cwd: PROJECT_ROOT,
       runExpensiveProbes: mode === 'full',
     });
+    {
+      const sess = resolveSessionUptime({
+        stateDir: require('node:path').join(PROJECT_ROOT, '_runs', 'os'),
+        sessionId: rawState.session && rawState.session.id,
+        toolCountRunning: rawState.session && rawState.session.toolCount,
+      });
+      if (sess) {
+        rawState.session.uptime = sess.uptimeMs;
+        if (sess.sessionToolCount !== null) rawState.session.toolCount = sess.sessionToolCount;
+      }
+    }
     if (zoneArg) {
       rawState.context = Object.assign({}, rawState.context, { zone: zoneArg });
     }

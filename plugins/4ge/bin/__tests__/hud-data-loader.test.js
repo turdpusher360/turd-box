@@ -6,6 +6,7 @@ const {
   loadHudData,
   buildCapabilities,
   computeUptime,
+  resolveSessionUptime,
   deriveOverall,
   mergeHarnessStdin,
   readFreshJson,
@@ -108,6 +109,60 @@ describe('hud-data-loader', () => {
     const uptime = computeUptime({ booted_at: booted });
     expect(uptime).toBeGreaterThanOrEqual(10_000);
     expect(uptime).toBeLessThan(15_000);
+  });
+
+  describe('resolveSessionUptime (session-anchored uptime + tool count, S465)', () => {
+    const anchorFile = () => path.join(tmpStateDir, 'session-uptime.json');
+    const readAnchor = () => JSON.parse(fs.readFileSync(anchorFile(), 'utf8'));
+
+    it('returns null when no live sessionId is available', () => {
+      expect(resolveSessionUptime({ stateDir: tmpStateDir, sessionId: '' })).toBeNull();
+      expect(resolveSessionUptime({ stateDir: tmpStateDir })).toBeNull();
+    });
+
+    it('fresh session: anchor created, uptime 0, tool_count_base captured', () => {
+      const now = 1_000_000;
+      const r = resolveSessionUptime({ stateDir: tmpStateDir, sessionId: 'S1', now, toolCountRunning: 42 });
+      expect(r.uptimeMs).toBe(0);
+      expect(r.sessionToolCount).toBe(0);
+      expect(readAnchor()).toMatchObject({ session_id: 'S1', started_at_ms: now, tool_count_base: 42 });
+    });
+
+    it('same session: uptime grows, toolCount = running - base, anchor NOT reset', () => {
+      const start = 1_000_000;
+      resolveSessionUptime({ stateDir: tmpStateDir, sessionId: 'S1', now: start, toolCountRunning: 42 });
+      const r = resolveSessionUptime({ stateDir: tmpStateDir, sessionId: 'S1', now: start + 90 * 60_000, toolCountRunning: 50 });
+      expect(r.uptimeMs).toBe(90 * 60_000);
+      expect(r.sessionToolCount).toBe(8);
+      expect(readAnchor().started_at_ms).toBe(start);
+      expect(readAnchor().tool_count_base).toBe(42);
+    });
+
+    it('changed session resets uptime AND tool_count_base (the S465 fix — does NOT keep the stale values)', () => {
+      const t0 = 1_000_000;
+      resolveSessionUptime({ stateDir: tmpStateDir, sessionId: 'S1', now: t0, toolCountRunning: 42 });
+      resolveSessionUptime({ stateDir: tmpStateDir, sessionId: 'S1', now: t0 + 90 * 60_000, toolCountRunning: 200 });
+      const r = resolveSessionUptime({ stateDir: tmpStateDir, sessionId: 'S2', now: t0 + 90 * 60_000, toolCountRunning: 200 });
+      expect(r.uptimeMs).toBe(0);           // reset — a boot-anchored impl would return 90m
+      expect(r.sessionToolCount).toBe(0);   // reset — would otherwise be 158
+      expect(readAnchor()).toMatchObject({ session_id: 'S2', started_at_ms: t0 + 90 * 60_000, tool_count_base: 200 });
+    });
+
+    it('no running count supplied: sessionToolCount is null, uptime still resolves', () => {
+      const r = resolveSessionUptime({ stateDir: tmpStateDir, sessionId: 'S3', now: 2_000_000 });
+      expect(r.uptimeMs).toBe(0);
+      expect(r.sessionToolCount).toBeNull();
+    });
+
+    it('backfills tool_count_base on a legacy anchor without resetting started_at', () => {
+      const now = 3_000_000;
+      fs.writeFileSync(anchorFile(), JSON.stringify({ session_id: 'S4', started_at_ms: now - 60_000 }));
+      const r = resolveSessionUptime({ stateDir: tmpStateDir, sessionId: 'S4', now, toolCountRunning: 99 });
+      expect(r.uptimeMs).toBe(60_000);      // started_at preserved
+      expect(r.sessionToolCount).toBe(0);   // base backfilled to current running
+      expect(readAnchor().tool_count_base).toBe(99);
+      expect(readAnchor().started_at_ms).toBe(now - 60_000);
+    });
   });
 
   it('deriveOverall reports failed > degraded > ready', () => {

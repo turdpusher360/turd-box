@@ -3,6 +3,20 @@
 All notable public changes to the 4ge Claude Code plugin are documented here.
 Versions follow Semantic Versioning.
 
+## [2.8.0] - 2026-06-19
+
+### Added
+- New `/reconcile` command and skill: folds session handoffs into a single `BACKLOG.md` source-of-truth, re-ranks dormant "gold mine" items every cycle so built-but-unshipped value can't rot, and flags lane drift — backed by a commit-time staleness advisory when the backlog falls behind.
+- `/signoff` now commits the session continuity (cartridge, tasking, and decision/constraint logs) at sign-off — signed and timeout-boxed, with a staged-and-reminded fallback when signing is unavailable — so a forgotten closeout can no longer leave continuity stranded and uncommitted.
+- New overflow guard that prevents an Agent or Workflow dispatch from drowning a subagent in raw tool output (Agent/Workflow `PreToolUse`).
+
+### Changed
+- Workflow recommendations now route through Forge.
+
+### Fixed
+- HUD uptime and tool-count now anchor to the live session instead of process boot, so a long-lived process no longer reports a stale multi-hour uptime.
+- Dependency audit fixes for transitive advisories (form-data, vite/launch-editor, @babel/core).
+
 ## [2.7.1] - 2026-06-15
 
 ### Fixed

@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-06-15T04:10:26.157Z",
-  "sourceHead": "32e008435894a9710ba2b0f3ebaba2764178bb59",
+  "generatedAt": "2026-06-16T01:29:56.929Z",
+  "sourceHead": "000ab7aec87e4fc4e99902c66ab54aeb99471517",
   "files": {
     "lib/aisle/.gitignore": {
       "sourceSha256": "051f52b7c0fb350f7e8e5cd2e6aceb85e7cf198ff9062f9b52959eac14209671",
@@ -158,8 +158,8 @@
       "transformed": false
     },
     "lib/aisle/core/quarantine-manager.cjs": {
-      "sourceSha256": "8959f2281ba1d0d195056c544a8fcbab27668feedf8c2c19d990c71215041254",
-      "vendoredSha256": "8959f2281ba1d0d195056c544a8fcbab27668feedf8c2c19d990c71215041254",
+      "sourceSha256": "2fdca68f10aeae4a9bef753bab105b2766de3ff0b78b9e81f04c0722855959cd",
+      "vendoredSha256": "2fdca68f10aeae4a9bef753bab105b2766de3ff0b78b9e81f04c0722855959cd",
       "transformed": false
     },
     "lib/aisle/core/scanner-registry.cjs": {

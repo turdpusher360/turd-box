@@ -357,12 +357,13 @@ function release(quarantineId, reason, stateDir) {
   // Step 3: EXCEPTION — add time-limited exception to config
   // ---------------------------------------------------------------------------
   try {
+    const releasedAt = Date.now();
     const exceptionEntry = {
       id: quarantineId,
       path: entry.originalPath,
       reason: reason || 'manual release',
-      releasedAt: Date.now(),
-      expiresAt: Date.now() + EXCEPTION_TTL_MS,
+      releasedAt,
+      expiresAt: releasedAt + EXCEPTION_TTL_MS,
     };
 
     const exceptionsPath = path.join(stateDir, 'exceptions.json');
