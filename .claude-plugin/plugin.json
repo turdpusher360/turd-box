@@ -1,6 +1,6 @@
 {
   "name": "turd-box",
-  "description": "4ge — the production layer for Claude Code. 40 commands, 40 skills, 9 OS capabilities. Multi-agent orchestration, 6-pass adversarial code review, AISLE security posture, persistent-memory support, and a live HUD.",
+  "description": "4ge — the production layer for Claude Code. 41 commands, 41 skills, 9 OS capabilities. Multi-agent orchestration, 6-pass adversarial code review, AISLE security posture, persistent-memory support, and a live HUD.",
   "version": "2.8.0",
   "author": {
     "name": "turdpusher360"
