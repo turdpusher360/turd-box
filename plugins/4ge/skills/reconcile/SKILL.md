@@ -162,8 +162,8 @@ curated, deletable SSOT — items move OPEN→DONE/PARKED/KILLED and **leave OPE
 
 ## Step 5 — Store the reconcile summary in dev-memory
 
-`memory_store` a single concise line (scope=project, the repo's slug as scope_id; SBD uses
-`-mnt-o-Sand_Box_Dev`):
+`memory_store` a single concise line (scope=project, using the repo's canonical slug as
+scope_id; never an absolute filesystem path):
 
 > "Reconciled <repo> S<M>→S<N>: X folded to DONE, Y new OPEN, Z gold mines re-ranked (W
 > proposed KILL), V drift flags. Marker bumped to S<N> (<sha>)."

@@ -109,7 +109,7 @@ describe('hud-zone-context model-specific color (W5 T5.4)', () => {
   });
 });
 
-describe('hud-zone-context substrate trend activation', () => {
+describe('hud-zone-context compact budget row', () => {
   it('renders a braille context trend when history is present', () => {
     const state = {
       session: {
@@ -128,24 +128,34 @@ describe('hud-zone-context substrate trend activation', () => {
     expect(text).toMatch(/[\u2800-\u28ff]/);
   });
 
-  it('exposes the context trend as an optional compact row', () => {
+  it('exposes token budget as the optional compact row instead of duplicating context trend', () => {
     const lines = renderContextCompact({
       session: {
         contextPct: 62,
         contextPctHistory: [8, 16, 25, 37, 50, 62],
+        inputTokens: 120000,
+        outputTokens: 8000,
+        cacheReadTokens: 200000,
+        remainingTokens: 672000,
       },
     }, plainPalette());
     const text = lines.map((line) => stripAnsi(line)).join('\n');
 
     expect(lines).toHaveLength(1);
-    expect(text).toContain('ctx trend');
-    expect(text).toMatch(/[\u2800-\u28ff]/);
+    expect(text).toContain('ctx budget');
+    expect(text).toContain('672k left');
+    expect(text).toContain('in:120k');
+    expect(text).toContain('out:8k');
+    expect(text).toContain('cache:200k');
+    expect(text).not.toContain('ctx trend');
+    expect(text).not.toMatch(/[\u2800-\u28ff]/);
   });
 
-  it('omits the compact row when context history is absent', () => {
+  it('omits the compact row when token budget data is absent', () => {
     const lines = renderContextCompact({
       session: {
         contextPct: 12,
+        contextPctHistory: [8, 12],
       },
     }, plainPalette());
 

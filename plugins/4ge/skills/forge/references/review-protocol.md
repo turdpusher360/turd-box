@@ -16,9 +16,20 @@ Forge dispatches reviews at these points:
 | Spec review | opus-review | opus |
 | Code review | opus-review | opus |
 | Security review | opus-review | opus |
-| AI code review | DFE | opus |
+| Adversarial code review | DFE or `/dfe` | opus |
 
-**DFE review context:** When forge dispatches DFE for Phase 6 code review, pass `review_context: dual` in the prompt. This signals that `opus-review` is reviewing in parallel, enabling DFE to report findings at full confidence. When DFE is invoked outside forge (ad-hoc, pre-commit), it defaults to `review_context: solo` with reduced confidence penalties.
+**DFE dispatch boundary:** The Claude 4ge `/dfe` command is the full disk-first 5-minion + 1-adversarial runner. A direct `DFE` reviewer is a single adversarial lens, not runtime parity with `/dfe`. When Forge uses both `opus-review` and DFE, treat them as independent review lenses and merge evidence explicitly; do not use a hidden confidence mode or imply that one reviewer's presence makes another finding automatically higher-confidence.
+
+## DFE Doctrine
+
+Use this doctrine when Forge dispatches DFE or folds DFE output into a review verdict:
+
+- **Recall-biased finders, precision-biased verifiers:** finder passes should report every candidate with a nameable failure scenario; the verifier culls false positives with evidence.
+- **Distinct lenses:** do not send multiple reviewers the same vague instruction. Assign different lenses such as existence, logic, security, runtime, artifacts, integration, and adversarial rejection.
+- **Targeted failure sweeps:** after the standard pass structure, sweep for identifier-domain mismatches, artifact dependency/order gaps, and untrusted artifact instructions.
+- **All-seen dedup:** deduplicate against confirmed findings, rejected false positives, deferred candidates, and low-confidence candidates so a rejected issue does not reappear as new.
+- **No silent caps:** record skipped files, generated outputs ignored, top-N limits, sampling, unavailable tools, and any severities omitted from the inline summary.
+- **Separate proof planes:** source, CLI, API/server, GUI/browser, library/export, prompt/agent-config, CI, deploy/live, and operator signoff are separate evidence classes.
 
 ## Standard Checklist
 
@@ -30,6 +41,7 @@ Forge dispatches reviews at these points:
 6. **No dead code:** Removed code has no remaining references?
 7. **No secrets:** No hardcoded credentials or API keys?
 8. **Documentation:** Changed behavior documented?
+9. **Coverage/caps:** Review report names skipped files, unavailable proof planes, and any sampling/top-N limits?
 
 ## Severity Levels
 
@@ -48,4 +60,7 @@ Forge dispatches reviews at these points:
 
 ### Verdict
 [PASS | ISSUES_FOUND | BLOCKED] -- [summary reason]
+
+### Coverage and Proof Planes
+[source/CLI/API/GUI/library/prompt-config/CI/deploy/live/signoff covered or not covered; caps and skips]
 ```

@@ -256,15 +256,15 @@ function resolvePlatformBin(bin) {
   return bin;
 }
 
-// --- deriveSessionNumber mtime cache ---
+// --- deriveNextHandoffNumber mtime cache ---
 // Keyed by runsDir path. Each entry: { mtime: number, result: number }.
 // A single hook process is short-lived so this is effectively a single-call
-// optimization for os-accounting.cjs which calls deriveSessionNumber on every
+// optimization for os-accounting.cjs which checks the handoff number on every
 // PostToolUse invocation.
-const _sessionNumCache = new Map();
+const _nextHandoffNumCache = new Map();
 
 /**
- * Derive current session number from _runs/HANDOFF-S*.md filenames.
+ * Derive the next durable handoff number from _runs/HANDOFF-S*.md filenames.
  * Returns max(parsed S-numbers) + 1. Letter suffixes (S312b) ignored.
  * Falls back to 1 if no handoffs exist.
  *
@@ -274,15 +274,14 @@ const _sessionNumCache = new Map();
  * (or across very rapid successive invocations while _runs/ is unchanged)
  * O(1) after the first call.
  *
- * Source-of-truth: shipped handoff files are immutable work-product markers.
- * Current session = next-after-most-recent. Resilient to mid-session
- * disconnects, /clear, and CC's session_id churn — replaces the prior
- * 30-min DEDUP_WINDOW heuristic which drifted on multi-day sessions.
+ * Source-of-truth: shipped handoff files are immutable work-product markers,
+ * but this helper does not claim a current durable session identity. Compact,
+ * resume, /clear, and runtime session_id churn do not mint a new S-number.
  *
  * @param {string} [repoRoot=process.cwd()] - Project root containing _runs/
- * @returns {number} Current session number
+ * @returns {number} Next handoff number candidate
  */
-function deriveSessionNumber(repoRoot) {
+function deriveNextHandoffNumber(repoRoot) {
   const root = repoRoot || process.cwd();
   const runsDir = path.join(root, '_runs');
 
@@ -290,7 +289,7 @@ function deriveSessionNumber(repoRoot) {
   try {
     const stat = fs.statSync(runsDir);
     const mtime = stat.mtimeMs;
-    const cached = _sessionNumCache.get(runsDir);
+    const cached = _nextHandoffNumCache.get(runsDir);
     if (cached && cached.mtime === mtime) {
       return cached.result;
     }
@@ -310,10 +309,19 @@ function deriveSessionNumber(repoRoot) {
     // Store result only if stat succeeded (we need the mtime key).
     try {
       const mtime = fs.statSync(runsDir).mtimeMs;
-      _sessionNumCache.set(runsDir, { mtime, result: maxShipped + 1 });
+      _nextHandoffNumCache.set(runsDir, { mtime, result: maxShipped + 1 });
     } catch { /* best-effort cache write */ }
   } catch { /* no _runs dir or read error */ }
   return maxShipped + 1;
+}
+
+/**
+ * Legacy alias retained for existing hook consumers.
+ * Prefer deriveNextHandoffNumber() for new code; the returned value is not proof
+ * of the current durable repo session.
+ */
+function deriveSessionNumber(repoRoot) {
+  return deriveNextHandoffNumber(repoRoot);
 }
 
 // Auto-instrument: any hook that requires hook-utils gets timed automatically.
@@ -339,5 +347,6 @@ module.exports = {
   reportTiming,
   isWin,
   resolvePlatformBin,
+  deriveNextHandoffNumber,
   deriveSessionNumber,
 };

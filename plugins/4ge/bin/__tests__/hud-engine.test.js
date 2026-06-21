@@ -221,6 +221,10 @@ describe('hud-engine module exports', () => {
       state.terminal = { cols: 120, rows: 24 };
       state.session.contextPct = 62;
       state.session.contextPctHistory = [8, 16, 25, 37, 50, 62];
+      state.session.inputTokens = 120000;
+      state.session.outputTokens = 8000;
+      state.session.cacheReadTokens = 200000;
+      state.session.remainingTokens = 672000;
       state.session.rateLimits = { fiveHour: 88, sevenDay: 20 };
       state.session.rateLimitHistory = [
         { fiveHour: 40, sevenDay: 10 },
@@ -233,12 +237,44 @@ describe('hud-engine module exports', () => {
       const oneSpare = stripAnsi(mod.renderStatusLine(state, 4));
       const expanded = stripAnsi(mod.renderStatusLine(state, 5));
 
-      expect(clipped).not.toContain('ctx trend');
+      expect(clipped).not.toContain('ctx budget');
       expect(clipped).not.toContain('rate trend');
-      expect(oneSpare).toContain('ctx trend');
+      expect(oneSpare).toContain('ctx budget');
+      expect(oneSpare).toContain('672k left');
       expect(oneSpare).not.toContain('rate trend');
-      expect(expanded).toContain('ctx trend');
+      expect(expanded).toContain('ctx budget');
       expect(expanded).toContain('rate trend');
+    } finally {
+      if (previousStatePath === undefined) delete process.env.COMPANION_STATE_PATH;
+      else process.env.COMPANION_STATE_PATH = previousStatePath;
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  it('renders rig context as a compact statusline row when spare row budget exists', () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'hud-statusline-rig-'));
+    const previousStatePath = process.env.COMPANION_STATE_PATH;
+    process.env.COMPANION_STATE_PATH = path.join(tmpDir, '_runs', 'os', '.companion-state.json');
+    try {
+      const mod = requireFresh();
+      const state = JSON.parse(fs.readFileSync(MOCK_HEALTHY, 'utf8'));
+      state.projectRoot = tmpDir;
+      state.terminal = { cols: 120, rows: 24 };
+      state.rigContext = {
+        status: 'warn',
+        issueCount: 1,
+        headline: '1 rig check needs attention',
+        ageMinutes: 3,
+        isStale: false,
+        issues: [{ name: 'lockfile', status: 'warn', summary: 'package-lock.json older than package.json' }],
+      };
+
+      const clipped = stripAnsi(mod.renderStatusLine(state, 3));
+      const expanded = stripAnsi(mod.renderStatusLine(state, 4));
+
+      expect(clipped).not.toContain('rig warn');
+      expect(expanded).toContain('rig warn');
+      expect(expanded).toContain('lockfile');
     } finally {
       if (previousStatePath === undefined) delete process.env.COMPANION_STATE_PATH;
       else process.env.COMPANION_STATE_PATH = previousStatePath;
@@ -412,7 +448,7 @@ describe('hud-engine module exports', () => {
     }
   });
 
-  it('projects companion left gaze onto the statusline bracket face', () => {
+  it('keeps restored compact eyes vertically full instead of projecting skinny gaze', () => {
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'hud-statusline-gaze-'));
     const previousStatePath = process.env.COMPANION_STATE_PATH;
     const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(1_700_000_000_000);
@@ -430,8 +466,9 @@ describe('hud-engine module exports', () => {
       state.terminal = { cols: 120, rows: 24 };
       const output = mod.renderStatusLine(state, 8);
       const firstLine = stripAnsi(output).split('\n')[0];
-      expect(firstLine).toContain('[▌ ▆]');
-      expect(firstLine).not.toContain('[█ ▆]');
+      expect(firstLine).toContain('[█ ▆]');
+      expect(firstLine).not.toContain('[▌ ▆]');
+      expect(firstLine).not.toContain('[█ ▐]');
     } finally {
       if (cfgSpy) cfgSpy.mockRestore();
       nowSpy.mockRestore();

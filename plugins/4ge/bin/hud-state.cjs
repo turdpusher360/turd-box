@@ -36,6 +36,7 @@ const DEFAULT_FORGE = { active: false, phase: null, teammates: [], scope: null }
 const DEFAULT_CONTEXT = { trigger: 'unknown', event: null, zone: null, agentId: '', agentType: '', agentName: '' };
 const DEFAULT_REACTIVE = null;
 const DEFAULT_ANOMALY = null;
+const DEFAULT_RIG_CONTEXT = null;
 
 // --- Clamp ---
 function clamp(val, min, max) {
@@ -122,6 +123,36 @@ function normalizeProcessState(raw) {
     killed: killed === null ? 0 : Math.round(killed),
     kills: Array.isArray(raw.kills) ? raw.kills : [],
     updatedAt: typeof raw.updatedAt === 'string' ? raw.updatedAt : '',
+  };
+}
+
+function normalizeRigContextState(raw) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return DEFAULT_RIG_CONTEXT;
+  const status = ['ok', 'warn', 'unknown', 'error'].includes(raw.status) ? raw.status : 'unknown';
+  const issueCount = nonNegativeNumber(raw.issueCount);
+  const issues = Array.isArray(raw.issues)
+    ? raw.issues
+        .map((issue) => {
+          if (!issue || typeof issue !== 'object') return null;
+          const issueStatus = ['ok', 'warn', 'unknown', 'error'].includes(issue.status) ? issue.status : 'unknown';
+          return {
+            name: typeof issue.name === 'string' ? issue.name : '',
+            status: issueStatus,
+            summary: typeof issue.summary === 'string' ? issue.summary : '',
+          };
+        })
+        .filter(Boolean)
+    : [];
+  return {
+    path: typeof raw.path === 'string' ? raw.path : '',
+    status,
+    issueCount: issueCount === null ? issues.length : Math.round(issueCount),
+    headline: typeof raw.headline === 'string' ? raw.headline : '',
+    generatedAt: typeof raw.generatedAt === 'string' ? raw.generatedAt : '',
+    ageMinutes: nonNegativeNumber(raw.ageMinutes),
+    isStale: raw.isStale === true,
+    sessionId: typeof raw.sessionId === 'string' ? raw.sessionId : '',
+    issues,
   };
 }
 
@@ -250,8 +281,9 @@ function buildCanonicalState(raw) {
     : DEFAULT_REACTIVE;
 
   const anomaly = normalizeAnomalyState(r.anomaly);
+  const rigContext = normalizeRigContextState(r.rigContext);
 
-  return { terminal, session, os, forge, context, badges, memory, transcript, forgeProgress, git, reactive, anomaly, theme: themeConfig, mode, palette };
+  return { terminal, session, os, forge, context, badges, memory, transcript, forgeProgress, git, reactive, anomaly, rigContext, theme: themeConfig, mode, palette };
 }
 
 module.exports = {
@@ -264,6 +296,7 @@ module.exports = {
   normalizeAnomalyState,
   normalizeVramState,
   normalizeProcessState,
+  normalizeRigContextState,
   MAX_BASH_COLS,
   DEFAULT_TERMINAL,
   DEFAULT_SESSION,
@@ -272,4 +305,5 @@ module.exports = {
   DEFAULT_CONTEXT,
   DEFAULT_REACTIVE,
   DEFAULT_ANOMALY,
+  DEFAULT_RIG_CONTEXT,
 };

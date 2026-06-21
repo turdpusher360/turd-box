@@ -7,7 +7,9 @@ import os from 'os';
 const TEST_STATE_DIR = path.resolve(process.cwd(), '_runs/os');
 const TEST_STATE_PATH = path.resolve(TEST_STATE_DIR, '.companion-state-test-cs.json');
 process.env.COMPANION_STATE_PATH = TEST_STATE_PATH;
-const RETIRED_STATE_KEYS = ['push', 'interrupted', 'model-change', 'effort-change', 'user-typing'];
+// 'push' was revived as a live state (S495: git push → excited eyes), so it is no
+// longer retired. The rest remain zero-producer ghosts with no event source.
+const RETIRED_STATE_KEYS = ['interrupted', 'model-change', 'effort-change', 'user-typing'];
 
 function clearState() {
   try { fs.unlinkSync(TEST_STATE_PATH); } catch { /* ok */ }
@@ -60,7 +62,7 @@ describe('companion-state', () => {
     it('respects event hint over detected state', () => {
       const { resolveExpression } = requireFresh();
       const result = resolveExpression({}, 'commit');
-      expect(result.expression).toBe('proud joy');
+      expect(result.expression).toBe('happy'); // S495: commit → happy [ˇ ˇ]
     });
 
     it('holds expression during dwell time', () => {
@@ -69,6 +71,24 @@ describe('companion-state', () => {
       signalEvent('commit');
       // Immediately resolve — should hold commit expression
       const result = resolveExpression({});
+      expect(result.expression).toBe('happy'); // S495: commit → happy [ˇ ˇ]
+    });
+
+    it('maps push event hint to excited (S495)', () => {
+      const { resolveExpression } = requireFresh();
+      const result = resolveExpression({}, 'push');
+      expect(result.expression).toBe('excited');
+    });
+
+    it('maps skill-load event hint to proud joy (S495)', () => {
+      const { resolveExpression } = requireFresh();
+      const result = resolveExpression({}, 'skill-load');
+      expect(result.expression).toBe('proud joy');
+    });
+
+    it('maps tests-pass event hint to proud joy (S495)', () => {
+      const { resolveExpression } = requireFresh();
+      const result = resolveExpression({}, 'tests-pass');
       expect(result.expression).toBe('proud joy');
     });
   });
@@ -495,6 +515,16 @@ describe('companion-state', () => {
     it('tests-fail overrides tests-pass', () => {
       const { PRIORITY } = requireFresh();
       expect(PRIORITY['tests-fail']).toBeGreaterThan(PRIORITY['tests-pass']);
+    });
+
+    it('push and skill-load outrank tool-running so the reaction dwells (S495)', () => {
+      const { PRIORITY } = requireFresh();
+      // Reaction faces must hold above tool-running (40) through decayMs before
+      // the per-tool alternation reclaims the eyes. push also beats commit so a
+      // push after a commit still flashes excited.
+      expect(PRIORITY['push']).toBeGreaterThan(PRIORITY['tool-running']);
+      expect(PRIORITY['skill-load']).toBeGreaterThan(PRIORITY['tool-running']);
+      expect(PRIORITY['push']).toBeGreaterThan(PRIORITY['commit']);
     });
 
     it('does not retain retired zero-producer state priorities', () => {

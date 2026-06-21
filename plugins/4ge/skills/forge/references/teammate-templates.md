@@ -4,6 +4,18 @@ Three structured templates for common forge delegation patterns. Use these to en
 
 Forge fills `{placeholders}` from the plan task metadata before dispatching.
 
+## Cross-Cutting Delegation Rules
+
+Every teammate prompt must say:
+
+- the exact files or directories the teammate owns,
+- whether the task is read-only or write-capable,
+- that other agents or the lead may also be working in the repo,
+- not to revert unrelated changes,
+- which proof plane the teammate is covering,
+- where to write the disk-first report under `_runs/`,
+- what files, generated outputs, proof planes, or low-confidence findings were skipped.
+
 ## Implementation Template
 
 ```
@@ -14,7 +26,7 @@ Forge fills `{placeholders}` from the plan task metadata before dispatching.
 You own these files/directories:
 {file_list}
 
-Do NOT edit files outside this scope. If you need changes outside your scope, use SendMessage to notify the lead.
+Do NOT edit files outside this scope. If you need changes outside your scope, use SendMessage to notify the lead. You are not alone in the codebase; work with existing changes and never revert unrelated work.
 
 ## Acceptance Criteria
 {criteria_list}
@@ -31,10 +43,13 @@ Write your work summary to _runs/{date}/{slug}-{teammate}.md FIRST.
 Then send a one-paragraph summary to the lead.
 
 ## Verification
+Proof plane covered: {proof_plane}
+
 After implementation, run:
 - `npx tsc --noEmit` (must pass)
 - `npx vitest run` (must pass)
 
+Report coverage gaps: skipped files, generated outputs ignored, proof planes not verified, and any low-confidence findings dropped.
 Report status: DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_CONTEXT
 If BLOCKED, include the exact error message.
 ```
@@ -53,6 +68,7 @@ If BLOCKED, include the exact error message.
 Write findings to _runs/{date}/research-{topic}.md
 Store key facts to memory hub via memory_store (max {store_budget} memories, default 3)
 Include source URLs for all claims.
+Report coverage gaps: searches skipped, unavailable sources, stale evidence, proof planes not verified, and whether the finding is Found, Inferred, or Missing.
 
 ## Report Format
 ### Key Findings (3-5 items)
@@ -79,6 +95,7 @@ Include source URLs for all claims.
 
 ## Output
 Write findings to _runs/{date}/review-{slug}.md
+Include proof planes covered, files skipped, generated outputs ignored, and low-confidence candidates dropped.
 If any CRITICAL findings: report BLOCKED with details.
 Otherwise: report DONE or DONE_WITH_CONCERNS.
 ```

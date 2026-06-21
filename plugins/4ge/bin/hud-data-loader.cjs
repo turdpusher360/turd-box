@@ -22,6 +22,10 @@ function timestampMs(value) {
   return NaN;
 }
 
+function roundAgeMinutes(ms) {
+  return Math.round(ms / 60000);
+}
+
 function hasOwn(obj, key) {
   return Object.prototype.hasOwnProperty.call(obj, key);
 }
@@ -113,6 +117,7 @@ const REAPER_LOG_TTL_MS = 2 * 60 * 60 * 1000;
 const HUD_HISTORY_TTL_MS = 6 * 60 * 60 * 1000;
 const HUD_HISTORY_MAX_SAMPLES = 120;
 const HUD_HISTORY_MIN_SAMPLE_MS = 30000;
+const RIG_CONTEXT_DEFAULT_TTL_MS = 60 * 60 * 1000;
 
 function clampPct(value) {
   const n = Number(value);
@@ -287,6 +292,81 @@ function readFreshHudHistory(filePath, now = Date.now()) {
     .filter(Boolean)
     .slice(-HUD_HISTORY_MAX_SAMPLES);
   return { v: 1, samples };
+}
+
+function rigStatusRank(status) {
+  switch (status) {
+    case 'error':
+    case 'failed':
+      return 3;
+    case 'warn':
+      return 2;
+    case 'unknown':
+      return 1;
+    case 'ok':
+    default:
+      return 0;
+  }
+}
+
+function normalizeRigStatus(status) {
+  if (status === 'ok' || status === 'warn' || status === 'unknown' || status === 'error') return status;
+  if (status === 'failed') return 'error';
+  return 'unknown';
+}
+
+function normalizeRigContext(raw, { now = Date.now(), relPath = '_runs/os/rig-context.json' } = {}) {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const checks = raw.checks && typeof raw.checks === 'object' && !Array.isArray(raw.checks)
+    ? raw.checks
+    : {};
+  const issues = Object.entries(checks)
+    .map(([name, check]) => {
+      const status = normalizeRigStatus(check && check.status);
+      if (status === 'ok') return null;
+      return {
+        name,
+        status,
+        summary: clipHudText((check && check.summary) || 'No summary', 120),
+      };
+    })
+    .filter(Boolean);
+
+  const status = Object.values(checks).reduce((current, check) => {
+    const candidate = normalizeRigStatus(check && check.status);
+    return rigStatusRank(candidate) > rigStatusRank(current) ? candidate : current;
+  }, Object.keys(checks).length > 0 ? 'ok' : 'unknown');
+
+  const generatedAt = typeof raw.generated_at === 'string'
+    ? raw.generated_at
+    : (typeof raw.produced_at === 'string' ? raw.produced_at : '');
+  const generatedMs = timestampMs(generatedAt);
+  const ageMinutes = Number.isFinite(generatedMs)
+    ? Math.max(0, roundAgeMinutes(now - generatedMs))
+    : null;
+  const ttlSeconds = Number(raw.ttl_seconds);
+  const ttlMs = Number.isFinite(ttlSeconds) && ttlSeconds > 0
+    ? ttlSeconds * 1000
+    : RIG_CONTEXT_DEFAULT_TTL_MS;
+  const isStale = !Number.isFinite(generatedMs) || (now - generatedMs) > ttlMs;
+
+  return {
+    path: relPath,
+    status,
+    issueCount: issues.length,
+    headline: issues.length === 0
+      ? 'rig context ok'
+      : `${issues.length} rig ${issues.length === 1 ? 'check needs' : 'checks need'} attention`,
+    generatedAt,
+    ageMinutes,
+    isStale,
+    sessionId: typeof raw.session_id === 'string' ? raw.session_id : '',
+    issues,
+  };
+}
+
+function readRigContext(filePath, now = Date.now()) {
+  return normalizeRigContext(readJsonSafe(filePath), { now });
 }
 
 function hudHistorySessionFields(history) {
@@ -565,6 +645,7 @@ function loadHudData(opts = {}) {
   const vram = readFreshVramState(path.join(stateDir, 'vram-cache.json'));
   const processes = readFreshReaperState(path.join(stateDir, 'reaper-log.jsonl'));
   const hudHistory = readFreshHudHistory(path.join(stateDir, 'hud-history.json'));
+  const rigContext = readRigContext(path.join(stateDir, 'rig-context.json'));
   const sessionMemory = loadSessionMemory(cwd, forgeSession);
 
   const capabilities = buildCapabilities(bootStatus, health);
@@ -635,6 +716,7 @@ function loadHudData(opts = {}) {
     reactive,
     anomaly,
     transcript,
+    rigContext,
   };
 
   // Git state: mode-aware read via smart-order (C-10, T4.3)
@@ -833,12 +915,15 @@ module.exports = {
   readFreshReaperState,
   normalizeReaperState,
   readFreshHudHistory,
+  readRigContext,
+  normalizeRigContext,
   REACTIVE_EVENT_TTL_MS,
   ANOMALY_TTL_MS,
   VRAM_CACHE_TTL_MS,
   REAPER_LOG_TTL_MS,
   HUD_HISTORY_TTL_MS,
   HUD_HISTORY_MAX_SAMPLES,
+  RIG_CONTEXT_DEFAULT_TTL_MS,
   appendHudHistorySample,
   mergeHarnessStdin,
 };

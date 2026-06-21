@@ -222,6 +222,13 @@ function detectEvent(input) {
         return 'commit';
       }
     }
+    // git push → excited eyes (S495). Detected after commit so a standalone push
+    // is caught; a combined `git commit && git push` in ONE Bash call returns
+    // 'commit' above (push never seen) — run pushes as separate calls for the
+    // excited reaction. Exclude `--dry-run` (no actual push happened).
+    if (/\bgit\b(\s+-\S+(\s+\S+)?)*\s+push\b/.test(cmd) && !/--dry-run/.test(cmd)) {
+      return 'push';
+    }
     if (cmd.includes('vitest') || cmd.includes('jest')) {
       // Check failures FIRST — "3 failed | 97 passed" contains both "failed" and "passed"
       if (outputStr.includes('failed') && !outputStr.includes('0 failed')) {
@@ -255,6 +262,15 @@ function detectEvent(input) {
   if (tool === 'Agent' || tool === 'Task') {
     if (/forge-session|phase|P[1-7]:/i.test(outputStr)) return 'forge-phase';
     if (outputStr.length > 10) return 'zone-change';
+  }
+
+  // skill-load → proud-joy eyes (S495). DORMANT until the lead adds `Skill` to the
+  // hud-reactive PostToolUse matcher in plugins/4ge/hooks/hooks.json (a hook
+  // registration — out of in-source scope here). This branch is the in-source
+  // half: once the matcher fires for the Skill tool, every skill invocation
+  // emits 'skill-load'. SlashCommand kept alongside Skill for the slash-route.
+  if (tool === 'Skill' || tool === 'SlashCommand') {
+    return 'skill-load';
   }
 
   // Note: hook_event_name checks removed — plugin hook is wired to PostToolUse only.

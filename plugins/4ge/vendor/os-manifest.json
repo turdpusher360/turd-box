@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-06-16T01:29:56.929Z",
-  "sourceHead": "000ab7aec87e4fc4e99902c66ab54aeb99471517",
+  "generatedAt": "2026-06-21T15:52:28.536Z",
+  "sourceHead": "73d7824fd5e8e5a99666cc877b5963b0f3c4ca98",
   "files": {
     "lib/aisle/.gitignore": {
       "sourceSha256": "051f52b7c0fb350f7e8e5cd2e6aceb85e7cf198ff9062f9b52959eac14209671",
@@ -162,6 +162,11 @@
       "vendoredSha256": "2fdca68f10aeae4a9bef753bab105b2766de3ff0b78b9e81f04c0722855959cd",
       "transformed": false
     },
+    "lib/aisle/core/result-inspector.cjs": {
+      "sourceSha256": "6e08c7570d4485f56415b73c398eaeb6678da68c83d3db8f6d800200b071b15b",
+      "vendoredSha256": "6e08c7570d4485f56415b73c398eaeb6678da68c83d3db8f6d800200b071b15b",
+      "transformed": false
+    },
     "lib/aisle/core/scanner-registry.cjs": {
       "sourceSha256": "c392585b67988b719e5adbe4c6083ff9167dc92b73a6d90c5b96bbfd73e4d2ee",
       "vendoredSha256": "c392585b67988b719e5adbe4c6083ff9167dc92b73a6d90c5b96bbfd73e4d2ee",
@@ -253,8 +258,8 @@
       "transformed": true
     },
     "lib/hook-utils.cjs": {
-      "sourceSha256": "d762e0975b7513ce8c00f013ddb612b0fdf79d2ea72fe0e65694418d43465aa3",
-      "vendoredSha256": "a2bf5a1b7a7f666a58d5e05b417eb92c303a366fb10e0c3fd0d03cd800ef77bc",
+      "sourceSha256": "74f629b28dbeb18bd94e3fc480601567f0ff85ac4eee09c06c7ea9251bf16025",
+      "vendoredSha256": "ef939667de278e5dfb71530ac96e90da925acfcb7ed0216455056353de3112a8",
       "transformed": true
     },
     "lib/os/capabilities/aisle.cjs": {
@@ -365,6 +370,16 @@
     "lib/os/kernel/process-registry.cjs": {
       "sourceSha256": "5d021ac3640d56204936545989d19bbe12ab60609bbaaff0bdb62d7412dfc29d",
       "vendoredSha256": "5d021ac3640d56204936545989d19bbe12ab60609bbaaff0bdb62d7412dfc29d",
+      "transformed": false
+    },
+    "lib/os/kernel/rig-advisory.cjs": {
+      "sourceSha256": "e5903924ee91684cf671b05a303ae888467275f65ed1d5caae91aea6d623dcc0",
+      "vendoredSha256": "e5903924ee91684cf671b05a303ae888467275f65ed1d5caae91aea6d623dcc0",
+      "transformed": false
+    },
+    "lib/os/kernel/rig-context.cjs": {
+      "sourceSha256": "2e7c616a89cd2703f044a488bedc792783c668be66efdc36144febe2290086ef",
+      "vendoredSha256": "2e7c616a89cd2703f044a488bedc792783c668be66efdc36144febe2290086ef",
       "transformed": false
     },
     "lib/os/kernel/zombie-allowlist.json": {

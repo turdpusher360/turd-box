@@ -181,7 +181,7 @@
         ]
       },
       {
-        "matcher": "Write|Edit|Bash|Agent|Task|Read|Grep|Glob",
+        "matcher": "Write|Edit|Bash|Agent|Task|Read|Grep|Glob|Skill",
         "hooks": [
           {
             "type": "command",

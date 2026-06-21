@@ -296,6 +296,74 @@ describe('hud-data-loader', () => {
     ]);
   });
 
+  it('loadHudData hydrates rig-context summary for HUD consumers', () => {
+    const now = 1_700_000_000_000;
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(now);
+    try {
+      fs.writeFileSync(
+        path.join(tmpStateDir, 'rig-context.json'),
+        JSON.stringify({
+          version: 1,
+          generated_at: new Date(now - 2 * 60_000).toISOString(),
+          session_id: 's494-red',
+          checks: {
+            handoff: { status: 'ok', summary: 'handoff fresh' },
+            lockfile: { status: 'warn', summary: 'package-lock.json older than package.json' },
+            active_sessions: { status: 'unknown', summary: 'active session count not provided' },
+          },
+        }),
+      );
+
+      const raw = loadHudData({ stateDir: tmpStateDir, cwd: tmpCwd, runExpensiveProbes: false });
+
+      expect(raw.rigContext).toMatchObject({
+        path: '_runs/os/rig-context.json',
+        status: 'warn',
+        issueCount: 2,
+        headline: '2 rig checks need attention',
+        sessionId: 's494-red',
+        ageMinutes: 2,
+        isStale: false,
+        issues: [
+          { name: 'lockfile', status: 'warn', summary: 'package-lock.json older than package.json' },
+          { name: 'active_sessions', status: 'unknown', summary: 'active session count not provided' },
+        ],
+      });
+    } finally {
+      nowSpy.mockRestore();
+    }
+  });
+
+  it('loadHudData marks old rig-context snapshots stale even when checks are ok', () => {
+    const now = 1_700_000_000_000;
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(now);
+    try {
+      fs.writeFileSync(
+        path.join(tmpStateDir, 'rig-context.json'),
+        JSON.stringify({
+          version: 1,
+          generated_at: new Date(now - 2 * 60 * 60_000).toISOString(),
+          ttl_seconds: 3600,
+          checks: {
+            handoff: { status: 'ok', summary: 'handoff fresh' },
+            generated_state: { status: 'ok', summary: 'state fresh' },
+          },
+        }),
+      );
+
+      const raw = loadHudData({ stateDir: tmpStateDir, cwd: tmpCwd, runExpensiveProbes: false });
+
+      expect(raw.rigContext).toMatchObject({
+        status: 'ok',
+        issueCount: 0,
+        ageMinutes: 120,
+        isStale: true,
+      });
+    } finally {
+      nowSpy.mockRestore();
+    }
+  });
+
   it('loadHudData hydrates session-zone memory from session-cartridge.json', () => {
     fs.mkdirSync(path.join(tmpCwd, '_runs'), { recursive: true });
     fs.writeFileSync(

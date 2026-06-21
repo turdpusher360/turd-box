@@ -26,7 +26,9 @@ const PRIORITY = {
   'context-warn': 80,
   'tests-fail': 70,
   'tests-pass': 60,
+  push: 58,           // S495: git push reaction — above commit so a push after a commit still flashes excited
   commit: 55,
+  'skill-load': 52,   // S495: skill/test-run proud-joy flash — above tool-running so it dwells, below commit/push
   'agent-dispatch': 50,
   'agent-return': 50,
   'tool-running': 40,
@@ -42,10 +44,12 @@ const STATE_MAP = {
   idle:             { expression: 'proud joy',      gaze: 'forward', mode: 'standard' },
   'long-idle':      { expression: 'blink',          gaze: 'forward', mode: 'standard' },
   'tool-running':   { expression: 'thinking',       gaze: 'forward', mode: 'standard' }, // was 'compact' S288, reverted S290 — semantically inert post-S290
-  'tests-pass':     { expression: 'happy',          gaze: 'forward', mode: 'standard' },
+  'tests-pass':     { expression: 'proud joy',      gaze: 'forward', mode: 'standard' }, // S495: test run → biggest eyes [█ ▆]
   'tests-fail':     { expression: 'proud joy',      gaze: 'forward', mode: 'standard' },
   error:            { expression: 'dead',           gaze: 'forward', mode: 'standard' },
-  commit:           { expression: 'proud joy',      gaze: 'forward', mode: 'standard' },
+  commit:           { expression: 'happy',          gaze: 'forward', mode: 'standard' }, // S495: commit → happy [ˇ ˇ]
+  push:             { expression: 'excited',        gaze: 'forward', mode: 'standard' }, // S495: git push → excited [★ ★]
+  'skill-load':     { expression: 'proud joy',      gaze: 'forward', mode: 'standard' }, // S495: skill loaded → biggest eyes [█ ▆]
   'context-warn':   { expression: 'exhausted',      gaze: 'forward', mode: 'standard' },
   'rate-limited':   { expression: 'sleepy',         gaze: 'forward', mode: 'standard' }, // was 'compact' S288, reverted S290 — semantically inert post-S290
   'agent-dispatch': { expression: 'determined',     gaze: 'forward', mode: 'standard' },

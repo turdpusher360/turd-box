@@ -92,8 +92,40 @@ function renderContextTrend(session, palette, opts = {}) {
 }
 
 function renderContextCompact(state, palette) {
-  const trend = renderContextTrend((state && state.session) || {}, palette, { withMetric: true });
-  return trend ? [trend] : [];
+  const budget = renderContextBudgetCompact((state && state.session) || {}, palette);
+  return budget ? [budget] : [];
+}
+
+function renderContextBudgetCompact(session, palette) {
+  const input = Number(session.inputTokens) || 0;
+  const output = Number(session.outputTokens) || 0;
+  const cache = (Number(session.cacheReadTokens) || 0) + (Number(session.cacheCreationTokens) || 0);
+  const remaining = Number(session.remainingTokens) || 0;
+  if (input <= 0 && output <= 0 && cache <= 0 && remaining <= 0) return '';
+
+  const remainingRole = remaining > 0 ? 'ok' : 'warn';
+  const parts = [
+    '  ',
+    colorize(palette, 'muted', 'ctx budget '),
+  ];
+
+  if (remaining > 0) {
+    parts.push(colorize(palette, remainingRole, `${fmtTokens(remaining)} left`));
+  } else {
+    parts.push(colorize(palette, remainingRole, 'unknown left'));
+  }
+
+  if (input > 0) {
+    parts.push(colorize(palette, 'muted', '  in:'), colorize(palette, 'accent', fmtTokens(input)));
+  }
+  if (output > 0) {
+    parts.push(colorize(palette, 'muted', '  out:'), colorize(palette, 'ok', fmtTokens(output)));
+  }
+  if (cache > 0) {
+    parts.push(colorize(palette, 'muted', '  cache:'), colorize(palette, 'muted', fmtTokens(cache)));
+  }
+
+  return parts.join('');
 }
 
 // Map model name/id to a semantic color role.
@@ -163,5 +195,6 @@ module.exports = {
   resolveModelColor,
   coerceContextHistory,
   renderContextTrend,
+  renderContextBudgetCompact,
   renderContextCompact,
 };

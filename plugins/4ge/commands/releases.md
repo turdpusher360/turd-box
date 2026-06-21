@@ -1,6 +1,6 @@
 ---
 description: "Show recent release notes from shipped sessions"
-argument-hint: "optional: session number (e.g. S186) or 'all' for full list"
+argument-hint: "optional: session number (e.g. 186) or 'all' for full list"
 paths: ["_runs/**"]
 ---
 
@@ -13,7 +13,7 @@ Show release notes from shipped sessions.
 | Pattern | Action |
 |---------|--------|
 | (empty) | Show the most recent release notes file |
-| `S<number>` or `<number>` | Show release notes for that session (e.g., `/releases S186`) |
+| `S<number>` or `<number>` | Show release notes for that session (e.g., `/releases 186`) |
 | `all` or `list` | List all available release note files with dates and commit ranges |
 
 ## Implementation

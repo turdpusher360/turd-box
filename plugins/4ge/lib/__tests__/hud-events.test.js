@@ -13,6 +13,8 @@ describe('hud-events catalog', () => {
     const { EVENT_KEYS } = requireFresh();
     expect(EVENT_KEYS).toEqual([
       'commit',
+      'push',
+      'skill-load',
       'test-pass',
       'test-fail',
       'error-state',
@@ -43,6 +45,8 @@ describe('hud-events catalog', () => {
       'forge-phase': 30000,
       'context-high': 30000,
       commit: 30000,
+      push: 30000,
+      'skill-load': 8000,
       'test-pass': 8000,
       'badge-earned': 8000,
       export: 8000,
@@ -54,6 +58,8 @@ describe('hud-events catalog', () => {
       'error-state': 10000,
       'context-high': 60000,
       commit: 30000,
+      push: 30000,
+      'skill-load': 30000,
       'test-pass': 30000,
       'test-fail': 30000,
       'forge-phase': 30000,
@@ -71,6 +77,8 @@ describe('hud-events catalog', () => {
       'forge-phase': 'signal',
       'context-high': 'signal',
       commit: 'signal',
+      push: 'signal',
+      'skill-load': 'flash',
       'test-pass': 'flash',
       'badge-earned': 'flash',
       export: 'flash',
@@ -78,11 +86,13 @@ describe('hud-events catalog', () => {
     });
 
     expect([...majorEventSet()].sort()).toEqual(
-      ['commit', 'error-state', 'rate-limit-warn', 'test-fail', 'test-pass'].sort(),
+      ['commit', 'push', 'skill-load', 'error-state', 'rate-limit-warn', 'test-fail', 'test-pass'].sort(),
     );
 
     expect(companionEventMap()).toEqual({
       commit: 'commit',
+      push: 'push',
+      'skill-load': 'skill-load',
       'test-pass': 'tests-pass',
       'test-fail': 'tests-fail',
       'error-state': 'error',
@@ -102,6 +112,8 @@ describe('hud-events catalog', () => {
 
     expect(statuslineZoneMap()).toEqual({
       commit: ['gitStatus'],
+      push: ['gitStatus'],
+      'skill-load': ['activity'],
       'test-pass': ['activity', 'gitStatus'],
       'test-fail': ['health', 'activity'],
       'error-state': ['health', 'activity'],
@@ -132,6 +144,8 @@ describe('hud-events catalog', () => {
 
     expect(compactCompanionHintMap()).toEqual({
       commit: 'commit',
+      push: 'push',
+      'skill-load': 'skill-load',
       'test-pass': 'tests-pass',
       'test-fail': 'tests-fail',
       'error-state': 'error',
@@ -141,6 +155,8 @@ describe('hud-events catalog', () => {
 
     expect(compactMessageMap()).toEqual({
       commit: 'committed',
+      push: 'pushed',
+      'skill-load': 'skill loaded',
       'test-pass': 'all tests green',
       'test-fail': 'tests failed',
       'forge-phase': 'forge phase transition',

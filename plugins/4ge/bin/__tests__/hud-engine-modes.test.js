@@ -228,6 +228,47 @@ describe('renderZone with specific zones', () => {
     expect(mod.getZoneEntry('git').key).toBe('gitStatus');
   });
 
+  it('exposes the rig-context zone without crowding healthy composite HUD renders', () => {
+    const mod = requireFresh();
+    const state = JSON.parse(fs.readFileSync(MOCK_HEALTHY, 'utf8'));
+    state.rigContext = { status: 'ok', issueCount: 0, isStale: false, issues: [] };
+
+    const healthyKeys = mod.getCompositeZoneEntries(state).map((entry) => entry.key);
+    expect(mod.getZoneEntry('rig-context').key).toBe('rig');
+    expect(healthyKeys).not.toContain('rig');
+
+    state.rigContext = {
+      status: 'warn',
+      issueCount: 1,
+      headline: '1 rig check needs attention',
+      ageMinutes: 3,
+      isStale: false,
+      issues: [{ name: 'lockfile', status: 'warn', summary: 'package-lock.json older than package.json' }],
+    };
+
+    const warningKeys = mod.getCompositeZoneEntries(state).map((entry) => entry.key);
+    expect(warningKeys).toContain('rig');
+  });
+
+  it('renders rig warnings through zone mode', () => {
+    const mod = requireFresh();
+    const state = JSON.parse(fs.readFileSync(MOCK_HEALTHY, 'utf8'));
+    state.context = { trigger: 'command', event: null, zone: 'rig' };
+    state.rigContext = {
+      status: 'warn',
+      issueCount: 1,
+      headline: '1 rig check needs attention',
+      ageMinutes: 3,
+      isStale: false,
+      issues: [{ name: 'lockfile', status: 'warn', summary: 'package-lock.json older than package.json' }],
+    };
+
+    const output = stripAnsi(mod.renderZone(state));
+
+    expect(output).toContain('rig warn');
+    expect(output).toContain('lockfile');
+  });
+
   it('exposes the weasley zone through zone mode', () => {
     const mod = requireFresh();
     const state = JSON.parse(fs.readFileSync(MOCK_HEALTHY, 'utf8'));

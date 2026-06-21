@@ -70,4 +70,35 @@ describe('4ge command contracts', () => {
     expect(command).toContain('internal sub-protocol/fallback');
     expect(command).not.toMatch(/INVOKE\s+superpowers:systematic-debugging/);
   });
+
+  it('keeps DFE synthesis disk-first with the tools the DFE agent actually has', () => {
+    const command = readPluginFile('commands/dfe.md');
+    const skill = readPluginFile('skills/dfe-review/SKILL.md');
+
+    expect(command).toContain('the `DFE` agent does not have the Write tool');
+    expect(command).toContain('via Bash heredoc');
+    expect(command).toContain('before any optional reflection, consultation, advisor/server-side tool use, or inline summary');
+    expect(command).toContain('not to perform nested fan-out');
+    expect(command).not.toContain('using Write tool\n8. Instruction to return executive summary inline');
+
+    expect(skill).toContain('You do not have the Write tool. Write the report via Bash heredoc');
+    expect(skill).toContain('Do not call advisor/server-side consultation before the disk report exists.');
+    expect(skill).toContain('Do not perform nested fan-out; the 5 minion reports are already complete.');
+  });
+
+  it('keeps /signoff rig context advisory-only before cartridge enrichment', () => {
+    const command = readPluginFile('commands/signoff.md');
+
+    expect(command).toContain('## Step 0: Rig Health Advisory');
+    expect(command).toContain('lib/os/kernel/rig-advisory.cjs');
+    expect(command).toContain('_runs/os/rig-context.json');
+    expect(command).toContain('Advisory only');
+    expect(command).toContain('Do not abort, block, stage, commit, mutate runtime state, or change signing behavior because of rig warnings.');
+    expect(command).toContain('include relevant rig warnings in `momentum.blockers`');
+
+    const step0 = command.indexOf('## Step 0: Rig Health Advisory');
+    const step1 = command.indexOf('## Step 1: Read Current State');
+    expect(step0).toBeGreaterThanOrEqual(0);
+    expect(step1).toBeGreaterThan(step0);
+  });
 });

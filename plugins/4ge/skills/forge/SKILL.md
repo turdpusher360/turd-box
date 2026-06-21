@@ -35,6 +35,8 @@ Before starting any phase:
 2. Check for parked state files in `${CLAUDE_PLUGIN_DATA}/forge/` then `_runs/` (read `references/session-state.md`)
 3. `memory_search` for prior forge sessions on this topic
 
+For capability-gain or distillation work, also name the primary target surfaces, queued secondary surfaces, proof planes, and non-goals before Phase 2. Keep product/public/portfolio framing, runtime settings, hooks, agent-body edits, and long benchmark matrices out unless the operator explicitly opens those lanes.
+
 ## Phase 1: Scope
 
 **Context mode:** Low-context (budget <10K tokens). Decisions go to spec.

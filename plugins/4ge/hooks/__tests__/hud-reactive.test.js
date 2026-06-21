@@ -83,6 +83,78 @@ describe('detectEvent', () => {
     });
   });
 
+  // ── push (S495) ───────────────────────────────────────────────────────────────
+  describe('push event', () => {
+    it('returns "push" for a standalone git push command', () => {
+      const { detectEvent } = requireFresh();
+      expect(detectEvent({
+        tool_name: 'Bash',
+        tool_input: { command: 'git push origin main' },
+        tool_response: 'To github.com:org/repo.git\n   1234abc..5678def  main -> main',
+      })).toBe('push');
+    });
+
+    it('returns "push" for git -C <dir> push', () => {
+      const { detectEvent } = requireFresh();
+      expect(detectEvent({
+        tool_name: 'Bash',
+        tool_input: { command: 'git -C /absolute/path/to/repo push' },
+        tool_response: 'Everything up-to-date',
+      })).toBe('push');
+    });
+
+    it('does NOT return "push" for git push --dry-run (no actual push)', () => {
+      const { detectEvent } = requireFresh();
+      const result = detectEvent({
+        tool_name: 'Bash',
+        tool_input: { command: 'git push --dry-run origin main' },
+        tool_response: '',
+      });
+      expect(result).not.toBe('push');
+    });
+
+    it('does NOT misclassify a commit message mentioning push as a push', () => {
+      const { detectEvent } = requireFresh();
+      expect(detectEvent({
+        tool_name: 'Bash',
+        tool_input: { command: 'git commit -m "feat: push notifications"' },
+        tool_response: 'main 1234abc] feat: push notifications',
+      })).toBe('commit');
+    });
+
+    it('combined `git commit && git push` returns commit (push never seen) — documented edge', () => {
+      const { detectEvent } = requireFresh();
+      // The commit branch returns first; the push in the same Bash call is not
+      // detected. Run pushes as separate Bash calls to get the excited reaction.
+      expect(detectEvent({
+        tool_name: 'Bash',
+        tool_input: { command: 'git commit -m "feat: x" && git push' },
+        tool_response: 'main 1234abc] feat: x\nTo github.com:org/repo.git',
+      })).toBe('commit');
+    });
+  });
+
+  // ── skill-load (S495, DORMANT until Skill is in the matcher) ───────────────────
+  describe('skill-load event', () => {
+    it('returns "skill-load" for the Skill tool', () => {
+      const { detectEvent } = requireFresh();
+      expect(detectEvent({
+        tool_name: 'Skill',
+        tool_input: { name: 'fix-hud' },
+        tool_response: 'loaded',
+      })).toBe('skill-load');
+    });
+
+    it('returns "skill-load" for the SlashCommand tool', () => {
+      const { detectEvent } = requireFresh();
+      expect(detectEvent({
+        tool_name: 'SlashCommand',
+        tool_input: { command: '/forge' },
+        tool_response: 'ok',
+      })).toBe('skill-load');
+    });
+  });
+
   // ── test-pass ────────────────────────────────────────────────────────────────
   describe('test-pass event', () => {
     it('returns "test-pass" when vitest output shows 0 failed', () => {
@@ -594,6 +666,18 @@ describe('signalCompanion and COMPANION_EVENT_MAP', () => {
     expect(COMPANION_EVENT_MAP['commit']).toBe('commit');
   });
 
+  it('COMPANION_EVENT_MAP maps push -> push (S495 — chain completeness)', () => {
+    const { COMPANION_EVENT_MAP } = requireFresh();
+    // Without this entry signalCompanion would fall through to tool-running
+    // instead of signalling the excited face.
+    expect(COMPANION_EVENT_MAP['push']).toBe('push');
+  });
+
+  it('COMPANION_EVENT_MAP maps skill-load -> skill-load (S495 — chain completeness)', () => {
+    const { COMPANION_EVENT_MAP } = requireFresh();
+    expect(COMPANION_EVENT_MAP['skill-load']).toBe('skill-load');
+  });
+
   it('COMPANION_EVENT_MAP maps test-pass -> tests-pass', () => {
     const { COMPANION_EVENT_MAP } = requireFresh();
     expect(COMPANION_EVENT_MAP['test-pass']).toBe('tests-pass');
@@ -747,7 +831,7 @@ describe('Wave 1: messages-level filter', () => {
     setLevel('major', false);
     const { _messageAllowed, MAJOR_EVENTS } = requireFresh();
     expect([...MAJOR_EVENTS].sort()).toEqual(
-      ['commit', 'error-state', 'rate-limit-warn', 'test-fail', 'test-pass'].sort(),
+      ['commit', 'push', 'skill-load', 'error-state', 'rate-limit-warn', 'test-fail', 'test-pass'].sort(),
     );
     expect(_messageAllowed('commit')).toBe(true);
     expect(_messageAllowed('test-fail')).toBe(true);

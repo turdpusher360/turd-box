@@ -3,6 +3,25 @@
 All notable public changes to the 4ge Claude Code plugin are documented here.
 Versions follow Semantic Versioning.
 
+## [2.8.3] - 2026-06-21
+
+### Changed
+- Extended `/dfe`, `dfe-review`, and Forge DFE review doctrine with targeted failure sweeps for identifier-domain mismatches, artifact dependency/order gaps, and untrusted artifact instructions. No invocation topology, command flags, agents, hooks, runtime config, or output contract changed.
+- Generalized `/reconcile` dev-memory scope guidance so the published plugin documents canonical repo slugs without naming the private source workspace.
+
+## [2.8.2] - 2026-06-20
+
+### Changed
+- Added Forge capability-gain framing so distillation work names target surfaces, proof planes, secondary queues, and non-goals before moving into teammate execution.
+- Tightened Forge teammate prompt templates with explicit file ownership, no-unrelated-revert discipline, proof-plane coverage, disk-first reporting, and skipped-surface/caps disclosure.
+
+## [2.8.1] - 2026-06-20
+
+### Fixed
+- Tightened `/dfe` and `dfe-review` review doctrine so minion passes surface every named failure scenario, the adversarial pass verifies and deduplicates against all-seen candidates, and reports disclose skipped files, caps, and proof planes without changing the `/dfe` invocation topology.
+- Corrected Forge review protocol wording to distinguish the full `/dfe` 5+1 runner from a single DFE reviewer, and to treat parallel `opus-review` as a separate lens rather than a hidden confidence override.
+- Aligned DFE review docs around Claude/Codex parity boundaries and removed unsupported quick-mode wording.
+
 ## [2.8.0] - 2026-06-19
 
 ### Added

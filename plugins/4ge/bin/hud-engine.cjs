@@ -19,6 +19,7 @@ const { renderRateLimitZone, renderRateLimitCompact, RATE_META, rateVisible } = 
 const { renderActivityZone, ZONE_META: ACTIVITY_META, activityVisible } = require('./hud-zone-activity.cjs');
 const { renderForgeProgressZone, ZONE_META: FORGE_PROGRESS_META, forgeProgressVisible } = require('./hud-zone-forge-progress.cjs');
 const { renderGitStatusZone, ZONE_META: GIT_STATUS_META, gitStatusVisible } = require('./hud-zone-git-status.cjs');
+const { renderRigZone, renderRigCompact, RIG_META, rigContextVisible } = require('./hud-zone-rig.cjs');
 const { renderMoonphaseZone, ZONE_META: MOONPHASE_META, moonphaseVisible } = require('./hud-zone-moonphase.cjs');
 const { renderWeasleyZone, ZONE_META: WEASLEY_META, weasleyVisible } = require('./hud-zone-weasley.cjs');
 const { loadHudData, mergeHarnessStdin, resolveSessionUptime } = require('./hud-data-loader.cjs');
@@ -57,6 +58,7 @@ const ZONE_CATALOG = [
     render: renderHealthZone,
     renderZone: (state, palette) => renderHealthZone(state, palette, { detailed: true }),
   },
+  { key: 'rig', aliases: ['rig-context'], meta: RIG_META, render: renderRigZone, compact: renderRigCompact, visible: rigContextVisible },
   { key: 'caps', aliases: ['capabilities'], meta: CAPS_META, render: renderCapsZone, composite: false },
   { key: 'forge', meta: FORGE_META, render: renderForgeZone, visible: (state) => !!(state.forge && state.forge.active) },
   { key: 'badges', meta: BADGES_META, render: renderBadgesZone, composite: false },
@@ -695,7 +697,7 @@ function renderStatusLine(rawState, maxRows) {
 
   // Row 1: Face + model + caps + ctx (grade removed — orb replaces it)
   const modelFace = resolveModelFace(session.modelId);
-  const faceStr = resolveCompanionFace(rawState, palette, modelFace, { projectGaze: true });
+  const faceStr = resolveCompanionFace(rawState, palette, modelFace);
   const modelId = session.modelId || session.model || '';
   const modelFamily = modelId.includes('opus') ? 'opus' : modelId.includes('sonnet') ? 'sonnet' : modelId.includes('haiku') ? 'haiku' : '';
   // Per-model color for supported public model families.

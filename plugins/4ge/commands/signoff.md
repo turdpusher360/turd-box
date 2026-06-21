@@ -8,6 +8,24 @@ paths: ["_runs/**"]
 
 Review the current session cartridge, enrich the momentum field with a model-curated summary, and write the enriched cartridge back to disk before ending the session.
 
+## Step 0: Rig Health Advisory
+
+Before reading or enriching the cartridge, inspect the advisory rig cache:
+
+```bash
+node - <<'NODE'
+const { readRigContextAdvisory } = require('./lib/os/kernel/rig-advisory.cjs');
+const advisory = readRigContextAdvisory({ cwd: process.cwd() });
+if (advisory) process.stdout.write(advisory + '\n');
+NODE
+```
+
+This reads `_runs/os/rig-context.json`, if present. If nothing prints, continue silently.
+
+Advisory only: `_runs/os/rig-context.json` is generated context, not proof. Verify live source of truth before relying on it. Do not abort, block, stage, commit, mutate runtime state, or change signing behavior because of rig warnings.
+
+If the advisory prints non-ok or stale rig checks, mention them in the session review and include relevant rig warnings in `momentum.blockers` as advisory blockers.
+
 ## Step 1: Read Current State
 
 Attempt to read `_runs/session-cartridge.json` via Bash:
