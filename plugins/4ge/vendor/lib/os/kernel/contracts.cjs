@@ -192,16 +192,18 @@ function isAllowed(contract, toolName) {
  * Check whether a file path falls within the contract's scope for
  * the given access mode ('write' or 'read').
  *
- * Rules evaluated in order for each pattern in the scope list:
- *  - `*`              → allow everything
- *  - `!<pattern>`     → negation (currently logged; positive match wins)
- *  - `<dir>/`         → prefix match (path must start with the prefix)
- *  - `<glob>`         → picomatch glob match
- *
- * Returns true when at least one positive pattern matches and no
- * negation pattern overrides it (simplified: first positive match wins
- * for directory prefixes; negations are supported structurally but the
- * test suite only asserts the positive case).
+ * Fail-closed semantics:
+ *  - A missing/falsy `scope[mode]` (no key registered for this mode)
+ *    DENIES access. A security scope check must default deny, not
+ *    allow, when the caller hasn't declared a scope.
+ *  - Negation patterns (`!<pattern>`) are evaluated BEFORE any
+ *    positive/`*` match. If a negation pattern matches the path, the
+ *    result is deny REGARDLESS of whether `*` or another positive
+ *    pattern is also present in the list — negation always overrides
+ *    `*`, it can never be silently bypassed by a wildcard fast-path.
+ *  - Only once negation has cleared the path do positive patterns
+ *    get evaluated: `*` grants everything not already excluded above,
+ *    `<dir>/` is a prefix match, anything else is a picomatch glob.
  *
  * @param {object} contract
  * @param {string} filePath
@@ -210,8 +212,7 @@ function isAllowed(contract, toolName) {
  */
 function isInScope(contract, filePath, mode) {
   const globs = contract.scope?.[mode];
-  if (!globs) return true;
-  if (globs.includes('*')) return true;
+  if (!globs) return false;
 
   // Normalize path separators for Windows compatibility and resolve traversal
   const posixPath = filePath.replace(/\\/g, '/');
@@ -229,7 +230,20 @@ function isInScope(contract, filePath, mode) {
     .filter(g => g.startsWith('!'))
     .map(g => g.slice(1));
 
-  // Check if any positive pattern matches
+  // Negation is evaluated FIRST so it can never be bypassed by a '*'
+  // fast-path in positivePatterns below.
+  const negated = negationPatterns.some(glob => {
+    const normalizedGlob = glob.replace(/\\/g, '/');
+    if (normalizedGlob.endsWith('/')) {
+      return normalized.startsWith(normalizedGlob);
+    }
+    return picomatch.isMatch(normalized, normalizedGlob, { dot: true });
+  });
+
+  if (negated) return false;
+
+  // Check if any positive pattern matches ('*' grants everything that
+  // wasn't already excluded by a negation pattern above).
   const matched = positivePatterns.some(glob => {
     if (glob === '*') return true;
     const normalizedGlob = glob.replace(/\\/g, '/');
@@ -240,18 +254,7 @@ function isInScope(contract, filePath, mode) {
     return picomatch.isMatch(normalized, normalizedGlob, { dot: true });
   });
 
-  if (!matched) return false;
-
-  // If a negation pattern also matches, deny
-  const negated = negationPatterns.some(glob => {
-    const normalizedGlob = glob.replace(/\\/g, '/');
-    if (normalizedGlob.endsWith('/')) {
-      return normalized.startsWith(normalizedGlob);
-    }
-    return picomatch.isMatch(normalized, normalizedGlob, { dot: true });
-  });
-
-  return !negated;
+  return matched;
 }
 
 module.exports = {

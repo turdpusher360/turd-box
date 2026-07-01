@@ -28,6 +28,22 @@ claude plugin install 4ge@turd-box
 
 **One plugin, four jobs in one place.** Many teams pay separately for code review, a security-posture tool, persistent dev-memory infrastructure, and multi-agent orchestration — comparable standalone tools commonly run $12-$25/mo each (illustrative list prices, not a guaranteed substitution). 4ge bundles those workflows into one Claude Code plugin. 4ge Pro: $19/mo. One install.
 
+### Forge 3 board compatibility (Anvil)
+
+`/4ge` now emits Forge 3-compatible board state at:
+
+- `_runs/forge-board/latest.json`
+- `_runs/forge-board/current/<session-id>.json`
+- `_runs/forge-board/history/index.json`
+
+Compatibility commands:
+
+- `/4ge mode code|review|ship|maintain` — write operating intent into the shared board
+- `/4ge board` / `/4ge board history` / `/4ge board refresh`
+- `/4ge projections advisory|auto-at-stop-lines`
+
+This is state-compatibility scaffolding for Anvil and does **not** replace existing CLI workflows.
+
 ---
 
 ## Commands

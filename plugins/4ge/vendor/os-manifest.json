@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-06-21T15:52:28.536Z",
-  "sourceHead": "73d7824fd5e8e5a99666cc877b5963b0f3c4ca98",
+  "generatedAt": "2026-07-01T20:41:46.087Z",
+  "sourceHead": "50663b79e0973215478fe0fe24d64771486799fc",
   "files": {
     "lib/aisle/.gitignore": {
       "sourceSha256": "051f52b7c0fb350f7e8e5cd2e6aceb85e7cf198ff9062f9b52959eac14209671",
@@ -128,8 +128,8 @@
       "transformed": false
     },
     "lib/aisle/core/boot.cjs": {
-      "sourceSha256": "d4a53555a33851a28274b09bde229ed35327cf65527c66e0d3b8b119ea016460",
-      "vendoredSha256": "595e963ad65fba85dc1b8e438289b204128b2bf1f3ff342dbee67b8c9def45b1",
+      "sourceSha256": "7819420a7d8e19443a02277b6c2363491cb5f4a9f5f5d97ea0ca6ed30713eee6",
+      "vendoredSha256": "d0644963f026deed290b380f21897eba06c2022cbec51bf7d96a66f44969252d",
       "transformed": true
     },
     "lib/aisle/core/config.cjs": {
@@ -308,8 +308,8 @@
       "transformed": false
     },
     "lib/os/capability-registry.cjs": {
-      "sourceSha256": "8a14eb4efd95425d9730e7a1838f31978470b4577ae6197d3a140ad62e2ca9cf",
-      "vendoredSha256": "afbcffe3cc2c1ae5d4692b0a272be89201a6cbfc4503ed253efdfedb755840d3",
+      "sourceSha256": "505683cc10473368e17b091a49842e0e607734b1dbcca9c84af96ab8b0b33d8b",
+      "vendoredSha256": "23c2986fb308999c81f52335142718627ddb0b31d030cf93e4e9678f97fc699e",
       "transformed": true
     },
     "lib/os/config/gates.json": {
@@ -353,8 +353,8 @@
       "transformed": true
     },
     "lib/os/kernel/contracts.cjs": {
-      "sourceSha256": "5f185403c6a2e83537aca2828b0f57c47077d041477c064605796ebca00c93ec",
-      "vendoredSha256": "5f185403c6a2e83537aca2828b0f57c47077d041477c064605796ebca00c93ec",
+      "sourceSha256": "e39bf6685159ed7630110cf3786e46291cdf7b5ae93173be4d87d16a496c2c8b",
+      "vendoredSha256": "e39bf6685159ed7630110cf3786e46291cdf7b5ae93173be4d87d16a496c2c8b",
       "transformed": false
     },
     "lib/os/kernel/feature-gates.cjs": {

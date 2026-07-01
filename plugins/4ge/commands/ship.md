@@ -27,7 +27,7 @@ If no commit message is provided, auto-generate one:
 4. Store session context to memory: `mcp__dev-memory__memory_store` with a brief summary of what is being shipped
 5. If `--amend` flag: run `git commit --amend` with the message; otherwise run `git commit -m "<message>"`. Always append a model-aware co-author line:
    - Read `_runs/os/session-meta.json` and extract the `model` field
-   - Map to display name by detecting version first: `opus-4-8` → `Claude Opus 4.8 (1M context)`, `opus-4-7` → `Claude Opus 4.7 (1M context)`, `opus-4-6` → `Claude Opus 4.6 (1M context)`, `sonnet-4-6` → `Claude Sonnet 4.6`. Fall back by family: `opus` → `Claude Opus`, `sonnet` → `Claude Sonnet`, else → `Claude`.
+   - Map to display name by detecting version first: `opus-4-8` → `Claude Opus 4.8 (1M context)`, `opus-4-7` → `Claude Opus 4.7 (1M context)`, `opus-4-6` → `Claude Opus 4.6 (1M context)`, `sonnet-5` → `Claude Sonnet 5 (1M context)`, `sonnet-4-6` → `Claude Sonnet 4.6`. Fall back by family: `opus` → `Claude Opus`, `sonnet` → `Claude Sonnet`, else → `Claude`.
    - Append: `Co-Authored-By: {display name} <noreply@anthropic.com>`
 6. Show the commit hash and a summary of changed files
 7. If `--no-push` flag: stop here — commit is done, no push

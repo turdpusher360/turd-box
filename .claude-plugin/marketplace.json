@@ -17,7 +17,7 @@
     {
       "name": "4ge",
       "description": "Agentic OS for Claude Code. 41 commands, 41 skills, 9 OS capabilities. /forge dispatches specialized agents across a 7-phase build pipeline. /dfe runs 6-pass adversarial code review (5 domain passes + 1 adversarial pass). /aisle reports security posture and routes scans while the old fail-closed gate remains shelved. /recall searches connected cross-session memory. /hud renders live OS state in the statusline. One install, one config.",
-      "version": "2.8.3",
+      "version": "2.8.4",
       "source": "./plugins/4ge",
       "category": "development",
       "tags": [

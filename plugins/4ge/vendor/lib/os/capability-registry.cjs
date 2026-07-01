@@ -331,18 +331,35 @@ function createCapabilityRegistry(osApi, opts = {}) {
    */
   function boot() {
     if (bootOrder.length === 0 && caps.size === 0) {
-      const emptyStatus = {
+      const failedStatus = {
         session_id: `session-${Date.now()}`,
         booted_at: new Date().toISOString(),
         capabilities: {},
-        overall: 'ready',
+        overall: 'failed',
         total_boot_ms: 0,
+        reason: 'no capabilities discovered; expected Agentic OS capabilities',
       };
       fs.mkdirSync(_stateDir, { recursive: true });
-      _writeJson(path.join(_stateDir, 'boot-status.json'), emptyStatus);
+      _writeJson(path.join(_stateDir, 'boot-status.json'), failedStatus);
       _writeJson(path.join(_stateDir, 'health.json'), {});
       _booted = true;
-      return emptyStatus;
+      return failedStatus;
+    }
+
+    if (bootOrder.length < caps.size) {
+      const failedStatus = {
+        session_id: `session-${Date.now()}`,
+        booted_at: new Date().toISOString(),
+        capabilities: {},
+        overall: 'failed',
+        total_boot_ms: 0,
+        reason: 'capabilities discovered but dependency resolution did not produce a complete boot order',
+      };
+      fs.mkdirSync(_stateDir, { recursive: true });
+      _writeJson(path.join(_stateDir, 'boot-status.json'), failedStatus);
+      _writeJson(path.join(_stateDir, 'health.json'), {});
+      _booted = true;
+      return failedStatus;
     }
 
     fs.mkdirSync(_stateDir, { recursive: true });

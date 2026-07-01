@@ -1,6 +1,6 @@
 ---
 description: "4ge ecosystem — forge orchestration + OS operations"
-argument-hint: "run <task> | resume | park | os | eject <type> <name> | adopt <type> <name> | status | trust"
+argument-hint: "run <task> | resume | park | os | eject <type> <name> | adopt <type> <name> | status | trust | mode [code|review|ship|maintain] | board [history|refresh] | projections [advisory|auto-at-stop-lines]"
 paths: ["plugins/4ge/**"]
 ---
 
@@ -39,7 +39,20 @@ Parse $ARGUMENTS to determine the subcommand. Dispatch accordingly.
 | `trust reset` | Reset trust score to 0 (guided). Confirm before resetting |
 | `trust set <level>` | Override trust level. Sets score to threshold: guided=0, assisted=10, autonomous=25 |
 | `wins` | Show session wins history (requires Tier 2 checkpoint buddy) |
+| `mode` | Read board state and show `mode`, `mode_status`, and recommended next mode from `${CLAUDE_PLUGIN_ROOT}/lib/forge-board.cjs`. |
+| `mode code` `mode review` `mode ship` `mode maintain` | Read latest board (fallback create default), set mode, then write `_runs/forge-board/latest.json` + `current/<session-id>.json` |
+| `board` | Read latest board and return compact state summary with path pointers for Anvil compatibility artifacts. |
+| `board history` | Read `history/index.json` via `readHistoryIndex` and show latest 10 entries (if any). If missing, show empty fallback list. |
+| `board refresh` | Re-read `latest.json` and `history/index.json` from `process.cwd()/_runs/forge-board/` and report whether board artifacts are current. |
+| `projections` | Show board projection mode and whether auto-at-stop-lines is active from latest board. |
+| `projections advisory` `projections auto-at-stop-lines` | Set projection mode and persist through `setProjectionMode()` to latest/current artifacts. |
 | (empty) | **Show the Operate hub menu** — see "Empty Args: Operate Hub" below (cheap HUD strip + an `AskUserQuestion` menu; the "OS status" leaf renders the full HUD) |
+
+Compatibility helper note for these rows:
+
+- `const forgeBoard = require('${CLAUDE_PLUGIN_ROOT}/lib/forge-board.cjs')`
+- `setMode`, `setProjectionMode`, `writeBoard`, `readLatestBoard`, and `readHistoryIndex` are the only board surface writes/readers used here.
+- Preserve every existing `/4ge` command semantics; these rows are compatibility writes only for Anvil-readable board state.
 
 ---
 

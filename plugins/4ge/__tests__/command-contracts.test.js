@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const pluginRoot = path.resolve(import.meta.dirname, '..');
+const repoRoot = path.resolve(pluginRoot, '../..');
 
 function readPluginFile(relativePath) {
   return fs.readFileSync(path.join(pluginRoot, relativePath), 'utf8');
@@ -86,6 +87,51 @@ describe('4ge command contracts', () => {
     expect(skill).toContain('Do not perform nested fan-out; the 5 minion reports are already complete.');
   });
 
+  it('keeps DFE minion report writes compatible with approved minion tools', () => {
+    const command = readPluginFile('commands/dfe.md');
+    const skill = readPluginFile('skills/dfe-review/SKILL.md');
+
+    expect(command).toContain('Write findings to `_runs/review/dfe-{pass}-$DATE.md` via Bash heredoc');
+    expect(command).toContain('Minions are source-read-only scanners. They may use Bash only');
+    expect(command).not.toContain('Minions are source-read-only scanners. They may use Write only');
+
+    expect(skill).toContain('Write findings to _runs/review/dfe-existence-$DATE.md via Bash heredoc');
+    expect(skill).toContain('Minions are source-read-only scanners. They may use Bash only');
+    expect(skill).not.toContain('Write findings to _runs/review/dfe-existence-$DATE.md using the Write tool');
+  });
+
+  it('keeps /dfe diagnostics mode packaged, fail-loud, and indexed', () => {
+    const manifest = readManifest();
+    const command = readPluginFile('commands/dfe.md');
+    const skill = readPluginFile('skills/dfe-review/SKILL.md');
+
+    expect(manifest.commands.dfe.argumentHint).toContain('--diagnostics');
+    expect(fs.existsSync(path.join(pluginRoot, 'lib/dfe/diff-scoper.cjs'))).toBe(true);
+    expect(fs.existsSync(path.join(pluginRoot, 'lib/dfe/diagnostics-profile.cjs'))).toBe(true);
+    expect(fs.existsSync(path.join(pluginRoot, 'lib/dfe/diagnostics-index.cjs'))).toBe(true);
+    expect(readPluginFile('lib/dfe/diff-scoper.cjs')).toBe(
+      fs.readFileSync(path.join(repoRoot, 'lib/dfe/diff-scoper.cjs'), 'utf8'),
+    );
+    expect(readPluginFile('lib/dfe/diagnostics-profile.cjs')).toBe(
+      fs.readFileSync(path.join(repoRoot, 'lib/dfe/diagnostics-profile.cjs'), 'utf8'),
+    );
+    expect(readPluginFile('lib/dfe/diagnostics-index.cjs')).toBe(
+      fs.readFileSync(path.join(repoRoot, 'lib/dfe/diagnostics-index.cjs'), 'utf8'),
+    );
+
+    for (const source of [command, skill]) {
+      expect(source).toContain('${CLAUDE_PLUGIN_ROOT}/lib/dfe/diff-scoper.cjs');
+      expect(source).toContain('test -f "${CLAUDE_PLUGIN_ROOT}/lib/dfe/diagnostics-profile.cjs"');
+      expect(source).toContain('[dfe] --diagnostics requires lib/dfe/diagnostics-profile.cjs');
+      expect(source).toContain('node "${CLAUDE_PLUGIN_ROOT}/lib/dfe/diagnostics-index.cjs" _runs/review');
+      expect(source).toContain('_runs/review/dfe-existence-$DATE.md');
+      expect(source).toContain('_runs/review/dfe-adversarial-$DATE.md');
+      expect(source).toContain('_runs/review/index.json');
+      expect(source).not.toContain('node lib/dfe/');
+      expect(source).not.toContain('test -f lib/dfe/');
+    }
+  });
+
   it('keeps /signoff rig context advisory-only before cartridge enrichment', () => {
     const command = readPluginFile('commands/signoff.md');
 
@@ -100,5 +146,26 @@ describe('4ge command contracts', () => {
     const step1 = command.indexOf('## Step 1: Read Current State');
     expect(step0).toBeGreaterThanOrEqual(0);
     expect(step1).toBeGreaterThan(step0);
+  });
+
+  it('keeps /signoff cartridge writes parse-checked and atomic', () => {
+    const command = readPluginFile('commands/signoff.md');
+
+    expect(command).toContain('JSON.parse(raw)');
+    expect(command).toContain('[signoff] invalid existing cartridge JSON');
+    expect(command).toContain('tmp="_runs/session-cartridge.json.$$.$RANDOM.tmp"');
+    expect(command).toContain('JSON.parse(require(\'fs\').readFileSync(process.argv[1], \'utf8\'))');
+    expect(command).toContain('mv "$tmp" _runs/session-cartridge.json');
+    expect(command).toContain('leave the prior `_runs/session-cartridge.json` untouched');
+    expect(command).not.toContain('cat > _runs/session-cartridge.json <<');
+  });
+
+  it('keeps /signoff from preserving stale prior-session cartridge fields', () => {
+    const command = readPluginFile('commands/signoff.md');
+
+    expect(command).toContain('If `session_id` exists and does not match the current session ID');
+    expect(command).toContain('Always rebuild session-scoped fields from current live state');
+    expect(command).toContain('Never preserve prior-session `git`, `modified_files`, `decisions`, or `tasks`');
+    expect(command).not.toContain('preserve all fields from it and overwrite only `momentum`, `enriched`, and `enriched_at`');
   });
 });

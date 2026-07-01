@@ -31,7 +31,22 @@ If the advisory prints non-ok or stale rig checks, mention them in the session r
 Attempt to read `_runs/session-cartridge.json` via Bash:
 
 ```bash
-cat _runs/session-cartridge.json 2>/dev/null || echo "__MISSING__"
+node - <<'NODE'
+const fs = require('fs');
+const file = '_runs/session-cartridge.json';
+try {
+  const raw = fs.readFileSync(file, 'utf8');
+  JSON.parse(raw);
+  process.stdout.write(raw);
+} catch (err) {
+  if (err && err.code === 'ENOENT') {
+    process.stdout.write('__MISSING__\n');
+  } else {
+    process.stderr.write(`[signoff] invalid existing cartridge JSON: ${err.message}\n`);
+    process.exit(2);
+  }
+}
+NODE
 ```
 
 If the file is missing or the output is `__MISSING__`, build cartridge data from scratch:
@@ -50,18 +65,18 @@ Also read (best-effort):
 
 If the cartridge was read successfully, check these fields:
 
-- If `enriched` is `true` AND `session_id` does not match the current session ID: warn the user before proceeding.
+- If `session_id` exists and does not match the current session ID: warn the user before proceeding, even if the cartridge is not enriched.
 
   Print:
   ```
-  [signoff] Warning: existing cartridge is from a prior session (session <session_id>) and was model-curated.
-  Overwriting it will discard that session's enriched summary. Proceed? (y/n)
+  [signoff] Warning: existing cartridge is from a prior session (session <session_id>).
+  Enriching it as current would preserve stale git/files/tasks unless rebuilt. Rebuild current-session cartridge? (y/n)
   ```
 
   Wait for confirmation. If the user says no, stop here.
 
-- If `enriched` is `true` AND `session_id` matches: proceed silently (re-enriching the same session is fine).
-- If `enriched` is `false` or absent: proceed silently.
+- If `session_id` matches: proceed silently (re-enriching the same session is fine).
+- If `session_id` is absent: treat the existing cartridge as partial input only; rebuild session-scoped fields from live state.
 
 ## Step 3: Present Summary
 
@@ -89,7 +104,18 @@ Write the `momentum` object with model-authored content based on the session sta
 
 ## Step 5: Assemble Enriched Cartridge JSON
 
-Construct the final JSON object. If an existing cartridge was read, preserve all fields from it and overwrite only `momentum`, `enriched`, and `enriched_at`. If building from scratch, include the full schema:
+Construct the final JSON object from current live state. If an existing cartridge was read, preserve only non-session metadata (`v`, `ttl_hours`, and original `ts` when it belongs to the same session). Always rebuild session-scoped fields from current live state before writing:
+
+- `session_id`
+- `git`
+- `modified_files`
+- `decisions`
+- `tasks`
+- `momentum`
+- `enriched`
+- `enriched_at`
+
+Never preserve prior-session `git`, `modified_files`, `decisions`, or `tasks` into the enriched output. If building from scratch, include the full schema:
 
 ```json
 {
@@ -120,13 +146,18 @@ Ensure the JSON is valid: no trailing commas, all strings properly escaped, no u
 
 ## Step 6: Write Enriched Cartridge
 
-Write to disk via Bash using a heredoc. Use the exact JSON object assembled in Step 5:
+Write to disk via Bash using a temp file, JSON validation, and atomic move. Use the exact JSON object assembled in Step 5:
 
 ```bash
-cat > _runs/session-cartridge.json << 'CARTRIDGE_EOF'
+tmp="_runs/session-cartridge.json.$$.$RANDOM.tmp"
+cat > "$tmp" << 'CARTRIDGE_EOF'
 <enriched JSON here>
 CARTRIDGE_EOF
+node -e "JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8'))" "$tmp" &&
+  mv "$tmp" _runs/session-cartridge.json
 ```
+
+If validation fails, leave the prior `_runs/session-cartridge.json` untouched, remove the temp file if it still exists, print the validation error, and stop before staging or committing continuity.
 
 ## Step 7: Commit the continuity (so it can't strand)
 

@@ -19,6 +19,7 @@ const MODEL_FACE = {
   'claude-opus-4-6':     { expr: 'determined', color: 'accent' },
   'claude-opus-4-6[1m]': { expr: 'determined', color: 'accent' },
   'claude-sonnet-4-6':   { expr: 'thinking',    color: 'accent' },
+  'claude-sonnet-5':     { expr: 'thinking',    color: 'accent' },  // Sonnet 5: adaptive thinking, 1M
   'claude-haiku-4-5':    { expr: 'sleepy',     color: 'muted' },
 };
 

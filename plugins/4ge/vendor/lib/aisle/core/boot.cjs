@@ -43,7 +43,7 @@ function loadDeps() {
 const BOOT_TIMEOUT_MS = 30000;
 
 function elapsed(startTime) {
-  return Date.now() - startTime;
+  return Math.max(0, Date.now() - startTime);
 }
 
 // ---------------------------------------------------------------------------

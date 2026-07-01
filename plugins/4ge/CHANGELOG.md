@@ -3,6 +3,15 @@
 All notable public changes to the 4ge Claude Code plugin are documented here.
 Versions follow Semantic Versioning.
 
+## [2.8.4] - 2026-07-01
+
+### Fixed
+- Guarded `/forge` against pasted session/tool output being parsed as a forge task description (commit 132f5237).
+- Restored the Fable rainbow model label in the statusline HUD (regression from the 2026-06-14 restricted-label scrub; Fable is available again).
+
+### Changed
+- Routed the `sonnet` model alias to Sonnet 5 and purged retired Sonnet 4.6 / Opus 4.6 pins from model routing (commits e55d086b, 6b366aee).
+
 ## [2.8.3] - 2026-06-21
 
 ### Changed

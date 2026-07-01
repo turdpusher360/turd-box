@@ -15,7 +15,7 @@ inputs:
   model:
     description: "Base model for Sonnet-tier passes."
     required: false
-    default: "claude-sonnet-4-6"
+    default: "claude-sonnet-5"
 
   opus_model:
     description: "Model for Opus-tier passes. Default: claude-opus-4-8. Use claude-opus-4-7 for pinned-stability."

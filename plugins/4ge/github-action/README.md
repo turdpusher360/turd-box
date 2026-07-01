@@ -36,7 +36,7 @@ jobs:
 | Input | Default | Description |
 |-------|---------|-------------|
 | `api_key` | required | Anthropic API key |
-| `model` | `claude-sonnet-4-6` | Base model for Sonnet passes (P1, P4, P5) |
+| `model` | `claude-sonnet-5` | Base model for Sonnet passes (P1, P4, P5) |
 | `opus_model` | `claude-opus-4-8` | Opus model for P2, P3, and P6. Use `claude-opus-4-7` for pinned-stability. |
 | `passes` | `3` | Number of passes: `3` (free tier) or `6` (full review) |
 | `base_branch` | `main` | Branch to diff against |
@@ -68,7 +68,7 @@ jobs:
 Pass 6 (PROVENANCE) uses `opus_model` regardless of the `model` input.
 Passes 2 and 3 (SECURITY, LOGIC) also use Opus — adversarial reasoning needs the better model.
 
-Model IDs are validated before the action attempts an Anthropic API call. Current defaults follow Anthropic's model overview: `claude-sonnet-4-6` for Sonnet-tier passes and `claude-opus-4-8` for Opus-tier passes. The `claude-opus-4-7` Opus override is documented for pinned-stability; Anthropic pricing lists Opus 4.8 and Opus 4.7 at the same standard rate, with Sonnet priced lower.
+Model IDs are validated before the action attempts an Anthropic API call. Current defaults follow Anthropic's model overview: `claude-sonnet-5` for Sonnet-tier passes and `claude-opus-4-8` for Opus-tier passes. The `claude-opus-4-7` Opus override is documented for pinned-stability; Anthropic pricing lists Opus 4.8 and Opus 4.7 at the same standard rate, with Sonnet priced lower.
 
 - Model overview: https://platform.claude.com/docs/en/about-claude/models/overview
 - Pricing: https://platform.claude.com/docs/en/about-claude/pricing
@@ -111,7 +111,7 @@ Report-only mode sets the GitHub review event to COMMENT. Without report-only mo
   uses: OWNER/4ge-dfe-action@v0
   with:
     api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-    model: "claude-sonnet-4-6"
+    model: "claude-sonnet-5"
     opus_model: "claude-opus-4-8"
     passes: "6"
     base_branch: "main"

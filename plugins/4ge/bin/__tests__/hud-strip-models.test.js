@@ -41,6 +41,12 @@ describe('MODEL_FACE map', () => {
     expect(MODEL_FACE['claude-sonnet-4-6'].expr).toBe('thinking');
   });
 
+  it('maps claude-sonnet-5 to thinking with accent color', () => {
+    const { MODEL_FACE } = requireFresh();
+    expect(MODEL_FACE['claude-sonnet-5'].expr).toBe('thinking');
+    expect(MODEL_FACE['claude-sonnet-5'].color).toBe('accent');
+  });
+
   it('maps claude-haiku-4-5 to sleepy with muted color', () => {
     const { MODEL_FACE } = requireFresh();
     expect(MODEL_FACE['claude-haiku-4-5'].expr).toBe('sleepy');

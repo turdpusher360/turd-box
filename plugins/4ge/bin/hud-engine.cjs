@@ -314,11 +314,13 @@ function renderFull(rawState) {
 // When healthy, a model-specific face is shown (W5 T5.1); when degraded, expression system takes over.
 
 const MODEL_FACE = {
+  'claude-fable-5':      { expr: 'determined', color: 'accent' },  // S398: Mythos-class flagship
   'claude-opus-4-8':     { expr: 'determined', color: 'accent' },  // S398: explicit entry
   'claude-opus-4-7':     { expr: 'determined', color: 'accent' },  // S332: explicit entry
   'claude-opus-4-6':     { expr: 'determined', color: 'accent' },
   'claude-opus-4-6[1m]': { expr: 'determined', color: 'accent' },
   'claude-sonnet-4-6':   { expr: 'thinking',    color: 'accent' },
+  'claude-sonnet-5':     { expr: 'thinking',    color: 'accent' },  // Sonnet 5: adaptive thinking, 1M
   'claude-haiku-4-5':    { expr: 'sleepy',     color: 'muted' },
 };
 
@@ -328,10 +330,28 @@ function resolveModelFace(modelId) {
   // Exact match first
   if (MODEL_FACE[modelId]) return MODEL_FACE[modelId];
   // Prefix match
+  if (modelId.startsWith('claude-fable'))  return MODEL_FACE['claude-fable-5'];
   if (modelId.startsWith('claude-opus'))   return MODEL_FACE['claude-opus-4-6'];
   if (modelId.startsWith('claude-sonnet')) return MODEL_FACE['claude-sonnet-4-6'];
   if (modelId.startsWith('claude-haiku'))  return MODEL_FACE['claude-haiku-4-5'];
   return null;
+}
+
+// S398: the Fable flagship gets a rainbow model label — a STATIC ROYGBIV gradient
+// across each visible glyph. Declared in docs/reference/hud-vocabulary.md §10/§32.
+// Static (not animated) by design: idle renders stay byte-identical so the mobile
+// Termius freeze invariant (§5) holds. Spaces keep no hue. Fable-only — the cyan
+// trio (opus/sonnet/haiku) keep their solid spectrum colors.
+const FABLE_RAINBOW = [196, 208, 226, 46, 51, 27, 129];  // red→orange→yellow→green→cyan→blue→violet
+function rainbowize(text) {
+  let out = '';
+  let i = 0;
+  for (const ch of text) {
+    if (ch === ' ') { out += ch; continue; }
+    out += `\x1b[38;5;${FABLE_RAINBOW[i % FABLE_RAINBOW.length]}m${ch}`;
+    i++;
+  }
+  return out + '\x1b[0m';
 }
 
 const COMPACT_FACES = {
@@ -524,7 +544,7 @@ function renderStrip(rawState) {
 
   // Model (short label)
   const modelId = state.session.modelId || state.session.model || '';
-  const modelLabel = modelId.includes('opus') ? 'opus' : modelId.includes('sonnet') ? 'sonnet' : modelId.includes('haiku') ? 'haiku' : '';
+  const modelLabel = modelId.includes('fable') ? 'fable' : modelId.includes('opus') ? 'opus' : modelId.includes('sonnet') ? 'sonnet' : modelId.includes('haiku') ? 'haiku' : '';
   const modelStr = modelLabel ? colorize(palette, 'accent', modelLabel) : '';
 
   // Context %
@@ -699,11 +719,11 @@ function renderStatusLine(rawState, maxRows) {
   const modelFace = resolveModelFace(session.modelId);
   const faceStr = resolveCompanionFace(rawState, palette, modelFace);
   const modelId = session.modelId || session.model || '';
-  const modelFamily = modelId.includes('opus') ? 'opus' : modelId.includes('sonnet') ? 'sonnet' : modelId.includes('haiku') ? 'haiku' : '';
-  // Per-model color for supported public model families.
+  const modelFamily = modelId.includes('fable') ? 'fable' : modelId.includes('opus') ? 'opus' : modelId.includes('sonnet') ? 'sonnet' : modelId.includes('haiku') ? 'haiku' : '';
+  // Per-model color (fable bypasses this — it renders via rainbowize below)
   const modelColors = { opus: '\x1b[38;5;117m', sonnet: '\x1b[38;5;75m', haiku: '\x1b[38;5;110m' };  // brightest, bright, medium
   const modelColor = modelColors[modelFamily] || '\x1b[38;5;252m';
-  // Extract version: two-part model IDs (opus-4-6 → 4.6).
+  // Extract version: two-part (opus-4-6 → 4.6) or single-part (fable-5 → 5)
   const verMatch = modelId.match(/(\d+)-(\d+)/);
   let modelVer = verMatch ? `${verMatch[1]}.${verMatch[2]}` : '';
   if (!modelVer) { const sv = modelId.match(/-(\d+)(?:\[|$)/); if (sv) modelVer = sv[1]; }
@@ -724,7 +744,8 @@ function renderStatusLine(rawState, maxRows) {
   } catch { /* no repo label */ }
   const repoLabel = repoName ? `\x1b[38;5;108m${repoName}\x1b[0m` : '';
   const modelText = `${modelFamily}${modelVer ? ` ${modelVer}` : ''}`;
-  const modelRender = `${modelColor}${modelText}\x1b[0m`;
+  // fable → rainbow (flagship signature); all others → their solid spectrum color
+  const modelRender = modelFamily === 'fable' ? rainbowize(modelText) : `${modelColor}${modelText}\x1b[0m`;
   const idCore = `${modelRender}${sessionLabel ? ` \x1b[38;5;237m\u00B7\x1b[0m ${sessionLabel}` : ''}`;
   const modelLabel = repoLabel ? `${repoLabel} \x1b[38;5;237m\u00B7\x1b[0m ${idCore}` : idCore;
   const ctxPct = session.contextPct || 0;

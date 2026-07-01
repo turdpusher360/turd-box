@@ -54,7 +54,7 @@ if (!diffContent.trim()) {
 
 // ─── Determine model ──────────────────────────────────────────────────────────
 
-const ALLOWED_SONNET_MODELS = new Set(['claude-sonnet-4-6']);
+const ALLOWED_SONNET_MODELS = new Set(['claude-sonnet-5']);
 const ALLOWED_OPUS_MODELS = new Set(['claude-opus-4-8', 'claude-opus-4-7']);
 
 function readModelEnv(envName, defaultValue) {
@@ -68,7 +68,7 @@ function validateModelId(envName, model, allowedModels) {
   process.exit(1);
 }
 
-const BASE_MODEL = readModelEnv('DFE_MODEL', 'claude-sonnet-4-6');
+const BASE_MODEL = readModelEnv('DFE_MODEL', 'claude-sonnet-5');
 const OPUS_MODEL = readModelEnv('DFE_OPUS_MODEL', 'claude-opus-4-8');
 
 validateModelId('DFE_MODEL', BASE_MODEL, ALLOWED_SONNET_MODELS);

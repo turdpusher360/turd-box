@@ -46,7 +46,7 @@ describe('run-pass model validation', () => {
 
   it('rejects an unsupported Opus model before creating an API client', () => {
     const result = runWithEnv('P2', {
-      DFE_MODEL: 'claude-sonnet-4-6',
+      DFE_MODEL: 'claude-sonnet-5',
       DFE_OPUS_MODEL: 'claude-opus-latest',
     });
 

@@ -19,7 +19,7 @@ describe('action metadata', () => {
   });
 
   it('documents the pinned-stability Opus option without changing the Sonnet default', () => {
-    expect(actionYml).toContain('default: "claude-sonnet-4-6"');
+    expect(actionYml).toContain('default: "claude-sonnet-5"');
     expect(readme).toContain('`opus_model` | `claude-opus-4-8`');
     expect(readme).toContain('`claude-opus-4-7`');
     expect(readme).toContain('pinned-stability');

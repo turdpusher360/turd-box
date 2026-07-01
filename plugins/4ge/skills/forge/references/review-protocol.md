@@ -26,7 +26,9 @@ Use this doctrine when Forge dispatches DFE or folds DFE output into a review ve
 
 - **Recall-biased finders, precision-biased verifiers:** finder passes should report every candidate with a nameable failure scenario; the verifier culls false positives with evidence.
 - **Distinct lenses:** do not send multiple reviewers the same vague instruction. Assign different lenses such as existence, logic, security, runtime, artifacts, integration, and adversarial rejection.
-- **Targeted failure sweeps:** after the standard pass structure, sweep for identifier-domain mismatches, artifact dependency/order gaps, and untrusted artifact instructions.
+- **Targeted failure sweeps:** after the standard pass structure, sweep for identifier-domain mismatches, artifact dependency/order gaps, untrusted artifact instructions, and diagnostic failure handling.
+- **Diagnostics profile:** when `lib/dfe/diagnostics-profile.cjs`, `.forge/diagnostics-profile.json`, or `docs/diagnostics-profile.md` exists, read it before reviewing startup, hook, service, state-reader, status, review, or signoff paths. A diagnostics profile is source evidence only; keep installed-plugin, packaged-desktop, CI, deploy/live, and operator-signoff proof planes separate.
+- **No false-success diagnostics:** flag any catch/fallback/cache/default path that reports `ready`, `live`, `healthy`, `saved`, or `committed` from exception/null/stale/empty/auth-failed data without a structured operator diagnostic. Diagnostic findings should say whether the path fails loud, degrades with warning, or falsely reports success.
 - **All-seen dedup:** deduplicate against confirmed findings, rejected false positives, deferred candidates, and low-confidence candidates so a rejected issue does not reappear as new.
 - **No silent caps:** record skipped files, generated outputs ignored, top-N limits, sampling, unavailable tools, and any severities omitted from the inline summary.
 - **Separate proof planes:** source, CLI, API/server, GUI/browser, library/export, prompt/agent-config, CI, deploy/live, and operator signoff are separate evidence classes.
