@@ -1,11 +1,8 @@
 # turd-box — the 4ge plugin for Claude Code
 
-**4ge** is the production layer for Claude Code: multi-agent orchestration, 6-pass
-adversarial code review, an advisory security posture (AISLE), persistent
-cross-session memory, and a live HUD — delivered as one Claude Code plugin.
+4ge turns a Claude Code session into a production shop: multi-agent orchestration, six-pass adversarial review, an advisory security layer, persistent cross-session memory, and a live HUD — one plugin, nothing extra to run.
 
-This repository is the public marketplace for the 4ge plugin. It contains the
-marketplace manifest and the installable plugin source under [`plugins/4ge/`](./plugins/4ge/).
+This repository is the public marketplace. The manifest lives at the root; the installable plugin is [`plugins/4ge/`](./plugins/4ge/).
 
 ---
 
@@ -19,8 +16,7 @@ claude plugin marketplace add turdpusher360/turd-box
 claude plugin install 4ge@turd-box
 ```
 
-If your Claude Code build cannot add a remote marketplace directly, use the
-verified checkout install path:
+If your Claude Code build can't add a remote marketplace directly, clone first:
 
 ```bash
 git clone https://github.com/turdpusher360/turd-box.git
@@ -28,28 +24,21 @@ claude plugin marketplace add ./turd-box
 claude plugin install 4ge@turd-box
 ```
 
-That's it — `/help` will show the full command index once the plugin loads.
+`/help` shows the full command index once the plugin loads.
 
 ---
 
-## What 4ge is
+## What you get
 
-- **Multi-agent orchestration** — `/forge` runs a 7-phase pipeline (scope →
-  brainstorm → spec → plan → execute → integrate → ship) and dispatches
-  specialized agents to do the work.
-- **Adversarial code review** — `/dfe` runs 6 review passes (5 domain passes +
-  1 adversarial pass that actively tries to break what the first five approved).
-- **Security posture (advisory)** — `/aisle` reports security posture and routes
-  scans for supply-chain integrity, credential exposure, privilege-escalation
-  paths, and prompt injection. Scans and guards are **advisory (warn-only)** —
-  nothing blocks. The historical fail-closed 9-scanner gate is intentionally
-  shelved until its ADR reactivation criteria are met.
-- **Agentic OS** — 9 OS capabilities (aisle, audit, autoresearch, file-integrity,
-  forge, forge-session, git, infra, process-health) ship vendored inside the
-  plugin and boot on session start; the live HUD renders their state.
-- **Persistent memory** — `/recall` searches a dev-memory hub across sessions.
-  Local memory is available on the Free and Pro tiers; **hosted (shared team
-  namespace) memory is a Team-tier feature.**
+**`/forge`** runs the whole arc — scope, brainstorm, spec, plan, execute, integrate, ship — and dispatches specialized agents at each phase instead of asking one context window to hold everything.
+
+**`/dfe`** is the reviewer you'd hire if you could: five domain passes over your changes, then a sixth adversarial pass whose only job is to break what the first five approved. Built for AI-generated code, which fails in ways human review was never calibrated for.
+
+**`/aisle`** reports security posture — supply-chain integrity, credential exposure, privilege-escalation paths, prompt injection. It is advisory by design: it warns, it does not block. A fail-closed nine-scanner gate exists in the codebase and stays shelved until its ADR reactivation criteria are met. We'd rather tell you that than pretend.
+
+**The Agentic OS** boots nine capabilities on session start — aisle, audit, autoresearch, file-integrity, forge, forge-session, git, infra, process-health — vendored inside the plugin, no external services. The HUD renders their live state.
+
+**`/recall`** searches persistent memory across sessions. Local memory ships on every tier; hosted shared-namespace memory is a Team-tier feature.
 
 ---
 
@@ -74,7 +63,7 @@ Install free today; Pro pricing applies when checkout opens → `https://3sixtyc
 - Claude Code (Pro, Max, or API access)
 - Git
 
-Optional infrastructure (commands degrade gracefully when absent):
+Optional infrastructure — commands degrade gracefully when it's absent:
 
 | Dependency | Used by |
 |-----------|---------|
