@@ -3,6 +3,15 @@
 All notable public changes to the 4ge Claude Code plugin are documented here.
 Versions follow Semantic Versioning.
 
+## [2.9.0] - 2026-07-07
+
+### Added
+- `scripts/rotate-continuity.cjs` — bounds TASKING.md and _runs/.decisions.jsonl by rotating overflow into gitignored archives (dry-run default, --apply, conservation-abort).
+- `bin/rotate-continuity.cjs` — plugin-shipped continuity rotator used by `/signoff` when 4ge is installed from the public marketplace.
+
+### Changed
+- `/signoff` now rotates continuity files at closeout to keep them small — cuts closeout file-intake ~94% (~236k→~13k tokens).
+
 ## [2.8.4] - 2026-07-01
 
 ### Fixed

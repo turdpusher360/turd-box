@@ -14,6 +14,7 @@ const { colorize } = require('./hud-palette.cjs');
 
 // Model-specific resting face (W5 T5.1): healthy idle shows the model's signature look.
 const MODEL_FACE = {
+  'claude-fable-5':      { expr: 'determined', color: 'accent' },  // Mythos-class flagship
   'claude-opus-4-8':     { expr: 'determined', color: 'accent' },
   'claude-opus-4-7':     { expr: 'determined', color: 'accent' },
   'claude-opus-4-6':     { expr: 'determined', color: 'accent' },
@@ -27,6 +28,7 @@ const MODEL_FACE = {
 function resolveModelFace(modelId) {
   if (!modelId) return null;
   if (MODEL_FACE[modelId]) return MODEL_FACE[modelId];
+  if (modelId.startsWith('claude-fable'))  return MODEL_FACE['claude-fable-5'];
   if (modelId.startsWith('claude-opus'))   return MODEL_FACE['claude-opus-4-6'];
   if (modelId.startsWith('claude-sonnet')) return MODEL_FACE['claude-sonnet-4-6'];
   if (modelId.startsWith('claude-haiku'))  return MODEL_FACE['claude-haiku-4-5'];

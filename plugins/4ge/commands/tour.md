@@ -61,13 +61,11 @@ Step 3/5 — Review before anyone else sees it
   for the interactive wizard that lets you pick your focus.
 
 Step 4/5 — Ship it
-  Run:  /4ge:commit
-  Runs tsc + eslint + vitest, then commits with an auto-generated
-  message derived from the diff. No manual message writing.
-
   Run:  /4ge:ship
-  Same pre-flight checks, plus push. Or /4ge:pr to also open
-  a pull request with a generated title and description.
+  Runs tsc + eslint + vitest, then commits with an auto-generated
+  message derived from the diff, and pushes. No manual message writing.
+  Or /4ge:pr to also open a pull request with a generated title
+  and description.
 
 Step 5/5 — See what's running
   Run:  /4ge:hud on
@@ -76,7 +74,7 @@ Step 5/5 — See what's running
   state. Stays updated as you work.
 
   Run:  /4ge:help
-  Full command index grouped by tier. 40 commands, 40 skills,
+  Full command index grouped by tier. 37 commands, 41 skills,
   9 OS capabilities. Try /4ge:help <command> for any command's
   full spec.
 
@@ -111,7 +109,7 @@ Run /4ge:help to explore the full command index.
 ## Notes
 
 - All Free-tier commands shown (`/4ge:recall`, `/4ge:hud`, `/4ge:help`, `/4ge:debug`) work immediately after `claude plugin install 4ge@turd-box`.
-- `/4ge:recall` is the canonical Knowledge hub. Use `--map` for the repo dependency map, pass a query for memory search, or use `--budget` for the current context budget. `/recon`, `/map`, and `/hitchhiker` still resolve as redirects.
+- `/4ge:recall` is the canonical Knowledge hub. Use `--map` for the repo dependency map, pass a query for memory search, or use `--budget` for the current context budget. `/hitchhiker` still resolves as a redirect.
 - `/4ge:recall` memory search requires a running dev-memory hub (local Docker, or the hosted hub on the Team tier). If memory is unavailable, it reports what's missing gracefully — no crash.
-- `/4ge:forge`, `/4ge:dfe`, and `/4ge:audit` require Pro tier. Free users see an upgrade prompt with the cost and upgrade URL. (`/ship`, `/commit`, and `/pr` are now free — the delivery loop runs on every tier.)
+- `/4ge:forge`, `/4ge:dfe`, and `/4ge:audit` require Pro tier. Free users see an upgrade prompt with the cost and upgrade URL. (`/ship` and `/pr` are now free — the delivery loop runs on every tier.)
 - The `--step N` flag exists for chaining: the first-run onboarding flow uses `--step 1` to begin the tour immediately after setup.

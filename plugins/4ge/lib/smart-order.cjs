@@ -60,6 +60,7 @@ function readGitStatus() {
     encoding: 'utf8',
     timeout: GIT_PROBE_TIMEOUT_MS,
     stdio: ['ignore', 'pipe', 'ignore'],
+    env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' },
   });
 
   let branch = 'unknown';
@@ -149,6 +150,7 @@ function readRecentEdits() {
       cwd: REPO_ROOT,
       encoding: 'utf8',
       timeout: 3000,
+      env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' },
     });
     const files = diffOut.split('\n').map((l) => l.trim());
     return {
@@ -178,6 +180,7 @@ function readRecentCommits(n) {
   try {
     const out = execFileSync('git', ['log', `-${n}`, '--format=%h\t%s\t%cI'], {
       cwd: REPO_ROOT, encoding: 'utf8', timeout: 3000,
+      env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' },
     });
     return out.trim().split('\n').filter(Boolean).map(line => {
       const [sha, subject, ts] = line.split('\t');

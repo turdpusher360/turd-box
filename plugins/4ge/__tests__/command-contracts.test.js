@@ -14,30 +14,50 @@ function readManifest() {
 }
 
 describe('4ge command contracts', () => {
-  it('documents /recall as the canonical guided Knowledge hub; /recon redirects into it', () => {
+  it('documents /recall as the canonical guided Knowledge hub (self-contained; /recon retired)', () => {
     const manifest = readManifest();
     const readme = readPluginFile('README.md');
     const recallCommand = readPluginFile('commands/recall.md');
-    const reconCommand = readPluginFile('commands/recon.md');
 
-    // /recall now owns the canonical memory-search implementation (inlined from /recon)
+    // /recall owns the canonical memory-search implementation directly
     expect(recallCommand).toContain('mcp__dev-memory__memory_search');
     expect(recallCommand).toContain('Default Mode (bare query)');
     expect(recallCommand).toContain('Guided Knowledge Hub');
     expect(recallCommand).toContain('AskUserQuestion');
 
-    // /recon is now a redirect into /recall (preserved, not deleted, so old refs still resolve)
-    expect(reconCommand).toContain('[REDIRECT]');
-    expect(reconCommand).toContain('/recall');
+    // /recon was a pure redirect stub retired from the public surface — must not
+    // resurface in the manifest or as a command file
+    expect(manifest.commands.recon).toBeUndefined();
+    expect(fs.existsSync(path.join(pluginRoot, 'commands/recon.md'))).toBe(false);
 
-    // manifest: /recall is a Knowledge hub linked to dev-memory; /recon advertises the redirect
+    // manifest: /recall is a Knowledge hub linked to dev-memory
     expect(manifest.commands.recall.description).toContain('Knowledge hub');
     expect(manifest.commands.recall.description).toContain('dev-memory');
-    expect(manifest.commands.recon.description).toContain('[REDIRECT]');
 
     // README: hub framing in the command table; /recall now runs search directly (no forward)
     expect(readme).toContain('| `/recall` | Free | Guided Knowledge hub');
     expect(readme).toContain('`/recall` runs dev-memory search directly');
+  });
+
+  it('keeps the four retired redirect stubs (/commit /map /recon /resp4wn) out of the plugin surface', () => {
+    // Redirect-stub retirement is the canonical MAJOR-bump justification for
+    // 3.0.0 (docs/plugin-versioning.md §2/§5.6). This contract guards the
+    // retirement against the stubs creeping back into the manifest, README,
+    // or commands/ directory. Their non-stub targets (/ship, /recall,
+    // /respawn) are asserted elsewhere and must remain untouched.
+    const manifest = readManifest();
+    const readme = readPluginFile('README.md');
+    const retired = ['commit', 'map', 'recon', 'resp4wn'];
+
+    for (const name of retired) {
+      expect(manifest.commands[name]).toBeUndefined();
+      expect(fs.existsSync(path.join(pluginRoot, `commands/${name}.md`))).toBe(false);
+      expect(readme).not.toMatch(new RegExp('\\`/' + name + '\\`'));
+    }
+
+    expect(manifest.commands.ship).toBeDefined();
+    expect(manifest.commands.recall).toBeDefined();
+    expect(manifest.commands.respawn).toBeDefined();
   });
 
   it('keeps /public-portfolio out of the public plugin surface (privacy scrub, S399)', () => {

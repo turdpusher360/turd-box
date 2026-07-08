@@ -10,17 +10,17 @@ const os = require('os');
 
 const TIER_ORDER = ['free', 'pro', 'team'];
 
-// 12 entries: multi-agent machinery, professional judgment surfaces,
+// 11 entries: multi-agent machinery, professional judgment surfaces,
 // business artifacts, and their redirect stubs. Redirects inherit target tier
-// (maintain -> /outhouse, resp4wn -> /respawn).
+// (maintain -> /outhouse).
 const PRO_GATED = [
   'forge', 'dfe', 'audit', 'aisle',
   'outhouse', 'wizard', 'maintain',       // maintain -> /outhouse (redirect inherits)
   'autoresearch', 'evolve', 'export',
-  'respawn', 'resp4wn',                   // resp4wn -> /respawn (redirect inherits)
+  'respawn',
 ];
 
-// Upgrade-prompt copy for the 12 gated commands. Keys must equal PRO_GATED
+// Upgrade-prompt copy for the 11 gated commands. Keys must equal PRO_GATED
 // members exactly — ungated commands have no entry (require_() falls back to a
 // safe generic string). Tested by tier-gate.test.js.
 const DESCRIPTIONS = {
@@ -35,7 +35,6 @@ const DESCRIPTIONS = {
   evolve:      'Evolve analyzes usage telemetry and suggests config improvements.',
   export:      'Export packages session work as a business-ready deliverable: brief, deck, or handoff document.',
   respawn:     'Respawn extracts the decision chain and prepares a fresh Claude instance with full context.',
-  resp4wn:     'Legacy spelling of /respawn — Context Respawn.',
 };
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;

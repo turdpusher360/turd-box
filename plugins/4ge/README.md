@@ -52,15 +52,12 @@ This is state-compatibility scaffolding for Anvil and does **not** replace exist
 |---------|------|-------------|
 | `/4ge` | Free | 4ge ecosystem command — Forge orchestration + OS operations |
 | `/help` | Free | Command index and usage guide |
-| `/map` | Free | Redirect → `/recall --map` (repository map) |
 | `/recall` | Free | Guided Knowledge hub — memory search, repo map, budget (or `/recall <query>` for dev-memory search) |
 | `/debug` | Free | Systematic root-cause analysis |
-| `/recon` | Free | Redirect → `/recall` (memory + repo mapping) |
 | `/hud` | Free | Toggle the OS HUD status pane |
 | `/fix` | Free | Capture maintenance issues without interrupting flow |
 | `/tour` | Free | 5-step guided walkthrough for new users |
 | `/ship` | Free | Verify, commit, and push — full delivery pipeline |
-| `/commit` | Free | Redirects to `/ship`; use `/ship --no-push` to commit without pushing |
 | `/pr` | Free | Verify, commit, push, and open a PR |
 | `/blueprint` | Free | Bootstrap or update a Claude Code environment |
 | `/infra` | Free | Docker container health monitoring |
@@ -89,7 +86,6 @@ This is state-compatibility scaffolding for Anvil and does **not** replace exist
 | `/evolve` | Pro | Analyze usage and suggest config improvements |
 | `/export` | Pro | Export session work as brief/deck/handoff |
 | `/respawn` | Pro | Context Respawn — decision chain preservation |
-| `/resp4wn` | Pro | Legacy redirect to `/respawn` |
 
 ---
 

@@ -19,7 +19,7 @@ if (require.main === module) {
     const cwd = data.cwd || process.cwd();
 
     try {
-      const { stdout: diffStat } = await execFileAsync('git', ['diff', '--stat', 'HEAD~1'], { cwd, encoding: 'utf8', timeout: 2000 });
+      const { stdout: diffStat } = await execFileAsync('git', ['diff', '--stat', 'HEAD~1'], { cwd, encoding: 'utf8', timeout: 2000, env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' } });
       const lastLine = diffStat.trim().split('\n').pop() || '';
       const wins = extractWins(lastLine);
 

@@ -163,7 +163,21 @@ If validation fails, leave the prior `_runs/session-cartridge.json` untouched, r
 
 The cartridge, `TASKING.md`, and the decision/constraint logs are now updated on disk but **uncommitted**. Historically nothing committed them and the manual closeout commits lapsed — several sessions of continuity piled up uncommitted, making the repo look dead and letting a stale brief get trusted on the next boot. This step closes that hole. `/signoff` is operator-invoked, so the 1Password PIN is available for signing.
 
-Stage ONLY the continuity files (never `git add .` — `guard-git-scope` blocks it). Force-add the latest handoff if one was written this session (handoffs are gitignored):
+First, keep `TASKING.md` and `_runs/.decisions.jsonl` bounded so they don't re-accrete before the next closeout:
+
+```bash
+if [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -f "$CLAUDE_PLUGIN_ROOT/bin/rotate-continuity.cjs" ]; then
+  node "$CLAUDE_PLUGIN_ROOT/bin/rotate-continuity.cjs" --apply
+elif [ -f scripts/rotate-continuity.cjs ]; then
+  node scripts/rotate-continuity.cjs --apply
+else
+  echo "continuity rotation skipped: no rotate-continuity helper found"
+fi
+```
+
+Report what it moved (e.g. "rotating 2 rows / 3 entries to archive") or "nothing to rotate" if both are still under the caps. The plugin-shipped helper targets the current project directory by default; the repo-local helper remains the fallback for this source checkout. This is safe every time it runs: it dry-runs by default (only `--apply` mutates), writes atomically (temp file + rename), and aborts with no mutation at all if line-count conservation ever fails. Overflow lands in gitignored archives (`_runs/tasking-archive.md`, `_runs/.decisions.archive.jsonl`) — nothing is lost, it just moves off the files read whole every closeout.
+
+Then stage ONLY the (now-bounded) continuity files (never `git add .` — `guard-git-scope` blocks it). Force-add the latest handoff if one was written this session (handoffs are gitignored):
 
 ```bash
 git add TASKING.md _runs/.decisions.jsonl _runs/.constraints.jsonl _runs/session-cartridge.json 2>/dev/null

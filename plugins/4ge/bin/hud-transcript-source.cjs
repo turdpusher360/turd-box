@@ -18,6 +18,68 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
+const { sanitizeForOutput } = require('../lib/substrate-sanitize.cjs');
+
+// ---------------------------------------------------------------------------
+// Display-string hardening
+//
+// Transcript tool inputs and tool_result previews are externally influenced
+// (WebFetch bodies, MCP output, read file contents). Before they become HUD
+// activity summaries that can re-enter model context (via a Bash-run HUD
+// mode), two things are scrubbed: (1) hidden-channel Unicode families, via
+// sanitizeForOutput() from substrate-sanitize.cjs, and (2) ANSI escape
+// sequences + C0/C1 control characters, via stripAnsiControl() below. A
+// summary is a display string — escape sequences and control bytes in one
+// are never legitimate, so they are removed unconditionally. Both run BEFORE
+// truncation so a payload cannot occupy the surviving slice and slicing
+// cannot split a Plane-14 surrogate pair ahead of the sanitizer. This mirrors
+// the companion message-tier sanitization contract (REF-HUD-001 entry 13).
+//
+// The control-character patterns are built from String.fromCharCode() +
+// new RegExp() rather than regex literals containing raw control bytes: this
+// keeps eslint's no-control-regex quiet and, more importantly, keeps
+// invisible bytes out of the source file (indistinguishable from whitespace
+// in a diff, corruptible by copy/paste) — the same rationale substrate-
+// sanitize.cjs documents for its own denylist construction.
+// ---------------------------------------------------------------------------
+
+const _ESC = String.fromCharCode(0x1b);
+const _BEL = String.fromCharCode(0x07);
+
+// Full ANSI escape sequences: OSC (ESC ] ... BEL|ST), CSI (ESC [ ... final),
+// and other two-char Fe sequences (ESC @-_). Removed first, so the trailing
+// bare-control pass cannot strand a visible parameter tail like "[38;5;196m".
+const _ANSI_SEQUENCE = new RegExp(
+  _ESC + '\\][\\s\\S]*?(?:' + _BEL + '|' + _ESC + '\\\\)'   // OSC ... terminator
+  + '|' + _ESC + '\\[[0-9;?]*[ -/]*[@-~]'                    // CSI ... final byte
+  + '|' + _ESC + '[@-Z\\\\-_]',                              // other ESC Fe sequences
+  'g',
+);
+
+// Bare C0 controls (0x00-0x1F) EXCEPT tab/newline/CR, plus DEL (0x7F) and the
+// C1 range (0x80-0x9F). Tab/newline/CR are left for the existing whitespace
+// collapse (tool_result path) so word boundaries are not fused.
+const _BARE_CONTROL = new RegExp(
+  '['
+  + String.fromCharCode(0x00) + '-' + String.fromCharCode(0x08)
+  + String.fromCharCode(0x0b) + String.fromCharCode(0x0c)
+  + String.fromCharCode(0x0e) + '-' + String.fromCharCode(0x1f)
+  + String.fromCharCode(0x7f) + '-' + String.fromCharCode(0x9f)
+  + ']',
+  'g',
+);
+
+/**
+ * Strip ANSI escape sequences and non-whitespace control characters from a
+ * display string. Full escape sequences are removed before bare controls so
+ * a stripped ESC never leaves its parameter bytes behind as visible text.
+ * @param {string} text
+ * @returns {string}
+ */
+function stripAnsiControl(text) {
+  if (typeof text !== 'string' || text.length === 0) return text;
+  return text.replace(_ANSI_SEQUENCE, '').replace(_BARE_CONTROL, '');
+}
 
 // ---------------------------------------------------------------------------
 // Transcript discovery
@@ -116,27 +178,30 @@ function findTranscriptPath(cwd, sessionId) {
  */
 function shortInput(input, toolName) {
   if (!input || typeof input !== 'object') return '';
+  // Build the raw candidate string per tool, then sanitize + strip control
+  // sequences BEFORE truncating. Truncating first could seat a payload in the
+  // surviving slice or split a Plane-14 surrogate pair ahead of the sanitizer.
+  let raw; // assigned by every switch branch below (default included)
+  let cap = 0; // 0 = pass through in full (file paths / patterns, as before)
   switch (toolName) {
     case 'Bash':
-      return String(input.command || '').slice(0, 60);
+      raw = String(input.command || ''); cap = 60; break;
     case 'Read':
     case 'Edit':
     case 'Write':
-      return String(input.file_path || '');
+      raw = String(input.file_path || ''); break;
     case 'Glob':
-      return String(input.pattern || '');
     case 'Grep':
-      return String(input.pattern || '');
+      raw = String(input.pattern || ''); break;
     case 'Agent':
     case 'Task':
-      return String(input.description || input.prompt || '').slice(0, 60);
+      raw = String(input.description || input.prompt || ''); cap = 60; break;
     default:
-      try {
-        return JSON.stringify(input).slice(0, 60);
-      } catch {
-        return '';
-      }
+      try { raw = JSON.stringify(input); } catch { raw = ''; }
+      cap = 60;
   }
+  const clean = sanitizeForOutput(stripAnsiControl(raw));
+  return cap > 0 ? clean.slice(0, cap) : clean;
 }
 
 /**
@@ -197,12 +262,16 @@ function parseTranscript(filepath) {
           : Array.isArray(block.content)
             ? block.content.map((c) => c && c.text ? c.text : '').join(' ')
             : '';
+        // tool_result content is externally controlled (WebFetch/MCP/read
+        // files). Sanitize + strip escapes BEFORE the whitespace collapse and
+        // 60-unit slice — see the Display-string hardening note above.
+        const cleanPreview = sanitizeForOutput(stripAnsiControl(preview));
         events.push({
           ts: obj.timestamp || null,
           kind: 'tool_result',
           id: block.tool_use_id,
           error: !!block.is_error,
-          summary: preview.replace(/\s+/g, ' ').slice(0, 60),
+          summary: cleanPreview.replace(/\s+/g, ' ').slice(0, 60),
         });
       } else if (block.type === 'text') {
         textMessages++;
@@ -318,7 +387,9 @@ if (require.main === module) {
   }
 }
 
-// UNWIRED — integration into hud-data-loader.cjs pending. See S246 forge plan.
+// WIRED — hud-data-loader.cjs requires this module and calls
+// loadTranscriptActivity() at hud-data-loader.cjs:658 (freshness-gated),
+// feeding the activity zone. (The prior "UNWIRED, pending" note was stale.)
 module.exports = {
   buildProjectSlug,
   findProjectDir,
@@ -326,4 +397,5 @@ module.exports = {
   parseTranscript,
   loadTranscriptActivity,
   shortInput,
+  stripAnsiControl,
 };

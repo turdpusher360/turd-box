@@ -170,7 +170,7 @@ function boot() {
   try {
     const diffResult = spawnSync('git', [
       'diff', 'HEAD', '--name-only', '--', ...TARGETS,
-    ], { encoding: 'utf8', timeout: 8000 });
+    ], { encoding: 'utf8', timeout: 8000, env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' } });
 
     // Distinguish a timeout / spawn failure from a genuinely clean tree.
     // On drvfs (WSL Windows mounts) `git diff` can exceed a tight timeout; a

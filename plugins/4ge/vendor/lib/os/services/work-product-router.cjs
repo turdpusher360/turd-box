@@ -51,7 +51,7 @@ function templateToRegex(template) {
  */
 function getCurrentBranch() {
   try {
-    return execSync('git branch --show-current', { encoding: 'utf8', timeout: 5000 }).trim() || 'unknown';
+    return execSync('git branch --show-current', { encoding: 'utf8', timeout: 5000, env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' } }).trim() || 'unknown';
   } catch {
     return 'unknown';
   }

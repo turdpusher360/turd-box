@@ -137,7 +137,7 @@ describe('first-run', () => {
     it('step 3 text includes first commands to try', () => {
       const steps = fr.getSetupSteps();
       expect(steps[2].text).toContain('/ship');
-      expect(steps[2].text).toContain('/map');
+      expect(steps[2].text).toContain('/recall --map');
       expect(steps[2].text).toContain('/recall');
       expect(steps[2].text).toContain('/help');
     });
@@ -224,20 +224,20 @@ describe('first-run', () => {
       spy.mockRestore();
     });
 
-    it('suggests /4ge map when package.json exists in projectRoot', () => {
+    it('suggests /4ge recall --map when package.json exists in projectRoot', () => {
       fs.writeFileSync(path.join(tempDir, 'package.json'), '{"name":"test"}');
       const spy = vi.spyOn(console, 'log').mockImplementation(() => {});
       fr.suggestNext(tempDir);
       const output = spy.mock.calls.map(c => c.join(' ')).join('\n');
-      expect(output).toContain('/4ge map');
+      expect(output).toContain('/4ge recall --map');
       spy.mockRestore();
     });
 
-    it('does not suggest /4ge map when package.json is absent', () => {
+    it('does not suggest /4ge recall --map when package.json is absent', () => {
       const spy = vi.spyOn(console, 'log').mockImplementation(() => {});
       fr.suggestNext(tempDir);
       const output = spy.mock.calls.map(c => c.join(' ')).join('\n');
-      expect(output).not.toContain('/4ge map');
+      expect(output).not.toContain('/4ge recall --map');
       spy.mockRestore();
     });
 

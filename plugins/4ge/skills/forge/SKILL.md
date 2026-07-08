@@ -110,7 +110,7 @@ If the agent returns status `NEEDS_CONTEXT` with follow-up questions, run anothe
 foreground `AskUserQuestion` round in the lead, then re-dispatch with the new
 answers appended. The subagent never prompts the user directly.
 
-**Fallback (forge-brainstorm not available):** Invoke `/superpowers:brainstorming` inline, then write spec to `docs/superpowers/specs/`.
+**Fallback (forge-brainstorm not available):** Invoke the vendored `brainstorming` skill inline, then write spec to `docs/superpowers/specs/`.
 
 **Inline fallback (no superpowers):** Run inline brainstorming in the lead:
 1. Ask clarifying questions with `AskUserQuestion` when needed. Use one call with up to 4 questions, each with a short `header`, 2-4 options, and the recommended option first with "(Recommended)" in the label. Do not add an "Other" option; the harness supplies it automatically.
@@ -139,7 +139,7 @@ The agent returns:
 - Task count and DAG structure
 - Estimated complexity
 
-**Fallback (forge-planner not available):** Invoke `/superpowers:writing-plans` inline.
+**Fallback (forge-planner not available):** Invoke the vendored `writing-plans` skill inline.
 
 **Inline fallback (no superpowers):** Write the plan directly:
 1. Read `references/plan-template.md` for the format
@@ -279,7 +279,7 @@ The agent handles verification, triple-write handoff, and cleanup. It returns:
 **Fallback (forge-shipper not available):**
 
 1. Run full verification suite
-   **Fallback (superpowers not installed):** If `/superpowers:verification-before-completion` is not available, run verification directly:
+   **Fallback:** If the vendored `verification-before-completion` skill is not available, run verification directly:
    - `npx tsc --noEmit` — zero errors
    - `npx eslint .` — passes
    - `npx vitest run` — all tests green

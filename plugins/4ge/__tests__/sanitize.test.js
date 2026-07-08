@@ -49,6 +49,7 @@ const SKIP_PATTERNS = [
   /^bin[\\/]hud-middleware\.cjs$/, // middleware provenance comments reference session IDs
   /^bin[\\/]hud-transcript-source\.cjs$/, // transcript discovery docstrings contain path examples and session refs
   /^lib[\\/]substrate-render\.cjs$/, // substrate render technique comments reference session IDs
+  /^lib[\\/]substrate-sanitize\.cjs$/, // substrate sanitizer threat-model comments reference session IDs (S245/S526/S527) — false positives, code not personal data
   /^skills[\\/]prime[\\/]SKILL\.md$/, // skill doc uses session IDs as real examples (e.g. S253)
   /^bin[\\/]eye-engine\.cjs$/, // design principle comments reference session IDs (S252, S253)
   /^bin[\\/]companion-state\.cjs$/, // STATE_MAP provenance comments reference session IDs for intent preservation

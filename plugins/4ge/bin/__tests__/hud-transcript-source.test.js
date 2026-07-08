@@ -8,9 +8,19 @@ const {
   buildProjectSlug,
   findProjectDir,
   findTranscriptPath,
+  parseTranscript,
   loadTranscriptActivity,
   shortInput,
+  stripAnsiControl,
 } = _require('../hud-transcript-source.cjs');
+
+// Hidden-channel building blocks (built from codepoints, not literal invisible
+// bytes in source — same discipline the sanitizer module uses).
+const CMB_C = String.fromCodePoint(0x0368); // combining Latin small letter c (palimpsest overlay)
+const ZWJ = String.fromCodePoint(0x200D);   // zero-width joiner
+const TAG_A = String.fromCodePoint(0xE0041); // Plane-14 Tag "A" (ASCII smuggling)
+const RLO = String.fromCodePoint(0x202E);   // right-to-left override (Trojan Source)
+const ESC = String.fromCharCode(0x1b);
 
 describe('buildProjectSlug', () => {
   it('replaces backslashes and colons with dashes', () => {
@@ -49,6 +59,109 @@ describe('shortInput', () => {
   it('handles null/undefined gracefully', () => {
     const result = shortInput(null, 'Read');
     expect(typeof result).toBe('string');
+  });
+});
+
+describe('stripAnsiControl', () => {
+  it('removes a full ANSI CSI (SGR) sequence, keeping the visible text', () => {
+    const out = stripAnsiControl(ESC + '[38;5;196m' + 'red' + ESC + '[0m');
+    expect(out).toBe('red');
+  });
+
+  it('leaves no visible parameter tail (ESC + params stripped as one unit)', () => {
+    const out = stripAnsiControl(ESC + '[1;31mX');
+    expect(out).toBe('X');
+    expect(out).not.toContain('[38');
+    expect(out).not.toContain('[1;31m');
+  });
+
+  it('removes an OSC hyperlink sequence', () => {
+    const bel = String.fromCharCode(0x07);
+    const out = stripAnsiControl(ESC + ']8;;http://evil' + bel + 'click' + ESC + ']8;;' + bel);
+    expect(out).toBe('click');
+  });
+
+  it('removes bare C0 control chars but preserves tab and newline', () => {
+    const out = stripAnsiControl('a' + String.fromCharCode(0x07) + 'b\tc\nd');
+    expect(out).toBe('ab\tc\nd');
+  });
+
+  it('is a no-op on clean ASCII', () => {
+    expect(stripAnsiControl('npm run build')).toBe('npm run build');
+  });
+});
+
+describe('shortInput — hidden-channel + ANSI hardening', () => {
+  it('strips a combining-mark palimpsest overlay from a Bash command', () => {
+    const cmd = 'f' + CMB_C + 'orge --run';
+    const out = shortInput({ command: cmd }, 'Bash');
+    expect(out).not.toContain(CMB_C);
+    expect(out).toContain('forge --run');
+  });
+
+  it('strips ANSI + Plane-14 tag smuggling from a Bash command', () => {
+    const out = shortInput({ command: ESC + '[31m' + 'ls' + TAG_A + ' -la' }, 'Bash');
+    expect(out).not.toContain(TAG_A);
+    expect(out).not.toContain(ESC);
+    expect(out).toContain('ls -la');
+  });
+
+  it('sanitizes BEFORE the 60-char cap (payload cannot occupy the slice)', () => {
+    // 58 visible chars + a tag payload; after strip the payload is gone and
+    // the visible text survives within the cap.
+    const raw = 'a'.repeat(58) + TAG_A + TAG_A;
+    const out = shortInput({ command: raw }, 'Bash');
+    expect(out).not.toContain(TAG_A);
+    expect(out.length).toBeLessThanOrEqual(60);
+  });
+
+  it('strips hidden channels from a full file_path (no cap) unchanged otherwise', () => {
+    const out = shortInput({ file_path: '/repo/src' + ZWJ + '/app.ts' }, 'Read');
+    expect(out).not.toContain(ZWJ);
+    expect(out).toBe('/repo/src/app.ts');
+  });
+});
+
+describe('parseTranscript — activity summaries come out clean', () => {
+  function writeTranscript(lines) {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'transcript-sanitize-'));
+    const file = path.join(dir, 'sess.jsonl');
+    fs.writeFileSync(file, lines.map((o) => JSON.stringify(o)).join('\n'));
+    return { dir, file };
+  }
+
+  it('scrubs palimpsest, tag, ZWJ, and ANSI from tool_use and tool_result summaries', () => {
+    const { dir, file } = writeTranscript([
+      {
+        type: 'assistant',
+        timestamp: '2026-07-03T00:00:00Z',
+        message: { content: [
+          { type: 'tool_use', id: 't1', name: 'Bash',
+            input: { command: 'run' + CMB_C + TAG_A + RLO + ' now' } },
+        ] },
+      },
+      {
+        type: 'user',
+        timestamp: '2026-07-03T00:00:01Z',
+        message: { content: [
+          { type: 'tool_result', tool_use_id: 't1', is_error: false,
+            content: ESC + '[31m' + 'fetched' + ZWJ + TAG_A + ' body' },
+        ] },
+      },
+    ]);
+    try {
+      const parsed = parseTranscript(file);
+      const use = parsed.events.find((e) => e.kind === 'tool_use');
+      const res = parsed.events.find((e) => e.kind === 'tool_result');
+      for (const bad of [CMB_C, TAG_A, RLO, ZWJ, ESC]) {
+        expect(use.summary).not.toContain(bad);
+        expect(res.summary).not.toContain(bad);
+      }
+      expect(use.summary).toContain('run');
+      expect(res.summary).toContain('fetched');
+    } finally {
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 

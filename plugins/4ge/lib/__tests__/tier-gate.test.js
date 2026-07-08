@@ -226,22 +226,22 @@ describe('tier-gate', () => {
     });
 
     it('does not include free commands in PRO_GATED', () => {
-      // help, map, recall, fix, hud are free
+      // help, recall, fix, hud are free
       expect(tg.PRO_GATED).not.toContain('help');
-      expect(tg.PRO_GATED).not.toContain('map');
     });
 
-    it('pins the exact 12-entry regraded set (S410, order-insensitive)', () => {
+    it('pins the exact 11-entry regraded set (S410 regrade + resp4wn stub retirement, order-insensitive)', () => {
       // The regrade (S410, _runs/s410/tier-regrade.md §3) shrank PRO_GATED
       // from 24 to 12: only multi-agent machinery, professional judgment
-      // surfaces, business artifacts, and their redirect stubs remain gated.
+      // surfaces, business artifacts, and their redirect stubs remained gated.
+      // resp4wn's retirement (redirect stub deleted) trimmed it further to 11.
       const expected = [
         'forge', 'dfe', 'audit', 'aisle',
         'outhouse', 'wizard', 'maintain',
         'autoresearch', 'evolve', 'export',
-        'respawn', 'resp4wn',
+        'respawn',
       ];
-      expect(tg.PRO_GATED).toHaveLength(12);
+      expect(tg.PRO_GATED).toHaveLength(11);
       expect([...tg.PRO_GATED].sort()).toEqual([...expected].sort());
     });
 
@@ -254,10 +254,12 @@ describe('tier-gate', () => {
     });
 
     it('drops the commands the regrade freed', () => {
-      // The 14 commands moved Free in S410 (commodity wrappers, file append/read
+      // The 13 commands moved Free in S410 (commodity wrappers, file append/read
       // utilities, legacy redirects, demo/charm assets, bootstrap, and infra).
+      // /commit was one of them but has since been retired (redirect stub
+      // deleted) — dropped from this list along with its command file.
       const freed = [
-        'blueprint', 'commit', 'constraint', 'decide', 'hitchhiker', 'infra',
+        'blueprint', 'constraint', 'decide', 'hitchhiker', 'infra',
         'lint', 'lounge', 'pr', 'releases', 'ship', 'signoff', 'studio',
         'substrate',
       ];
@@ -267,12 +269,8 @@ describe('tier-gate', () => {
 
   describe('redirect coherence (R3 — stubs inherit their target tier)', () => {
     const pairs = [
-      ['commit', 'ship'],
       ['maintain', 'outhouse'],
-      ['resp4wn', 'respawn'],
       ['hitchhiker', 'recall'],
-      ['recon', 'recall'],
-      ['map', 'recall'],
       ['superdupersecret', 'secret'],
     ];
 

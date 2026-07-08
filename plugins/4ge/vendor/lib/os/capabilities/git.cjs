@@ -15,6 +15,7 @@ function git(args, opts = {}) {
     timeout: 30_000,
     encoding: 'utf8',
     ...opts,
+    env: { ...process.env, ...(opts.env || {}), GIT_OPTIONAL_LOCKS: '0' },
   });
   return {
     ok: result.status === 0,

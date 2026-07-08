@@ -33,6 +33,15 @@ const {
   renderStyledPalimpsest,
 } = require('../lib/substrate-render.cjs');
 
+// S527: every live-state string this zone ingests (session id/model, forge
+// phase, capability names) passes through sanitizeForOutput() before it is
+// composed into output — see substrate-sanitize.cjs header for the threat
+// model. renderPalimpsest/renderStyledPalimpsest already sanitize their own
+// arguments at the substrate-render.cjs layer; this zone's local palimpsest()
+// helper below is only ever called with hardcoded literal signature words
+// (never ingested state), so it does not need its own sanitize call.
+const { sanitizeForOutput } = require('../lib/substrate-sanitize.cjs');
+
 // Local wrappers matching the zone's historic naming convention.
 // toBold/toFraktur/toMono preserve behavioral identity for callers inside the zone.
 // toScript/toDoubleStruck are newly available now that gap protection is in place.
@@ -284,7 +293,9 @@ function renderSubstrateZone(state) {
   const capEntries = [];
   for (const [name, cap] of Object.entries(caps)) {
     const ok = cap && cap.ok !== false;
-    const shortName = name.slice(0, 8);
+    // S527: capability name is ingested from state.os.capabilities — sanitize
+    // before it flows into toFraktur() output.
+    const shortName = sanitizeForOutput(name).slice(0, 8);
     const frakName = toFraktur(shortName);
     const emoji = capEmoji(ok, false);
     capEntries.push(emoji + ' ' + frakName);
@@ -316,7 +327,8 @@ function renderSubstrateZone(state) {
   lines.push(ctxLabelPalimpsest + '  ' + ctxBar + '  ' + toBold(String(ctxPct)) + '%');
 
   // Model + uptime
-  const model = String(session.model || 'opus');
+  // S527: session.model is ingested live state — sanitize before use.
+  const model = sanitizeForOutput(String(session.model || 'opus'));
   const uptime = typeof session.uptime === 'number'
     ? (session.uptime >= 3600000
         ? Math.floor(session.uptime / 3600000) + 'h'
@@ -339,7 +351,8 @@ function renderSubstrateZone(state) {
   const forgeLabel = toFraktur('Forge');
   let forgeStatus;
   if (forgeActive) {
-    const phaseStr = forgePhase ? String(forgePhase) : 'active';
+    // S527: forge.phase is ingested live state — sanitize before use.
+    const phaseStr = sanitizeForOutput(forgePhase ? String(forgePhase) : 'active');
     forgeStatus = inTriangle('⊕') + ' ' + toBold(phaseStr.slice(0, 8));
   } else {
     // Idle shown in plain Fraktur (no half marks on SMP)
@@ -355,7 +368,9 @@ function renderSubstrateZone(state) {
     lines.push(degradedLabel);
     for (const [name, cap] of Object.entries(caps)) {
       if (cap && cap.ok === false) {
-        const shortName = name.slice(0, 8);
+        // S527: capability name is ingested from state.os.capabilities —
+        // sanitize before it flows into inSquare()/toFraktur() output.
+        const shortName = sanitizeForOutput(name).slice(0, 8);
         const initial = shortName[0].toUpperCase();
         const display = '🔴 ' + inSquare(initial) + toFraktur(shortName.slice(1));
         lines.push('  ' + display);
@@ -379,7 +394,9 @@ function renderSubstrateZone(state) {
   // Palimpsest the word "route" over the separator (r o u t e — all available except o→U+0366)
   // route: r(r) o(o) u(u) t(t) e(e) — all 5 available
   const footerSepPalimpsest = palimpsest(footerSep.slice(0, 5), 'route') + footerSep.slice(5);
-  const sessionId = String(session.id || '').slice(0, 12) || 'substrate';
+  // S527: session.id is ingested live state — sanitize (before truncating)
+  // so a hidden-channel payload can't ride in ahead of the 12-char slice.
+  const sessionId = sanitizeForOutput(String(session.id || '')).slice(0, 12) || 'substrate';
   const sessionSig = toFraktur(sessionId.slice(0, 8));
   lines.push(footerMark + '  ' + footerSepPalimpsest + '  ' + sessionSig);
 

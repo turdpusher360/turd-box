@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-07-01T20:41:46.087Z",
-  "sourceHead": "50663b79e0973215478fe0fe24d64771486799fc",
+  "generatedAt": "2026-07-07T08:19:08.664Z",
+  "sourceHead": "841962dae57718f68b6d063d40c8456f531055f3",
   "files": {
     "lib/aisle/.gitignore": {
       "sourceSha256": "051f52b7c0fb350f7e8e5cd2e6aceb85e7cf198ff9062f9b52959eac14209671",
@@ -133,8 +133,8 @@
       "transformed": true
     },
     "lib/aisle/core/config.cjs": {
-      "sourceSha256": "846bb20fbc760f4adb3b0e7a5ec1f08b513f14b55080a572f303fa733e8238fa",
-      "vendoredSha256": "650138f5435c19d33c066d7264d91e89d9ee4e496d43be4f5a1822200b34147c",
+      "sourceSha256": "546a4a20c4235b7aa9239abc6928f5b54b268d16c747de16fb92b9e8154d1cce",
+      "vendoredSha256": "56b10c0a0c4205894ed30c9df243b7bd4c73e44864abc1e1f9c5acc05bc37d05",
       "transformed": true
     },
     "lib/aisle/core/gate-evaluator.cjs": {
@@ -258,8 +258,8 @@
       "transformed": true
     },
     "lib/hook-utils.cjs": {
-      "sourceSha256": "74f629b28dbeb18bd94e3fc480601567f0ff85ac4eee09c06c7ea9251bf16025",
-      "vendoredSha256": "ef939667de278e5dfb71530ac96e90da925acfcb7ed0216455056353de3112a8",
+      "sourceSha256": "b26db39b62d042e02beee9ca391ecd6f6888ee180099c75acc7cff3c91cfaa06",
+      "vendoredSha256": "8f7dab202b6f30570d892073fa27ff42f74ca038d1a31aeb33a7e54a9f957620",
       "transformed": true
     },
     "lib/os/capabilities/aisle.cjs": {
@@ -278,8 +278,8 @@
       "transformed": false
     },
     "lib/os/capabilities/file-integrity.cjs": {
-      "sourceSha256": "f649c57a01915f1ee9baa4b5b3ae43e2a78855a41d8454f3bb3b6f2944a05a09",
-      "vendoredSha256": "f649c57a01915f1ee9baa4b5b3ae43e2a78855a41d8454f3bb3b6f2944a05a09",
+      "sourceSha256": "9549b7956fbf269cd72428b2fadeb8aecfe2c2fa88a132893452ba7f34fe6190",
+      "vendoredSha256": "9549b7956fbf269cd72428b2fadeb8aecfe2c2fa88a132893452ba7f34fe6190",
       "transformed": false
     },
     "lib/os/capabilities/forge-session.cjs": {
@@ -293,8 +293,8 @@
       "transformed": false
     },
     "lib/os/capabilities/git.cjs": {
-      "sourceSha256": "cf2f80b67a0bf2bbcc166fae756f05247cc179843464c9f16f3e03ee0441360e",
-      "vendoredSha256": "cf2f80b67a0bf2bbcc166fae756f05247cc179843464c9f16f3e03ee0441360e",
+      "sourceSha256": "98e744630355974ec8c2f11e76d0bbc7a0204af63b3dd5ea4ed49bb8ddbbcbbd",
+      "vendoredSha256": "98e744630355974ec8c2f11e76d0bbc7a0204af63b3dd5ea4ed49bb8ddbbcbbd",
       "transformed": false
     },
     "lib/os/capabilities/infra.cjs": {
@@ -315,6 +315,11 @@
     "lib/os/config/gates.json": {
       "sourceSha256": "e8b664d3ec3ad5d11a7bfaadd8171711c93068851aade07ef4903ff137a4c466",
       "vendoredSha256": "e8b664d3ec3ad5d11a7bfaadd8171711c93068851aade07ef4903ff137a4c466",
+      "transformed": false
+    },
+    "lib/os/config/heartbeat-registry.json": {
+      "sourceSha256": "88dd3b0d48cdb6dce84cbf99ee636c432882445a63cff12eb443068e235a9425",
+      "vendoredSha256": "88dd3b0d48cdb6dce84cbf99ee636c432882445a63cff12eb443068e235a9425",
       "transformed": false
     },
     "lib/os/config/llm.json": {
@@ -402,6 +407,21 @@
       "vendoredSha256": "dc32776e55862b83960687a55ad0502773b54e68c816d41e9eb9fdb63be084dd",
       "transformed": true
     },
+    "lib/os/services/backlog-staleness.cjs": {
+      "sourceSha256": "064961234ae9e604b91f29a7c2ca11267346830eb25f1ed41a2fa46963d00a09",
+      "vendoredSha256": "c80c4117ca873d487a5519813e1564cc4f55a107fb800aec876cb13f0e3c7c90",
+      "transformed": true
+    },
+    "lib/os/services/closeout-tripwire.cjs": {
+      "sourceSha256": "39f697742bb5b44cb8fc2b3966920acf8c83bed66de6a41a01464a6e666fe529",
+      "vendoredSha256": "c73e896de34e9e4ca1897713f3a5e6296cedb9e821dd186fd3bfe048b5468750",
+      "transformed": true
+    },
+    "lib/os/services/heartbeat-registry.cjs": {
+      "sourceSha256": "14391d097133f5ebf3a59aea899d02bbc95a0312ae0ee976a0424a30219e7cfe",
+      "vendoredSha256": "4742bed77d899f6f91050f46bbe514e3889cd3ff4a4a6550e5f9f88dfddd5354",
+      "transformed": true
+    },
     "lib/os/services/ipc.cjs": {
       "sourceSha256": "e05b4019f806faa7e15a06bedde8416e4d21e06daa6852b8ce37d0b2a36a7611",
       "vendoredSha256": "e05b4019f806faa7e15a06bedde8416e4d21e06daa6852b8ce37d0b2a36a7611",
@@ -412,9 +432,19 @@
       "vendoredSha256": "57c1f6e533f151bf88bf41c4cfc1a4eea6b8c43b29534f45af7cd930fc810fa8",
       "transformed": false
     },
+    "lib/os/services/operator-queue.cjs": {
+      "sourceSha256": "cb737aeef66c7f2975685b33391300c88931889c80c11c811058b6259d5ebad1",
+      "vendoredSha256": "cb737aeef66c7f2975685b33391300c88931889c80c11c811058b6259d5ebad1",
+      "transformed": false
+    },
+    "lib/os/services/strand-o-meter.cjs": {
+      "sourceSha256": "f8fa2a0259131c57e7522567a85cc1a2ec06c3167f3c1bb56341f555003c2982",
+      "vendoredSha256": "84aaedc0520442af329c50d73ba1c806fbf47d39e921cb4bd158d2210b1fdd07",
+      "transformed": true
+    },
     "lib/os/services/work-product-router.cjs": {
-      "sourceSha256": "a2e9fadba032b05e29c4bd4951d26d64f993549f45e8cefab575b00a7b3d594f",
-      "vendoredSha256": "a2e9fadba032b05e29c4bd4951d26d64f993549f45e8cefab575b00a7b3d594f",
+      "sourceSha256": "156e04bb3ffc2436ace4203a14544bcb9c64e6fa8367d3533ef8c5fe2b356b46",
+      "vendoredSha256": "156e04bb3ffc2436ace4203a14544bcb9c64e6fa8367d3533ef8c5fe2b356b46",
       "transformed": false
     },
     "scripts/pin-hooks.cjs": {

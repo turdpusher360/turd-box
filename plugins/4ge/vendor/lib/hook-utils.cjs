@@ -190,12 +190,17 @@ function logCapabilityResponse(name, event, config, meta = {}) {
 }
 
 // --- hook-timing.jsonl rolling trim ---
-// In-memory counter per process so we only stat/count the file occasionally.
-// Reset when the process exits (each hook invocation is a new process).
-let _hookTimingAppendCount = 0;
-const HOOK_TIMING_TRIM_CHECK = 500;  // check every N appends
 const HOOK_TIMING_MAX_LINES   = 10_000;
 const HOOK_TIMING_KEEP_LINES  = 5_000;
+// Byte gate for the (more expensive) line-count trim. Each timing line is
+// ~75 bytes, so 10k lines is roughly 750KB; a 1MB gate keeps the precise
+// line-count trim rare while bounding the file. This REPLACES the old
+// per-process append counter (`_hookTimingAppendCount % 500`), which was dead
+// code: every hook runs in its own short-lived process and appends exactly ONE
+// line before exit, so the counter never reached 500 and the trim never fired —
+// the file grew unbounded to 29.8MB / 431k lines (upstream hook-perf audit).
+// statSync is sub-ms and, unlike the counter, is stateless across processes.
+const HOOK_TIMING_MAX_BYTES   = 1024 * 1024;
 
 /**
  * Trim hook-timing.jsonl to the last KEEP_LINES lines.
@@ -228,12 +233,47 @@ function reportTiming(hookName, startMs) {
     const line = JSON.stringify({ hook: hookName, ms: elapsed, ts: new Date().toISOString() }) + '\n';
     fs.appendFileSync(timingPath, line);
 
-    // Periodically check whether the file needs trimming.
-    _hookTimingAppendCount += 1;
-    if (_hookTimingAppendCount % HOOK_TIMING_TRIM_CHECK === 0) {
-      _trimHookTiming(timingPath);
-    }
+    // Trim when the file's ACTUAL size crosses the threshold. Gating on a
+    // stateless statSync (not the old per-process counter) is the fix — see
+    // HOOK_TIMING_MAX_BYTES above. The statSync adds one sub-ms syscall to each
+    // hook exit, negligible beside the mkdirSync + appendFileSync already here.
+    try {
+      if (fs.statSync(timingPath).size > HOOK_TIMING_MAX_BYTES) {
+        _trimHookTiming(timingPath);
+      }
+    } catch { /* stat may fail on the very first write — ignore */ }
   } catch { /* best-effort */ }
+}
+
+/**
+ * Sanctioned JSONL append with stateless size-gated rotation.
+ *
+ * The single source of truth for bounded JSONL growth is lib/os/jsonl-rotate.cjs
+ * (appendJsonl: rotate-if-over-limit THEN append; byte + entry-count gates; keeps N
+ * rotated files). It already existed before this re-export — an upstream teammate refused
+ * to duplicate it, and the upstream diagnosis's claim that "appendJsonl lives in
+ * lib/hook-utils.cjs" was itself record-drift (Class 4). Rather than add a SECOND
+ * rotation implementation (the duplication disease the upstream welds exist to kill), we
+ * re-export the canonical one here so hooks — which already require hook-utils — have a
+ * single obvious sanctioned append path. Lazy-required so hooks that never append pay
+ * nothing at load. Enforced by scripts/check-wiring-liveness.cjs (raw-append gate).
+ *
+ * @param {string} filePath — absolute path to the .jsonl file
+ * @param {object} entry — JSON-serializable record
+ * @param {object} [opts] — {maxEntries=10000, maxBytes=5MB, maxRotated=3}
+ */
+function appendJsonl(filePath, entry, opts) {
+  return require('./os/jsonl-rotate.cjs').appendJsonl(filePath, entry, opts);
+}
+
+/**
+ * Force a rotation check on a JSONL file (delegates to lib/os/jsonl-rotate.cjs).
+ * @param {string} filePath
+ * @param {object} [opts]
+ * @returns {boolean} whether a rotation was performed
+ */
+function rotateIfNeeded(filePath, opts) {
+  return require('./os/jsonl-rotate.cjs').rotateIfNeeded(filePath, opts);
 }
 
 /**
@@ -345,6 +385,8 @@ module.exports = {
   buildCapabilityOutput,
   logCapabilityResponse,
   reportTiming,
+  appendJsonl,
+  rotateIfNeeded,
   isWin,
   resolvePlatformBin,
   deriveNextHandoffNumber,

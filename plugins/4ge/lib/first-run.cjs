@@ -4,7 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 
-const PLUGIN_VERSION = '2.8.4';
+const PLUGIN_VERSION = '2.9.0';
 
 // ---------------------------------------------------------------------------
 // Internal paths
@@ -81,10 +81,10 @@ function getSetupSteps() {
       text: [
         'Setup complete. Try these first:',
         '',
-        '/ship      Verify and push your current work',
-        '/map       See your repository structure',
-        '/recall    Search memory (if connected)',
-        '/help      Full command reference',
+        '/ship            Verify and push your current work',
+        '/recall --map    See your repository structure',
+        '/recall          Search memory (if connected)',
+        '/help            Full command reference',
         '',
         'Config saved to ~/.4ge/config.json',
       ].join('\n'),
@@ -129,20 +129,20 @@ function completeSetup(options) {
  * suggestions based on what exists in the project root.
  *
  * Always suggests /4ge tour.
- * Suggests /4ge map  when package.json is present.
+ * Suggests /4ge recall --map when package.json is present.
  * Suggests /4ge forge when .git is present.
  *
  * @param {string} [projectRoot] - Directory to probe (default: process.cwd())
  */
 function suggestNext(projectRoot) {
   const root = projectRoot || process.cwd();
-  const suggestions = ['/4ge tour    — 5-step walkthrough of the best commands'];
+  const suggestions = ['/4ge tour           — 5-step walkthrough of the best commands'];
 
   if (fs.existsSync(path.join(root, '.git'))) {
-    suggestions.unshift('/4ge forge   — start a Forge session (brainstorm → ship)');
+    suggestions.unshift('/4ge forge          — start a Forge session (brainstorm → ship)');
   }
   if (fs.existsSync(path.join(root, 'package.json'))) {
-    suggestions.unshift('/4ge map     — visual dependency map of this project');
+    suggestions.unshift('/4ge recall --map   — visual dependency map of this project');
   }
 
   console.log('\nWhat to do next:');

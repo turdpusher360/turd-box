@@ -76,9 +76,7 @@ The typical development flow using 4ge commands:
 ```
 /forge <task>          Build with multi-teammate orchestration
   |
-/commit <msg>          Commit with pre-flight checks (tsc + eslint + vitest)
-  |
-/ship <msg>            ...or commit + push in one step
+/ship <msg>            Verify (tsc + eslint + vitest), commit, and push
   |
 /pr <title>            ...or commit + push + open PR in one step
   |

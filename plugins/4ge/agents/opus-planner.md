@@ -1,11 +1,11 @@
 ---
 name: opus-planner
 description: Architectural planner. Phased breakdowns, STOP gates, judgment calls.
-tools: Glob, Grep, Read, mcp__dev-memory__memory_search, mcp__dev-memory__memory_store
+tools: Glob, Grep, Read, Write, Edit, mcp__dev-memory__memory_search, mcp__dev-memory__memory_store
 model: inherit
 effort: xhigh
 memory: project
-last-verified: 2026-04-17
+last-verified: 2026-07-04
 ---
 
 # opus-planner

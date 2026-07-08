@@ -31,12 +31,25 @@ const {
   sparkline,
   progressBar,
   capBrailleDensity,
+  // New chart primitives (S533)
+  blockRamp,
+  brailleChart,
+  brailleBand,
+  COLD_RAMP_256,
+  COLD_RAMP_STOPS,
+  rampColor256,
+  rampRgb,
+  rampColor,
+  colorizeRamp,
   // BMP styled alphabets + styled palimpsest
   renderSmallCaps,
   renderFullWidth,
   renderStyledPalimpsest,
   _SMALL_CAPS,
 } = require('../substrate-render.cjs');
+
+// Strip ANSI escape sequences for visible-width / glyph assertions.
+const stripAnsi = (s) => s.replace(/\x1b\[[0-9;]*m/g, '');
 
 // ---------------------------------------------------------------------------
 // renderPalimpsest
@@ -1083,5 +1096,345 @@ describe('renderStyledPalimpsest', () => {
         }
       }
     }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// S528: renderEnclosed / renderLigature input sanitization (Rider 1 — closes
+// the two combining-mark adders left unwired in S527, adversarial review
+// INFO-2). A caller must not be able to pre-seat a hidden-channel payload in a
+// base/cell argument.
+// ---------------------------------------------------------------------------
+describe('renderEnclosed — input sanitization (S528)', () => {
+  const ZWSP = String.fromCodePoint(0x200B);      // zero-width space
+  const CMB_D = String.fromCodePoint(0x0369);     // combining Latin small letter d
+  const TAG_X = String.fromCodePoint(0xE0058);    // Plane-14 Tag "X"
+
+  it('strips a smuggled zero-width payload from base before enclosing', () => {
+    const out = renderEnclosed('A' + ZWSP + 'B', 'circle');
+    expect(out).not.toContain(ZWSP);
+    // Two visible bases → two enclosing circles, nothing else hidden.
+    expect(out).toBe('A' + _ENCLOSING.circle + 'B' + _ENCLOSING.circle);
+  });
+
+  it('strips a pre-seated combining mark and a Plane-14 tag from base', () => {
+    const out = renderEnclosed('r' + CMB_D + TAG_X, 'square');
+    expect(out).not.toContain(CMB_D);
+    expect(out).not.toContain(TAG_X);
+    expect(out).toBe('r' + _ENCLOSING.square);
+  });
+
+  it('still throws on an unknown shape (behavior unchanged)', () => {
+    expect(() => renderEnclosed('A', 'hexagon')).toThrow(/Unknown enclosing shape/);
+  });
+});
+
+describe('renderLigature — input sanitization (S528)', () => {
+  const ZWJ = String.fromCodePoint(0x200D);
+  const CMB_A = String.fromCodePoint(0x0363);
+
+  it('strips hidden channels from both cell characters before joining', () => {
+    const out = renderLigature('a' + ZWJ, 'b' + CMB_A, 'tie');
+    expect(out).not.toContain(ZWJ);
+    expect(out).not.toContain(CMB_A);
+    expect(out).toBe('a' + _HALF_MARKS.tie[0] + 'b' + _HALF_MARKS.tie[1]);
+  });
+
+  it('still throws on an unknown ligature kind (behavior unchanged)', () => {
+    expect(() => renderLigature('a', 'b', 'unknown')).toThrow(/Unknown ligature kind/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// blockRamp — misrender-safe ▁▂▃▄▅▆▇█ sparkline (S533)
+// ---------------------------------------------------------------------------
+describe('blockRamp', () => {
+  it('renders one glyph per sample by default', () => {
+    expect([...blockRamp([1, 2, 3, 4, 5])].length).toBe(5);
+  });
+
+  it('maps an evenly-spaced ascending series to the full ▁▂▃▄▅▆▇█ ramp', () => {
+    // norm = i/7 → round((i/7)*7) = i → glyph index i exactly.
+    expect(blockRamp([0, 1, 2, 3, 4, 5, 6, 7])).toBe('▁▂▃▄▅▆▇█');
+  });
+
+  it('every glyph is in the lower-block range U+2581–U+2588', () => {
+    const out = blockRamp([3, 1, 4, 1, 5, 9, 2, 6]);
+    for (const ch of [...out]) {
+      const cp = ch.codePointAt(0);
+      expect(cp).toBeGreaterThanOrEqual(0x2581);
+      expect(cp).toBeLessThanOrEqual(0x2588);
+    }
+  });
+
+  it('the series minimum renders ▁ and the maximum renders █', () => {
+    const out = [...blockRamp([5, 20, 12, 3, 8])];
+    // min is 3 (index 3), max is 20 (index 1)
+    expect(out[3]).toBe('▁');
+    expect(out[1]).toBe('█');
+  });
+
+  it('resamples to opts.width when given', () => {
+    const long = Array.from({ length: 40 }, (_, i) => i);
+    expect([...blockRamp(long, { width: 10 })].length).toBe(10);
+  });
+
+  it('a flat series renders as a flat ▁ baseline', () => {
+    expect(blockRamp([7, 7, 7, 7])).toBe('▁▁▁▁');
+  });
+
+  it('empty series returns an empty string (no width)', () => {
+    expect(blockRamp([])).toBe('');
+  });
+
+  it('empty series with an explicit width returns that many spaces', () => {
+    expect(blockRamp([], { width: 5 })).toBe('     ');
+  });
+
+  it('single value renders one baseline glyph', () => {
+    expect(blockRamp([42])).toBe('▁');
+  });
+
+  it('respects an explicit min/max domain (clamps out-of-range samples)', () => {
+    // domain 0..10; value 5 → norm 0.5 → idx round(3.5)=4 → ▅ (index 4)
+    const out = [...blockRamp([0, 5, 10], { min: 0, max: 10 })];
+    expect(out[0]).toBe('▁');
+    expect(out[1]).toBe('▅');
+    expect(out[2]).toBe('█');
+  });
+
+  it("color 'ramp' wraps each glyph in ANSI but preserves the bare glyphs", () => {
+    const colored = blockRamp([0, 1, 2, 3, 4, 5, 6, 7], { color: 'ramp' });
+    expect(colored).toContain('\x1b[38;5;'); // 256-color ramp prefix
+    expect(colored).toContain(ANSI_RST);
+    expect(stripAnsi(colored)).toBe('▁▂▃▄▅▆▇█');
+  });
+
+  it('color as a number produces a solid fg256 fill', () => {
+    const colored = blockRamp([1, 2, 3], { color: 46 });
+    expect(colored).toContain('\x1b[38;5;46m');
+    expect(stripAnsi(colored).length).toBe(3);
+  });
+
+  it('color as a function receives (norm, value) and its prefix wraps the glyph', () => {
+    const seen = [];
+    const colored = blockRamp([10, 20], {
+      color: (norm, value) => { seen.push([norm, value]); return '\x1b[31m'; },
+    });
+    expect(seen.length).toBe(2);
+    expect(seen[0][1]).toBe(10); // value passed through
+    expect(colored).toContain('\x1b[31m');
+  });
+
+  it('emits no ANSI when uncolored', () => {
+    expect(blockRamp([1, 2, 3])).not.toContain('\x1b[');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// brailleChart — multi-row line / area braille chart (S533)
+// ---------------------------------------------------------------------------
+describe('brailleChart', () => {
+  const wave = [3, 5, 8, 6, 9, 12, 7, 4, 6, 10, 14, 11, 8, 5, 3, 7];
+
+  it('returns a single row by default (height 1)', () => {
+    expect(brailleChart(wave)).toHaveLength(1);
+  });
+
+  it('returns `height` rows', () => {
+    expect(brailleChart(wave, { height: 3, width: 16 })).toHaveLength(3);
+  });
+
+  it('each rendered cell is a braille codepoint (U+2800–U+28FF)', () => {
+    const lines = brailleChart(wave, { height: 2, width: 12 });
+    for (const line of lines) {
+      for (const ch of [...line]) {
+        const cp = ch.codePointAt(0);
+        expect(cp).toBeGreaterThanOrEqual(0x2800);
+        expect(cp).toBeLessThanOrEqual(0x28FF);
+      }
+    }
+  });
+
+  it('each row is exactly opts.width cells wide', () => {
+    const lines = brailleChart(wave, { height: 2, width: 20 });
+    for (const line of lines) {
+      expect([...line].length).toBe(20);
+    }
+  });
+
+  it('default width is ceil(values.length / 2) cells', () => {
+    // 16 samples → 8 cells (2 samples per cell)
+    expect([...brailleChart(wave)[0]].length).toBe(8);
+  });
+
+  it('empty series returns blank braille rows of the given width', () => {
+    const lines = brailleChart([], { height: 2, width: 4 });
+    expect(lines).toHaveLength(2);
+    for (const line of lines) {
+      expect([...line].length).toBe(4);
+      for (const ch of [...line]) expect(ch.codePointAt(0)).toBe(0x2800);
+    }
+  });
+
+  it('area mode fills the baseline row (bottom cell row has no blank cells)', () => {
+    const lines = brailleChart(wave, { height: 3, width: 16, mode: 'area' });
+    const bottom = [...lines[lines.length - 1]];
+    // Every column fills from its curve height down to the bottom pixel row,
+    // so the bottom cell row is fully populated.
+    expect(bottom.every(ch => ch.codePointAt(0) !== 0x2800)).toBe(true);
+  });
+
+  it('line mode does not fill the whole baseline (fewer dots than area)', () => {
+    const line = brailleChart(wave, { height: 3, width: 16, mode: 'line' });
+    const area = brailleChart(wave, { height: 3, width: 16, mode: 'area' });
+    const dots = (rows) => rows.join('').split('').reduce((n, ch) => {
+      const cp = ch.codePointAt(0);
+      // popcount of the braille bit pattern
+      let bits = cp >= 0x2800 && cp <= 0x28FF ? cp - 0x2800 : 0;
+      let c = 0; while (bits) { c += bits & 1; bits >>= 1; }
+      return n + c;
+    }, 0);
+    expect(dots(area)).toBeGreaterThan(dots(line));
+  });
+
+  it('single value is handled without throwing', () => {
+    expect(() => brailleChart([42], { height: 2 })).not.toThrow();
+  });
+
+  it("color 'ramp' colors non-blank cells and leaves blank cells bare", () => {
+    const lines = brailleChart(wave, { height: 3, width: 16, color: 'ramp' });
+    const joined = lines.join('\n');
+    expect(joined).toContain('\x1b[38;5;');
+    // Stripping ANSI recovers pure braille (+ newlines).
+    for (const ch of stripAnsi(joined).replace(/\n/g, '')) {
+      const cp = ch.codePointAt(0);
+      expect(cp).toBeGreaterThanOrEqual(0x2800);
+      expect(cp).toBeLessThanOrEqual(0x28FF);
+    }
+  });
+
+  it('uncolored output contains no ANSI', () => {
+    expect(brailleChart(wave, { height: 2 }).join('')).not.toContain('\x1b[');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// brailleBand — area/density-band convenience (S533)
+// ---------------------------------------------------------------------------
+describe('brailleBand', () => {
+  const series = [2, 4, 3, 6, 8, 5, 7, 9];
+
+  it('equals brailleChart in area mode', () => {
+    expect(brailleBand(series, { height: 2, width: 8 }))
+      .toEqual(brailleChart(series, { height: 2, width: 8, mode: 'area' }));
+  });
+
+  it('forces area mode even if mode:line is passed', () => {
+    expect(brailleBand(series, { height: 2, width: 8, mode: 'line' }))
+      .toEqual(brailleChart(series, { height: 2, width: 8, mode: 'area' }));
+  });
+
+  it('fills the bottom baseline row', () => {
+    const lines = brailleBand(series, { height: 2, width: 8 });
+    const bottom = [...lines[lines.length - 1]];
+    expect(bottom.every(ch => ch.codePointAt(0) !== 0x2800)).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Non-finite input hygiene (S533 gate follow-up) — NaN/±Infinity samples must
+// not poison the Math.min/Math.max auto-domain and flatten the whole chart.
+// ---------------------------------------------------------------------------
+describe('non-finite input hygiene', () => {
+  it('blockRamp ignores NaN/Infinity samples instead of flattening', () => {
+    expect(blockRamp([0, NaN, 10, Infinity, 5], { width: 3 }))
+      .toBe(blockRamp([0, 10, 5], { width: 3 }));
+  });
+
+  it('blockRamp with a poisoned series still spans the ramp', () => {
+    const out = [...blockRamp([0, NaN, 7])];
+    expect(out).toContain('▁');
+    expect(out).toContain('█');
+  });
+
+  it('brailleChart ignores non-finite samples instead of flattening', () => {
+    expect(brailleChart([5, NaN, 9, -Infinity, 2], { height: 2, width: 4 }))
+      .toEqual(brailleChart([5, 9, 2], { height: 2, width: 4 }));
+  });
+
+  it('brailleBand ignores non-finite samples', () => {
+    expect(brailleBand([1, Infinity, 4], { height: 1, width: 2 }))
+      .toEqual(brailleBand([1, 4], { height: 1, width: 2 }));
+  });
+
+  it('an all-non-finite series renders the empty state, not garbage', () => {
+    expect(blockRamp([NaN, NaN], { width: 4 })).toBe('    ');
+    expect(brailleChart([NaN, Infinity], { height: 2, width: 3 }))
+      .toEqual(['⠀⠀⠀', '⠀⠀⠀']);
+  });
+
+  it('a clean series is untouched (no behavior change on the happy path)', () => {
+    expect(blockRamp([0, 1, 2, 3, 4, 5, 6, 7])).toBe('▁▂▃▄▅▆▇█');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Cold ramp color helpers (S533) — blue/purple, survival-list safe
+// ---------------------------------------------------------------------------
+describe('cold ramp color helpers', () => {
+  it('COLD_RAMP_256 is the 6-stop violet→cyan ramp anchored on brand 63/39', () => {
+    expect(COLD_RAMP_256).toEqual([57, 63, 33, 39, 45, 51]);
+    expect(COLD_RAMP_256).toContain(63); // brand purple #5f5fff
+    expect(COLD_RAMP_256).toContain(39); // brand blue #00afff
+  });
+
+  it('COLD_RAMP_STOPS has one RGB triple per 256 stop', () => {
+    expect(COLD_RAMP_STOPS).toHaveLength(COLD_RAMP_256.length);
+    for (const stop of COLD_RAMP_STOPS) {
+      expect(stop).toHaveLength(3);
+      for (const ch of stop) {
+        expect(ch).toBeGreaterThanOrEqual(0);
+        expect(ch).toBeLessThanOrEqual(255);
+      }
+    }
+  });
+
+  it('rampColor256 maps endpoints and midpoint onto ramp stops', () => {
+    expect(rampColor256(0)).toBe(57);   // deep violet
+    expect(rampColor256(1)).toBe(51);   // bright cyan
+    expect(rampColor256(0.5)).toBe(39);  // round(0.5*5)=3 → brand blue
+  });
+
+  it('rampColor256 clamps out-of-range input', () => {
+    expect(rampColor256(-3)).toBe(57);
+    expect(rampColor256(9)).toBe(51);
+    expect(rampColor256(NaN)).toBe(57);
+  });
+
+  it('rampRgb returns the anchor endpoints exactly', () => {
+    expect(rampRgb(0)).toEqual({ r: 95, g: 0, b: 255 });
+    expect(rampRgb(1)).toEqual({ r: 0, g: 255, b: 255 });
+  });
+
+  it('rampRgb interpolates between anchor stops', () => {
+    // pos = 0.5*5 = 2.5 → lerp stops[2]=[0,135,255] → stops[3]=[0,175,255] @ 0.5
+    expect(rampRgb(0.5)).toEqual({ r: 0, g: 155, b: 255 });
+  });
+
+  it('rampColor returns a 256 escape by default and truecolor on request', () => {
+    expect(rampColor(0.5)).toBe('\x1b[38;5;39m');
+    expect(rampColor(0.5, 'truecolor')).toBe('\x1b[38;2;0;155;255m');
+  });
+
+  it('colorizeRamp wraps text with the ramp color and a reset', () => {
+    expect(colorizeRamp('X', 0)).toBe('\x1b[38;5;57mX' + ANSI_RST);
+    expect(colorizeRamp('X', 1, 'truecolor')).toBe('\x1b[38;2;0;255;255mX' + ANSI_RST);
+  });
+
+  it('never emits an underline sequence (stripped from response text)', () => {
+    // Survival-list discipline: ramp coloring must not depend on underline.
+    const samples = [rampColor(0.2), rampColor(0.8, 'truecolor'), colorizeRamp('hi', 0.5)];
+    for (const s of samples) expect(s).not.toContain('\x1b[4m');
   });
 });

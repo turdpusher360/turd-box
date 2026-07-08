@@ -276,7 +276,7 @@ module.exports = {
     try {
       const result = require('child_process').spawnSync(
         'git', ['worktree', 'list', '--porcelain'],
-        { encoding: 'utf8', timeout: 3000, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] }
+        { encoding: 'utf8', timeout: 3000, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' } }
       );
       if (result.stdout) {
         const match = result.stdout.match(/^worktree\s+(.+)/m);

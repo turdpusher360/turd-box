@@ -1,5 +1,11 @@
 'use strict';
 
+// S527: sanitize caller-supplied base/overlay/word arguments before they are
+// composed into combining-mark output — see substrate-sanitize.cjs header
+// for the full threat model and strip-boundary rationale. Wired into
+// renderPalimpsest, renderStyledPalimpsest, and renderMaxComposition below.
+const { sanitizeForOutput } = require('./substrate-sanitize.cjs');
+
 // ---------------------------------------------------------------------------
 // Combining Latin Small Letters (U+0363–U+036F)
 // Only 13 of the 26 letters are available as combining marks.
@@ -263,13 +269,21 @@ function _applyMap(text, map) {
 /**
  * Stack overlay text as combining Latin small letters on top of base text.
  * Skips overlay characters not in the 13-letter combining set.
+ *
+ * S527: both arguments pass through sanitizeForOutput() first, so a caller
+ * cannot smuggle a pre-existing hidden-channel payload into `base` (or a
+ * second payload into `overlay`) — the only hidden layer that survives in
+ * the output is the one this function itself adds from the (now-clean)
+ * `overlay` argument.
  * @param {string} base
  * @param {string} overlay
  * @returns {string}
  */
 function renderPalimpsest(base, overlay) {
-  const baseChars = [...base];
-  const overlayChars = [...overlay];
+  const cleanBase = sanitizeForOutput(base);
+  const cleanOverlay = sanitizeForOutput(overlay);
+  const baseChars = [...cleanBase];
+  const overlayChars = [...cleanOverlay];
   return baseChars.map((bch, i) => {
     const och = overlayChars[i];
     if (!och) return bch;
@@ -288,7 +302,12 @@ function renderPalimpsest(base, overlay) {
 function renderEnclosed(base, shape) {
   const mark = ENCLOSING[shape];
   if (!mark) throw new Error(`Unknown enclosing shape: "${shape}". Valid: ${Object.keys(ENCLOSING).join(', ')}`);
-  return [...base].map(ch => ch + mark).join('');
+  // S528: sanitize base before layering the enclosing mark on top — same
+  // input-smuggling rationale as renderPalimpsest (a caller must not be able
+  // to pre-seat a hidden-channel payload in `base`). Closes one of the two
+  // combining-mark adders left unwired in S527 (adversarial review INFO-2).
+  const cleanBase = sanitizeForOutput(base);
+  return [...cleanBase].map(ch => ch + mark).join('');
 }
 
 /**
@@ -299,6 +318,9 @@ function renderEnclosed(base, shape) {
  * @returns {string}
  */
 function renderMaxComposition(word) {
+  // S527: sanitize before layering our own combining marks on top — see
+  // renderPalimpsest's doc comment for the input-smuggling rationale.
+  const cleanWord = sanitizeForOutput(word);
   // Overlay words using the available combining letters (a e i o u c d h m r t v x)
   // We cycle through available overlay chars as a dense cover
   const OVERLAY_CYCLE = ['c', 'o', 'u', 'r', 't'];
@@ -310,7 +332,7 @@ function renderMaxComposition(word) {
     '\u030A', // combining ring above (̊)
   ];
 
-  const chars = [...word];
+  const chars = [...cleanWord];
   const midIdx = Math.floor(chars.length / 2);
 
   let result = '';
@@ -420,7 +442,11 @@ function renderBlockBar(percent, width) {
 function renderLigature(a, b, kind) {
   const pair = HALF_MARKS[kind];
   if (!pair) throw new Error(`Unknown ligature kind: "${kind}". Valid: ${Object.keys(HALF_MARKS).join(', ')}`);
-  return a + pair[0] + b + pair[1];
+  // S528: sanitize both cell characters before joining them with the half-mark
+  // pair — a caller must not be able to pre-seat a hidden-channel payload in
+  // `a` or `b`. Closes the second of the two combining-mark adders left
+  // unwired in S527 (adversarial review INFO-2).
+  return sanitizeForOutput(a) + pair[0] + sanitizeForOutput(b) + pair[1];
 }
 
 // ---------------------------------------------------------------------------
@@ -515,8 +541,14 @@ function renderStyledPalimpsest(base, overlay, style = 'smallCaps') {
       'formation and renders replacement glyphs. Use a BMP style.'
     );
   }
-  const baseChars = [...base];
-  const overlayChars = [...overlay];
+  // S527: sanitize both arguments before layering our own combining marks
+  // on top — see renderPalimpsest's doc comment for the input-smuggling
+  // rationale (identical concern here: base/overlay must not already carry
+  // a hidden-channel payload before this function adds the declared one).
+  const cleanBase = sanitizeForOutput(base);
+  const cleanOverlay = sanitizeForOutput(overlay);
+  const baseChars = [...cleanBase];
+  const overlayChars = [...cleanOverlay];
   return baseChars.map((bch, i) => {
     const styled = styler(bch);
     const och = overlayChars[i];
@@ -712,6 +744,335 @@ function progressBar(ratio, width, color256) {
 }
 
 // ---------------------------------------------------------------------------
+// Cold ramp \u2014 value\u2192color mapping for chart primitives
+//
+// A violet\u2192cyan "cold energy" ramp anchored on the two 4ge brand colors:
+// purple #5f5fff (256 index 63, the companion left eye) and blue #00afff
+// (256 index 39, the companion right eye). Low values render deep violet,
+// high values bright cyan. Honors the ANSI survival list \u2014 every code below is
+// a 256-color or 24-bit foreground sequence (both survive Ink's response-text
+// stripping; only underline is removed, per substrate-canvas.md "ANSI in Bash
+// surface"). Deliberately blue/purple, never yellow-face/emoji
+// (feedback_no-yellow-face-art). Ordered low\u2192high.
+// ---------------------------------------------------------------------------
+const COLD_RAMP_256 = [57, 63, 33, 39, 45, 51];
+
+// Truecolor anchors for the same 6 stops (xterm-256 index \u2192 sRGB), interpolated
+// by rampRgb() for smooth 24-bit gradients.
+const COLD_RAMP_STOPS = [
+  [95, 0, 255],    // 57  #5f00ff  blue-violet
+  [95, 95, 255],   // 63  #5f5fff  brand purple (left eye)
+  [0, 135, 255],   // 33  #0087ff  blue
+  [0, 175, 255],   // 39  #00afff  brand blue (right eye)
+  [0, 215, 255],   // 45  #00d7ff  cyan
+  [0, 255, 255],   // 51  #00ffff  bright cyan
+];
+
+/**
+ * Clamp a value into the [0, 1] range (NaN \u2192 0).
+ * @param {number} n
+ * @returns {number}
+ */
+function _clamp01(n) {
+  if (Number.isNaN(n)) return 0;
+  return Math.max(0, Math.min(1, n));
+}
+
+/**
+ * Map a normalized value to a 256-color index on the cold ramp.
+ * @param {number} norm - normalized value in [0, 1]
+ * @returns {number} xterm-256 color index
+ */
+function rampColor256(norm) {
+  const t = _clamp01(norm);
+  const idx = Math.round(t * (COLD_RAMP_256.length - 1));
+  return COLD_RAMP_256[idx];
+}
+
+/**
+ * Map a normalized value to a 24-bit {r,g,b} color by linear interpolation
+ * between the cold-ramp anchor stops.
+ * @param {number} norm - normalized value in [0, 1]
+ * @returns {{ r: number, g: number, b: number }}
+ */
+function rampRgb(norm) {
+  const t = _clamp01(norm);
+  const stops = COLD_RAMP_STOPS;
+  const pos = t * (stops.length - 1);
+  const i = Math.min(stops.length - 2, Math.floor(pos));
+  const frac = pos - i;
+  const a = stops[i];
+  const b = stops[i + 1];
+  return {
+    r: Math.round(a[0] + (b[0] - a[0]) * frac),
+    g: Math.round(a[1] + (b[1] - a[1]) * frac),
+    b: Math.round(a[2] + (b[2] - a[2]) * frac),
+  };
+}
+
+/**
+ * Return an ANSI foreground escape for a normalized value on the cold ramp.
+ * @param {number} norm    - normalized value in [0, 1]
+ * @param {string} [depth] - '256' (default) | 'truecolor'
+ * @returns {string} ANSI escape prefix (pair with ANSI_RST)
+ */
+function rampColor(norm, depth = '256') {
+  if (depth === 'truecolor') {
+    const { r, g, b } = rampRgb(norm);
+    return fg24(r, g, b);
+  }
+  return fg256(rampColor256(norm));
+}
+
+/**
+ * Wrap text with the cold-ramp color for a normalized value, then reset.
+ * @param {string} text
+ * @param {number} norm    - normalized value in [0, 1]
+ * @param {string} [depth] - '256' (default) | 'truecolor'
+ * @returns {string}
+ */
+function colorizeRamp(text, norm, depth = '256') {
+  return rampColor(norm, depth) + text + ANSI_RST;
+}
+
+/**
+ * Color a single glyph per the shared opts.color contract used by blockRamp and
+ * the braille chart cells. Returns the bare glyph when color is falsy.
+ *   'ramp'      \u2192 per-value cold gradient (colorizeRamp)
+ *   number      \u2192 solid 256-color index
+ *   function    \u2192 (norm, value) => ANSI prefix (falsy prefix \u21d2 no color)
+ * @param {string} glyph
+ * @param {number} norm
+ * @param {number|null} value
+ * @param {(string|number|function|null)} color
+ * @param {string} depth
+ * @returns {string}
+ */
+function _colorGlyph(glyph, norm, value, color, depth) {
+  if (color == null || color === false) return glyph;
+  if (color === 'ramp') return colorizeRamp(glyph, norm, depth);
+  if (typeof color === 'number') return fg256(color) + glyph + ANSI_RST;
+  if (typeof color === 'function') {
+    const prefix = color(norm, value);
+    return prefix ? prefix + glyph + ANSI_RST : glyph;
+  }
+  return glyph;
+}
+
+// ---------------------------------------------------------------------------
+// Resampler \u2014 shared by blockRamp and brailleChart
+// ---------------------------------------------------------------------------
+
+/**
+ * Drop non-finite samples (NaN / ±Infinity) from a series. A single bad
+ * sample would otherwise poison the Math.min/Math.max auto-domain and
+ * flatten the whole chart to baseline; charts render from the finite
+ * samples only. Returns the original array when already clean (no alloc
+ * on the hot path).
+ * @param {number[]} values
+ * @returns {number[]}
+ */
+function _finiteSeries(values) {
+  if (!values) return values;
+  for (let i = 0; i < values.length; i++) {
+    if (!Number.isFinite(values[i])) return values.filter(Number.isFinite);
+  }
+  return values;
+}
+
+/**
+ * Resample a numeric series to exactly `width` buckets. Downsampling averages
+ * the source samples in each bucket; upsampling repeats the nearest sample.
+ * Returns a new array of length `width` (empty for width <= 0).
+ * @param {number[]} values
+ * @param {number}   width
+ * @returns {number[]}
+ */
+function _resample(values, width) {
+  if (width <= 0) return [];
+  if (values.length === width) return values.slice();
+  const out = new Array(width);
+  for (let i = 0; i < width; i++) {
+    const start = Math.floor((i / width) * values.length);
+    const end = Math.max(start + 1, Math.ceil(((i + 1) / width) * values.length));
+    let sum = 0;
+    let count = 0;
+    for (let j = start; j < end && j < values.length; j++) {
+      sum += values[j];
+      count++;
+    }
+    out[i] = count > 0 ? sum / count : values[Math.min(values.length - 1, start)];
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// Block-ramp sparkline \u2014 lower-block glyphs \u2581\u2582\u2583\u2584\u2585\u2586\u2587\u2588 (U+2581\u2013U+2588)
+//
+// The misrender-safe fallback for the braille sparkline: one glyph per sample
+// (or resampled to a fixed width), 8 vertical levels. Braille packs 2\u00d74 dots
+// per cell for higher density but breaks on terminals/fonts without braille
+// coverage; these BMP block glyphs render everywhere. Auto-scales to the series
+// min/max unless an explicit domain is supplied.
+// ---------------------------------------------------------------------------
+
+// Index 0..7 \u2192 \u2581\u2582\u2583\u2584\u2585\u2586\u2587\u2588. The series min (and a flat series) render \u2581 so the
+// baseline stays visible; only genuinely empty output uses a space.
+const _RAMP_BLOCKS = ['\u2581', '\u2582', '\u2583', '\u2584', '\u2585', '\u2586', '\u2587', '\u2588'];
+
+/**
+ * Render a block-ramp sparkline from a numeric series.
+ * One glyph per sample by default; pass opts.width to resample to a fixed
+ * width. Values auto-scale to the series min/max (override with opts.min /
+ * opts.max). A flat series renders as a flat baseline row.
+ *
+ * @param {number[]} values      - data series
+ * @param {object}   [opts]
+ * @param {number}   [opts.width] - output width in glyphs (default = values.length)
+ * @param {number}   [opts.min]   - domain minimum (default = series min)
+ * @param {number}   [opts.max]   - domain maximum (default = series max)
+ * @param {(string|number|function)} [opts.color] - 'ramp' for a per-glyph cold
+ *   gradient, a 256-color index for a solid color, or a
+ *   (norm, value) => ANSI prefix function. Omit for uncolored output.
+ * @param {string}   [opts.depth] - '256' (default) | 'truecolor' (ramp coloring)
+ * @returns {string}
+ */
+function blockRamp(values, opts = {}) {
+  const finite = _finiteSeries(values);
+  const width = opts.width != null
+    ? Math.max(0, Math.floor(opts.width))
+    : (finite ? finite.length : 0);
+  if (!finite || finite.length === 0 || width === 0) return ' '.repeat(width);
+
+  const series = _resample(finite, width);
+  const min = opts.min != null ? opts.min : Math.min(...series);
+  const max = opts.max != null ? opts.max : Math.max(...series);
+  const range = max - min || 1;
+  const depth = opts.depth || '256';
+
+  let out = '';
+  for (let i = 0; i < series.length; i++) {
+    const norm = _clamp01((series[i] - min) / range);
+    const idx = Math.round(norm * (_RAMP_BLOCKS.length - 1));
+    out += _colorGlyph(_RAMP_BLOCKS[idx], norm, series[i], opts.color, depth);
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
+// Braille line / area chart \u2014 multi-row 2\u00d74-dot canvas
+//
+// The high-density sibling of blockRamp: each cell packs 2 horizontal samples \u00d7
+// 4 vertical levels (createBrailleBuffer), and the chart can be several cells
+// tall for real vertical resolution. 'line' plots the curve; 'area' (the
+// density band) fills every dot from the curve down to the baseline. Per-column
+// coloring follows the same opts.color contract as blockRamp.
+// ---------------------------------------------------------------------------
+
+/**
+ * Render a multi-row braille chart from a numeric series.
+ * Returns an array of `height` strings, top row first. Auto-scales to the
+ * series min/max unless a domain is supplied.
+ *
+ * @param {number[]} values       - data series
+ * @param {object}   [opts]
+ * @param {number}   [opts.width]  - width in cells (default = ceil(values.length / 2))
+ * @param {number}   [opts.height] - height in cells (default 1)
+ * @param {string}   [opts.mode]   - 'line' (default) | 'area'
+ * @param {number}   [opts.min]    - domain minimum (default = series min)
+ * @param {number}   [opts.max]    - domain maximum (default = series max)
+ * @param {(string|number|function)} [opts.color] - 'ramp' | 256 index | (norm,value)=>ANSI
+ * @param {string}   [opts.depth]  - '256' (default) | 'truecolor'
+ * @returns {string[]}
+ */
+function brailleChart(values, opts = {}) {
+  const height = Math.max(1, Math.floor(opts.height || 1));
+  const finite = _finiteSeries(values);
+  const cellCols = opts.width != null
+    ? Math.max(0, Math.floor(opts.width))
+    : Math.ceil((finite ? finite.length : 0) / 2);
+
+  if (!finite || finite.length === 0 || cellCols === 0) {
+    return new Array(height).fill('\u2800'.repeat(cellCols));
+  }
+
+  const pixW = cellCols * 2;
+  const pixH = height * 4;
+  const series = _resample(finite, pixW);
+  const min = opts.min != null ? opts.min : Math.min(...series);
+  const max = opts.max != null ? opts.max : Math.max(...series);
+  const range = max - min || 1;
+  const mode = opts.mode || 'line';
+  const depth = opts.depth || '256';
+
+  const buf = createBrailleBuffer(pixW, pixH);
+  // Per-cell-column normalized value (mean of the 2 dot-columns in the cell) \u2014
+  // drives ramp/solid coloring so a cell's color tracks the data it draws.
+  const colNorm = new Array(cellCols).fill(0);
+  const colCount = new Array(cellCols).fill(0);
+
+  let prevPy = null;
+  for (let x = 0; x < pixW; x++) {
+    const norm = _clamp01((series[x] - min) / range);
+    // py=0 is the top pixel row; a high value sits near the top.
+    const pyTop = Math.max(0, Math.min(pixH - 1, Math.round((1 - norm) * (pixH - 1))));
+    if (mode === 'area') {
+      for (let py = pyTop; py < pixH; py++) buf.set(x, py);
+    } else if (prevPy === null) {
+      buf.set(x, pyTop);
+    } else {
+      // Connected line: bridge the vertical gap to the previous sample so the
+      // curve reads continuous instead of as scattered dots at height > 1.
+      const lo = Math.min(prevPy, pyTop);
+      const hi = Math.max(prevPy, pyTop);
+      for (let py = lo; py <= hi; py++) buf.set(x, py);
+    }
+    prevPy = pyTop;
+    const c = Math.floor(x / 2);
+    colNorm[c] += norm;
+    colCount[c] += 1;
+  }
+  for (let c = 0; c < cellCols; c++) {
+    if (colCount[c] > 0) colNorm[c] /= colCount[c];
+  }
+
+  const rawLines = buf.render(null);
+  if (opts.color == null || opts.color === false) return rawLines;
+  return rawLines.map(line => _colorizeBrailleCells(line, colNorm, opts.color, depth));
+}
+
+/**
+ * Area / density-band convenience: brailleChart in 'area' mode.
+ * @param {number[]} values
+ * @param {object}   [opts] - same as brailleChart (mode is forced to 'area')
+ * @returns {string[]}
+ */
+function brailleBand(values, opts = {}) {
+  return brailleChart(values, { ...opts, mode: 'area' });
+}
+
+/**
+ * Color each non-blank braille cell of a rendered row by its column's
+ * normalized value. Blank cells (U+2800) pass through uncolored to keep the
+ * escape count low.
+ * @param {string}   line    - one rendered braille row (cellCols codepoints)
+ * @param {number[]} colNorm - per-column normalized value
+ * @param {(string|number|function)} color
+ * @param {string}   depth
+ * @returns {string}
+ */
+function _colorizeBrailleCells(line, colNorm, color, depth) {
+  const cells = [...line];
+  let out = '';
+  for (let c = 0; c < cells.length; c++) {
+    const ch = cells[c];
+    if (ch.codePointAt(0) === 0x2800) { out += ch; continue; }
+    out += _colorGlyph(ch, colNorm[c] != null ? colNorm[c] : 0, null, color, depth);
+  }
+  return out;
+}
+
+// ---------------------------------------------------------------------------
 // Braille density guard
 // ---------------------------------------------------------------------------
 
@@ -771,6 +1132,16 @@ module.exports = {
   hbar,
   sparkline,
   progressBar,
+  blockRamp,
+  brailleChart,
+  brailleBand,
+  // Cold ramp color helpers (value → blue/purple gradient, survival-list safe)
+  COLD_RAMP_256,
+  COLD_RAMP_STOPS,
+  rampColor256,
+  rampRgb,
+  rampColor,
+  colorizeRamp,
   // Braille density guard
   capBrailleDensity,
   // Expose gap table for tests (reserved codepoint -> correct Letterlike replacement)
