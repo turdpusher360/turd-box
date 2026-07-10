@@ -111,41 +111,51 @@ describe('hud-data-loader', () => {
     expect(uptime).toBeLessThan(15_000);
   });
 
-  describe('resolveSessionUptime (session-anchored uptime + tool count, S465)', () => {
+  describe('resolveSessionUptime (session-anchored uptime + tool count, S465; per-session map, S550)', () => {
     const anchorFile = () => path.join(tmpStateDir, 'session-uptime.json');
     const readAnchor = () => JSON.parse(fs.readFileSync(anchorFile(), 'utf8'));
+    const entryFor = (id) => readAnchor().sessions[id];
 
-    it('returns null when no live sessionId is available', () => {
+    it('returns null and writes NO file when no live sessionId is available', () => {
       expect(resolveSessionUptime({ stateDir: tmpStateDir, sessionId: '' })).toBeNull();
+      expect(fs.existsSync(anchorFile())).toBe(false);
       expect(resolveSessionUptime({ stateDir: tmpStateDir })).toBeNull();
+      expect(fs.existsSync(anchorFile())).toBe(false);
     });
 
-    it('fresh session: anchor created, uptime 0, tool_count_base captured', () => {
+    it('fresh session: anchor entry created under its own id, uptime 0, tool_count_base captured', () => {
       const now = 1_000_000;
       const r = resolveSessionUptime({ stateDir: tmpStateDir, sessionId: 'S1', now, toolCountRunning: 42 });
       expect(r.uptimeMs).toBe(0);
       expect(r.sessionToolCount).toBe(0);
-      expect(readAnchor()).toMatchObject({ session_id: 'S1', started_at_ms: now, tool_count_base: 42 });
+      expect(readAnchor().version).toBe(2);
+      expect(entryFor('S1')).toMatchObject({ started_at_ms: now, tool_count_base: 42 });
     });
 
-    it('same session: uptime grows, toolCount = running - base, anchor NOT reset', () => {
+    it('same session: uptime grows, toolCount = running - base, anchor entry NOT reset', () => {
       const start = 1_000_000;
       resolveSessionUptime({ stateDir: tmpStateDir, sessionId: 'S1', now: start, toolCountRunning: 42 });
       const r = resolveSessionUptime({ stateDir: tmpStateDir, sessionId: 'S1', now: start + 90 * 60_000, toolCountRunning: 50 });
       expect(r.uptimeMs).toBe(90 * 60_000);
       expect(r.sessionToolCount).toBe(8);
-      expect(readAnchor().started_at_ms).toBe(start);
-      expect(readAnchor().tool_count_base).toBe(42);
+      expect(entryFor('S1').started_at_ms).toBe(start);
+      expect(entryFor('S1').tool_count_base).toBe(42);
     });
 
-    it('changed session resets uptime AND tool_count_base (the S465 fix — does NOT keep the stale values)', () => {
+    it('second session id does NOT clobber the first session anchor (S550 fix — the S465 regression)', () => {
       const t0 = 1_000_000;
       resolveSessionUptime({ stateDir: tmpStateDir, sessionId: 'S1', now: t0, toolCountRunning: 42 });
       resolveSessionUptime({ stateDir: tmpStateDir, sessionId: 'S1', now: t0 + 90 * 60_000, toolCountRunning: 200 });
       const r = resolveSessionUptime({ stateDir: tmpStateDir, sessionId: 'S2', now: t0 + 90 * 60_000, toolCountRunning: 200 });
-      expect(r.uptimeMs).toBe(0);           // reset — a boot-anchored impl would return 90m
-      expect(r.sessionToolCount).toBe(0);   // reset — would otherwise be 158
-      expect(readAnchor()).toMatchObject({ session_id: 'S2', started_at_ms: t0 + 90 * 60_000, tool_count_base: 200 });
+      // S2 gets its own fresh entry (correct — this is a genuinely new session)...
+      expect(r.uptimeMs).toBe(0);
+      expect(r.sessionToolCount).toBe(0);
+      // ...but S1's anchor is untouched, still readable, still growing correctly.
+      const s1Read = resolveSessionUptime({ stateDir: tmpStateDir, sessionId: 'S1', now: t0 + 95 * 60_000, toolCountRunning: 210 });
+      expect(s1Read.uptimeMs).toBe(95 * 60_000);
+      expect(s1Read.sessionToolCount).toBe(168);
+      expect(entryFor('S1')).toMatchObject({ started_at_ms: t0, tool_count_base: 42 });
+      expect(entryFor('S2')).toMatchObject({ started_at_ms: t0 + 90 * 60_000, tool_count_base: 200 });
     });
 
     it('no running count supplied: sessionToolCount is null, uptime still resolves', () => {
@@ -154,14 +164,55 @@ describe('hud-data-loader', () => {
       expect(r.sessionToolCount).toBeNull();
     });
 
-    it('backfills tool_count_base on a legacy anchor without resetting started_at', () => {
+    it('backfills tool_count_base on a per-session entry without resetting started_at', () => {
       const now = 3_000_000;
-      fs.writeFileSync(anchorFile(), JSON.stringify({ session_id: 'S4', started_at_ms: now - 60_000 }));
+      fs.writeFileSync(anchorFile(), JSON.stringify({
+        version: 2,
+        sessions: { S4: { started_at_ms: now - 60_000, last_seen_ms: now - 60_000 } },
+      }));
       const r = resolveSessionUptime({ stateDir: tmpStateDir, sessionId: 'S4', now, toolCountRunning: 99 });
       expect(r.uptimeMs).toBe(60_000);      // started_at preserved
       expect(r.sessionToolCount).toBe(0);   // base backfilled to current running
-      expect(readAnchor().tool_count_base).toBe(99);
-      expect(readAnchor().started_at_ms).toBe(now - 60_000);
+      expect(entryFor('S4').tool_count_base).toBe(99);
+      expect(entryFor('S4').started_at_ms).toBe(now - 60_000);
+    });
+
+    it('migrates a legacy single-slot anchor into the per-session map on first read', () => {
+      const legacyStart = 5_000_000;
+      fs.writeFileSync(anchorFile(), JSON.stringify({
+        session_id: 'LEGACY', started_at_ms: legacyStart, tool_count_base: 7,
+      }));
+      const r = resolveSessionUptime({ stateDir: tmpStateDir, sessionId: 'LEGACY', now: legacyStart + 30_000, toolCountRunning: 10 });
+      expect(r.uptimeMs).toBe(30_000);      // legacy started_at preserved through migration
+      expect(r.sessionToolCount).toBe(3);   // legacy tool_count_base preserved through migration
+      const anchor = readAnchor();
+      expect(anchor.version).toBe(2);
+      expect(anchor.sessions.LEGACY).toMatchObject({ started_at_ms: legacyStart, tool_count_base: 7 });
+    });
+
+    it('prunes entries older than 48h on write, never the entry just touched', () => {
+      const now = 10_000_000_000;
+      const stale = now - (49 * 60 * 60 * 1000); // 49h ago — past the 48h cutoff
+      const recent = now - (1 * 60 * 60 * 1000); // 1h ago — inside the cutoff
+      fs.writeFileSync(anchorFile(), JSON.stringify({
+        version: 2,
+        sessions: {
+          OLD: { started_at_ms: stale, tool_count_base: 1, last_seen_ms: stale },
+          FRESHISH: { started_at_ms: recent, tool_count_base: 2, last_seen_ms: recent },
+        },
+      }));
+      // Trigger a write via a genuinely new session — pruning is a write-time side effect.
+      resolveSessionUptime({ stateDir: tmpStateDir, sessionId: 'NEW', now, toolCountRunning: 5 });
+      const anchor = readAnchor();
+      expect(anchor.sessions.OLD).toBeUndefined();
+      expect(anchor.sessions.FRESHISH).toBeDefined();
+      expect(anchor.sessions.NEW).toBeDefined();
+    });
+
+    it('leaves no stray *.tmp siblings after a write', () => {
+      resolveSessionUptime({ stateDir: tmpStateDir, sessionId: 'S5', now: 1_000_000, toolCountRunning: 1 });
+      const stragglers = fs.readdirSync(tmpStateDir).filter(f => f.startsWith('session-uptime.json.') && f.endsWith('.tmp'));
+      expect(stragglers).toEqual([]);
     });
   });
 

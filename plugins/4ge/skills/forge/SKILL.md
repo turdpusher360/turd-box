@@ -41,6 +41,16 @@ For capability-gain or distillation work, also name the primary target surfaces,
 
 **Context mode:** Low-context (budget <10K tokens). Decisions go to spec.
 
+### Superseded check (mandatory, before scope evaluation)
+
+Stale records have driven the same feature to be rebuilt repeatedly and "pending"
+work to be found already-shipped mid-review (recurring-failures register R-11) —
+confirm the task isn't already done before scoping it:
+
+1. `git -C <target repo> fetch origin && git -C <target repo> log origin/main --oneline -20` — check it wasn't already merged.
+2. One `memory_search` for a prior ship of the same feature.
+3. Record the result in the lane packet: `superseded-check: not previously shipped` or `superseded-check: already shipped at <SHA> — STOP, reconcile record instead`.
+
 Evaluate the task description:
 - Is it clear enough to proceed? -> Phase 2
 - Is it ambiguous or needs exploration? -> Invoke `/autoresearch <topic>` first (if available), or research manually using web search and codebase exploration, then Phase 2

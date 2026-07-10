@@ -87,4 +87,38 @@ describe('4ge forge-board compatibility helper', () => {
     expect(() => forgeBoard.setMode(tmpDir, 'deploy')).toThrow(/Invalid Forge board mode/);
     expect(() => forgeBoard.setProjectionMode(tmpDir, 'all')).toThrow(/Invalid projection mode/);
   });
+
+  it('fails closed over a corrupt latest.json — never stamps active on a rebuilt board (S553-CR-06)', () => {
+    const { latest } = forgeBoard.getPaths(tmpDir);
+    fs.mkdirSync(path.dirname(latest), { recursive: true });
+    // A present-but-unparseable board file: the exact defect scope.
+    fs.writeFileSync(latest, '{ this is not: valid json', 'utf8');
+
+    const result = forgeBoard.setMode(tmpDir, 'ship', { now: '2026-07-10T00:00:00.000Z' });
+    // The mode still advances, but the status must be honest about the corrupt
+    // read, not a clean 'active'.
+    expect(result.board.mode).toBe('ship');
+    expect(result.board.mode_status).not.toBe('active');
+    expect(result.board.mode_status).toBe('degraded');
+    expect(result.board.summary).toMatch(/unreadable|corrupt/i);
+
+    // Persisted state is consistent (no active-beside-unreadable contradiction).
+    const persisted = forgeBoard.readLatestBoard(tmpDir);
+    expect(persisted.mode_status).toBe('degraded');
+  });
+
+  it('keeps active for a fresh init when no board file exists yet (control)', () => {
+    const result = forgeBoard.setMode(tmpDir, 'review', { now: '2026-07-10T00:00:00.000Z' });
+    expect(result.board.mode).toBe('review');
+    expect(result.board.mode_status).toBe('active');
+  });
+
+  it('honors an explicit modeStatus even when the board is corrupt', () => {
+    const { latest } = forgeBoard.getPaths(tmpDir);
+    fs.mkdirSync(path.dirname(latest), { recursive: true });
+    fs.writeFileSync(latest, 'not json at all', 'utf8');
+
+    const result = forgeBoard.setMode(tmpDir, 'ship', { modeStatus: 'complete', now: '2026-07-10T00:00:00.000Z' });
+    expect(result.board.mode_status).toBe('complete');
+  });
 });

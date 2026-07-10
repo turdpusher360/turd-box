@@ -42,11 +42,16 @@ const path = require('node:path');
 // Infra services in lib/os/services/ that are NOT "safety functions" in the postmortem's sense —
 // they don't detect or alarm on a stranding/drift condition, so P6's doctrine doesn't apply to
 // them. Excluded so validateRegistry() doesn't flag them as "should have declared a heartbeat".
+// context-plane-liveness.cjs (upstream F4) is verification INFRA like the others — it is the module that
+// RUNS this validator through the check-wiring-liveness adapters, not a stranding detector that
+// needs its own heartbeat entry; without this exclusion it would self-defeat (a 5th on-disk file
+// vs the 4-entry catalog -> validateRegistry().ok=false -> CI red on its own landing commit).
 const NON_HEARTBEAT_SERVICES = new Set([
   'ipc.cjs',
   'observability.cjs',
   'work-product-router.cjs',
   'heartbeat-registry.cjs',
+  'context-plane-liveness.cjs',
 ]);
 
 function defaultRegistryPath(repoRoot) {

@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-07-07T08:19:08.664Z",
-  "sourceHead": "841962dae57718f68b6d063d40c8456f531055f3",
+  "generatedAt": "2026-07-10T18:28:42.192Z",
+  "sourceHead": "244d93131cf707b7c601648ac4866390f69fd03d",
   "files": {
     "lib/aisle/.gitignore": {
       "sourceSha256": "051f52b7c0fb350f7e8e5cd2e6aceb85e7cf198ff9062f9b52959eac14209671",
@@ -298,7 +298,7 @@
       "transformed": false
     },
     "lib/os/capabilities/infra.cjs": {
-      "sourceSha256": "90f8d168ef966c56651e2acb46e86dd8732ed48cf1626dba65e1dd43b6d790a5",
+      "sourceSha256": "5ef076855682cdf55b7091fe6e8cb5349a63cf3868a812110e9cb8c990ff6a21",
       "vendoredSha256": "68ad2fe0d58f668513aec97db82e86f3945f4d44e339fe8451b6145a77954891",
       "transformed": true
     },
@@ -312,14 +312,14 @@
       "vendoredSha256": "23c2986fb308999c81f52335142718627ddb0b31d030cf93e4e9678f97fc699e",
       "transformed": true
     },
+    "lib/os/config/feedback-baseline.json": {
+      "sourceSha256": "c9253ba3c4ec29c6a9b7605791b6327303a9bbfe3211df5678d92ce6d1084723",
+      "vendoredSha256": "c9253ba3c4ec29c6a9b7605791b6327303a9bbfe3211df5678d92ce6d1084723",
+      "transformed": false
+    },
     "lib/os/config/gates.json": {
       "sourceSha256": "e8b664d3ec3ad5d11a7bfaadd8171711c93068851aade07ef4903ff137a4c466",
       "vendoredSha256": "e8b664d3ec3ad5d11a7bfaadd8171711c93068851aade07ef4903ff137a4c466",
-      "transformed": false
-    },
-    "lib/os/config/heartbeat-registry.json": {
-      "sourceSha256": "88dd3b0d48cdb6dce84cbf99ee636c432882445a63cff12eb443068e235a9425",
-      "vendoredSha256": "88dd3b0d48cdb6dce84cbf99ee636c432882445a63cff12eb443068e235a9425",
       "transformed": false
     },
     "lib/os/config/llm.json": {
@@ -397,6 +397,16 @@
       "vendoredSha256": "7ec249f1de40e1dcfd754b503b3babe59cabfcb535b0e2c81f10ff45a47d80ef",
       "transformed": false
     },
+    "lib/os/registry/check-runners.cjs": {
+      "sourceSha256": "6b9b9c93f1dffdd3334794f3be35fd0d62c92c7df71ceb8a719e042860d10a9c",
+      "vendoredSha256": "43c8a3b7c9590a520054e120dd36f0e8833214f592e286956ac7f357243295ae",
+      "transformed": true
+    },
+    "lib/os/registry/register-loader.cjs": {
+      "sourceSha256": "25331cceb90dcf510de2263dce5c99181c004a7762bf4d5a7570f76370cb377f",
+      "vendoredSha256": "93f8b736ffbc0cc7533ca698d5bdc5f54f18a5eb4a18418aa3801f2d1471325e",
+      "transformed": true
+    },
     "lib/os/scheduler/dag-executor.cjs": {
       "sourceSha256": "d6a9a99329b47f94edaae66b9f175180eaac9a3995a25856b6e823455e22cbe8",
       "vendoredSha256": "a1d970f3d550c70dc4633b46708851736f58ab3b68995aabfaa2b838ffe7067e",
@@ -412,20 +422,40 @@
       "vendoredSha256": "c80c4117ca873d487a5519813e1564cc4f55a107fb800aec876cb13f0e3c7c90",
       "transformed": true
     },
+    "lib/os/services/backup-staleness.cjs": {
+      "sourceSha256": "a36d32de48a8c3c5e7e575fb87f98460209b4b374656f77ad71ab23a8335f6b6",
+      "vendoredSha256": "9b78a739f1a6378284e77a3cbd046395d68f223a6e3b00f832e8e42849446c96",
+      "transformed": true
+    },
     "lib/os/services/closeout-tripwire.cjs": {
-      "sourceSha256": "39f697742bb5b44cb8fc2b3966920acf8c83bed66de6a41a01464a6e666fe529",
-      "vendoredSha256": "c73e896de34e9e4ca1897713f3a5e6296cedb9e821dd186fd3bfe048b5468750",
+      "sourceSha256": "8dbc3dcb9d37016032af39d94cb337bc4dff00783f26b414c1d5886ed8402640",
+      "vendoredSha256": "545b9d794ee12e05ce496931e04ca19869afc5843ae1be0210215c6f6a2cdba8",
+      "transformed": true
+    },
+    "lib/os/services/context-plane-liveness.cjs": {
+      "sourceSha256": "2f9d97725045c01031e9afa11719dac0c8668cbb63c853c629d75c5291c76b80",
+      "vendoredSha256": "ace02ce6570f6147a4952556b4a797a2d9e6e3b60ec5f7e7f3f61386312be147",
+      "transformed": true
+    },
+    "lib/os/services/feedback-ratchet.cjs": {
+      "sourceSha256": "4918eb299ae2987c624fa809c8bfe9d90874a870acbc03cbd58c580bcc34c6c6",
+      "vendoredSha256": "9659421c67111dd1d4565bc279698c65d79bd88f79793b9b1032284b0e8594aa",
       "transformed": true
     },
     "lib/os/services/heartbeat-registry.cjs": {
-      "sourceSha256": "14391d097133f5ebf3a59aea899d02bbc95a0312ae0ee976a0424a30219e7cfe",
-      "vendoredSha256": "4742bed77d899f6f91050f46bbe514e3889cd3ff4a4a6550e5f9f88dfddd5354",
+      "sourceSha256": "f71072aec55600599a334c6b8692c70eeb58251727f07932a51dd3d8c28686dd",
+      "vendoredSha256": "a9f4cfc91e92930dd59aa69f4c2e7418f6a5732ba369f6543bbf246f6381868f",
       "transformed": true
     },
     "lib/os/services/ipc.cjs": {
       "sourceSha256": "e05b4019f806faa7e15a06bedde8416e4d21e06daa6852b8ce37d0b2a36a7611",
       "vendoredSha256": "e05b4019f806faa7e15a06bedde8416e4d21e06daa6852b8ce37d0b2a36a7611",
       "transformed": false
+    },
+    "lib/os/services/model-window.cjs": {
+      "sourceSha256": "9b8323dc287f7921c438f37f0627892b9f8ea3af1b4e461e91a7a6644613b583",
+      "vendoredSha256": "d7282671d823bad838ea958b5ab1e9ac4ced4676529856e9b6e5f69b37bcb70c",
+      "transformed": true
     },
     "lib/os/services/observability.cjs": {
       "sourceSha256": "57c1f6e533f151bf88bf41c4cfc1a4eea6b8c43b29534f45af7cd930fc810fa8",
@@ -436,6 +466,11 @@
       "sourceSha256": "cb737aeef66c7f2975685b33391300c88931889c80c11c811058b6259d5ebad1",
       "vendoredSha256": "cb737aeef66c7f2975685b33391300c88931889c80c11c811058b6259d5ebad1",
       "transformed": false
+    },
+    "lib/os/services/sentinel-heartbeat.cjs": {
+      "sourceSha256": "0dca266bc7d1a33985fc07f56ca872ed49c73408952ec15c68197522501699b1",
+      "vendoredSha256": "f282df56d7622886280c59ed485f20cde352a2e8555f83c310e6ea20e073ac11",
+      "transformed": true
     },
     "lib/os/services/strand-o-meter.cjs": {
       "sourceSha256": "f8fa2a0259131c57e7522567a85cc1a2ec06c3167f3c1bb56341f555003c2982",

@@ -3,6 +3,14 @@
 All notable public changes to the 4ge Claude Code plugin are documented here.
 Versions follow Semantic Versioning.
 
+## [2.10.0] - 2026-07-10
+
+### Added
+- `hooks/license-refresh.cjs` — SessionStart hook that refreshes paid-tier entitlements in a detached background process when the cached license is stale. Default-on for paid installs with an email configured; disable with `FORGE_LICENSE_REFRESH=0` or `licenseRefresh: false` in config.
+
+### Changed
+- `lib/tier-gate.cjs` — two-strike revocation wiring: entitlement checks now consume the refreshed cache; non-2xx worker responses are strike-free transport failures (never punish a network blip), and only two consecutive authoritative denials revoke a cached tier.
+
 ## [2.9.0] - 2026-07-07
 
 ### Added

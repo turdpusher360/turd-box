@@ -1,6 +1,6 @@
 {
   "name": "4ge",
-  "version": "2.9.0",
+  "version": "2.10.0",
   "description": "The production layer for Claude Code. 37 commands and 41 skills across 9 OS capabilities: multi-agent forge orchestration, 6-pass adversarial code review, AISLE security posture, persistent-memory support, systematic debugging, live HUD, and more.",
   "author": {
     "name": "turdpusher360"

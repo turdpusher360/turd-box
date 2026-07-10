@@ -65,6 +65,31 @@ function readForgeConfig(cwd) {
   // Guard 2 (PID sentinel): same-harness re-entry is a no-op.
   const stateDir = path.join(cwd, '_runs', 'os');
   try { fs.mkdirSync(stateDir, { recursive: true }); } catch { /* best-effort */ }
+
+  // Lightweight session_id sync — runs on EVERY SessionStart fire, even
+  // when the re-entry guard or Guard 3's compact fast-path below skip the
+  // full (expensive) boot. Without this, session-meta.json's session_id
+  // freezes at whatever was live on the FIRST SessionStart in a harness
+  // process — the HUD's disk-only render path then anchors uptime to a
+  // stale session_id and thrashes against the live stdin-fed anchor for the
+  // SAME session (root cause of the wall-clock pin-to-0 bug). Best-effort:
+  // patches only the session_id field; never blocks or fails boot. Writes
+  // '' (not the prior stale id) when the harness genuinely didn't supply a
+  // session_id this fire.
+  try {
+    const metaPath = path.join(stateDir, 'session-meta.json');
+    const liveSessionId = (input && typeof input.session_id === 'string' && input.session_id) ? input.session_id : '';
+    if (fs.existsSync(metaPath)) {
+      const meta = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
+      if (meta && meta.session_id !== liveSessionId) {
+        meta.session_id = liveSessionId;
+        const tmp = `${metaPath}.${process.pid}.tmp`;
+        fs.writeFileSync(tmp, JSON.stringify(meta, null, 2), 'utf8');
+        fs.renameSync(tmp, metaPath);
+      }
+    }
+  } catch { /* best-effort */ }
+
   const bootSentinelPath = path.join(stateDir, '.boot-sentinel');
   const harnessPid = process.ppid;
   try {

@@ -553,6 +553,9 @@ function computeUptime(bootStatus) {
   return Math.max(0, Date.now() - bootedAt);
 }
 
+/** Anchor entries older than this (by `last_seen_ms`) are pruned on write. */
+const SESSION_ANCHOR_MAX_AGE_MS = 48 * 60 * 60 * 1000;
+
 /**
  * Resolve THIS session's uptime, anchored to the live CC `session_id` instead of
  * the OS/process boot time.
@@ -565,8 +568,23 @@ function computeUptime(bootStatus) {
  * terminal showed `947m`. The CC `session_id` (changes on `/clear` + relaunch) is the
  * correct "this session" identity.
  *
- * We persist a per-session anchor `{ session_id, started_at_ms, tool_count_base }`
- * in `session-uptime.json` and reset it whenever the live `session_id` changes.
+ * The original implementation kept ONE global anchor slot in
+ * `session-uptime.json` and reset it whenever the passed `sessionId` differed
+ * from the stored id. That is correct for a single caller but breaks under
+ * concurrent callers sharing the same `stateDir` — two Claude Code sessions
+ * (or the same session's stdin-fed statusline path racing the stale
+ * disk-only path fed by `session-meta.json`) ping-pong the single slot back
+ * and forth, each resetting the other's anchor to `now` on every poll.
+ * Uptime pins near 0 instead of growing.
+ *
+ * Fix: `session-uptime.json` now holds a per-session MAP —
+ * `{ version: 2, sessions: { [sessionId]: { started_at_ms, tool_count_base,
+ * last_seen_ms } } }`. A mismatched `sessionId` creates/reads its OWN entry;
+ * it never touches another session's entry. Entries older than
+ * `SESSION_ANCHOR_MAX_AGE_MS` (48h, by `last_seen_ms`) are pruned whenever the
+ * file is written. Legacy single-slot anchors (`{ session_id, started_at_ms,
+ * tool_count_base }`) are migrated into the new map on first read.
+ *
  * `tool_count_base` snapshots the cumulative all-caller `tool_count_running` at
  * session start, so the HUD can show THIS session's tool count (running - base)
  * the same way it shows this session's uptime — both were process-cumulative
@@ -575,33 +593,74 @@ function computeUptime(bootStatus) {
  * Returns `{ uptimeMs, sessionToolCount }` for the current session, or `null`
  * when no live session_id is available (caller keeps the boot-time fallback).
  * `sessionToolCount` is null when no running count was supplied. Write is
- * best-effort + atomic; it only writes when the session changes (or to backfill
- * `tool_count_base` on an anchor written before tool tracking existed).
+ * best-effort + atomic; it only writes when this session's entry is new,
+ * needs backfill, the file needed migration, or pruning removed an entry
+ * (unchanged repeat calls for an already-anchored session do not write).
  */
 function resolveSessionUptime({ stateDir, sessionId, now = Date.now(), toolCountRunning = null } = {}) {
   if (!sessionId || typeof sessionId !== 'string') return null;
   const hasRunning = typeof toolCountRunning === 'number' && toolCountRunning >= 0;
   const anchorPath = path.join(stateDir, 'session-uptime.json');
-  let anchor = readJsonSafe(anchorPath);
+  const raw = readJsonSafe(anchorPath);
   let dirty = false;
-  if (!anchor || anchor.session_id !== sessionId || typeof anchor.started_at_ms !== 'number') {
-    anchor = { session_id: sessionId, started_at_ms: now, tool_count_base: hasRunning ? toolCountRunning : 0 };
+  let sessions;
+  if (raw && raw.sessions && typeof raw.sessions === 'object') {
+    sessions = raw.sessions;
+  } else if (raw && typeof raw.session_id === 'string' && typeof raw.started_at_ms === 'number') {
+    // Legacy single-slot format — migrate it into the new map under its own id.
+    sessions = {
+      [raw.session_id]: {
+        started_at_ms: raw.started_at_ms,
+        tool_count_base: typeof raw.tool_count_base === 'number' ? raw.tool_count_base : 0,
+        last_seen_ms: now,
+      },
+    };
     dirty = true;
-  } else if (typeof anchor.tool_count_base !== 'number' && hasRunning) {
+  } else {
+    sessions = {};
+  }
+
+  let entry = sessions[sessionId];
+  if (!entry || typeof entry.started_at_ms !== 'number') {
+    entry = { started_at_ms: now, tool_count_base: hasRunning ? toolCountRunning : 0, last_seen_ms: now };
+    sessions[sessionId] = entry;
+    dirty = true;
+  } else if (typeof entry.tool_count_base !== 'number' && hasRunning) {
     // Backfill base for an anchor written before tool-count tracking existed.
-    anchor.tool_count_base = toolCountRunning;
+    entry.tool_count_base = toolCountRunning;
+    entry.last_seen_ms = now;
     dirty = true;
   }
+
   if (dirty) {
+    // Prune stale sessions (never touches the entry we just created/updated —
+    // its last_seen_ms is `now`, always inside the cutoff window).
+    const cutoff = now - SESSION_ANCHOR_MAX_AGE_MS;
+    for (const [id, e] of Object.entries(sessions)) {
+      const stamp = e && typeof e.last_seen_ms === 'number' ? e.last_seen_ms
+        : (e && typeof e.started_at_ms === 'number' ? e.started_at_ms : null);
+      if (stamp === null || stamp < cutoff) delete sessions[id];
+    }
     try {
-      const tmp = `${anchorPath}.${process.pid}.tmp`;
-      fs.writeFileSync(tmp, JSON.stringify(anchor, null, 2), 'utf8');
+      const tmp = `${anchorPath}.${process.pid}.${now}.tmp`;
+      fs.writeFileSync(tmp, JSON.stringify({ version: 2, sessions }, null, 2), 'utf8');
       fs.renameSync(tmp, anchorPath);
-    } catch { /* best-effort — fall back to a fresh anchor in-memory */ }
+      // Best-effort cleanup of stale *.tmp siblings left by prior interrupted writes.
+      try {
+        const dir = path.dirname(anchorPath);
+        const base = path.basename(anchorPath);
+        for (const f of fs.readdirSync(dir)) {
+          if (f.startsWith(`${base}.`) && f.endsWith('.tmp') && path.join(dir, f) !== tmp) {
+            try { fs.unlinkSync(path.join(dir, f)); } catch { /* best-effort */ }
+          }
+        }
+      } catch { /* best-effort */ }
+    } catch { /* best-effort — fall back to the in-memory entry this call */ }
   }
-  const uptimeMs = Math.max(0, now - anchor.started_at_ms);
-  const sessionToolCount = (hasRunning && typeof anchor.tool_count_base === 'number')
-    ? Math.max(0, toolCountRunning - anchor.tool_count_base)
+
+  const uptimeMs = Math.max(0, now - entry.started_at_ms);
+  const sessionToolCount = (hasRunning && typeof entry.tool_count_base === 'number')
+    ? Math.max(0, toolCountRunning - entry.tool_count_base)
     : null;
   return { uptimeMs, sessionToolCount };
 }

@@ -253,18 +253,29 @@ function setMode(projectRoot, mode, options = {}) {
   const normalizedMode = normalizeMode(mode);
 
   const board = readLatestBoard(root);
+  // A latest.json present on disk but unparseable is CORRUPT, not a fresh
+  // project. Fail closed: never let setMode stamp a clean 'active' onto a
+  // board rebuilt from nothing when the real board could not be read — that
+  // produces the contradictory state the finding flagged (mode_status:'active'
+  // beside a summary saying the board was unreadable). Scope is exactly
+  // present-but-unparseable; a missing file stays a legitimate fresh init and
+  // an unrecognized schema_version is a separate migration case — both keep the
+  // normal 'active' default.
+  const corruptBoard = fs.existsSync(latestPath(root)) && board === null;
   const base = board && board.schema_version === SCHEMA_VERSION ? board : createBoard({ projectRoot: root, now: options.now });
   const now = safeDate(options.now);
 
   const nextBoard = {
     ...base,
     mode: normalizedMode,
-    mode_status: options.modeStatus || base.mode_status || 'active',
+    mode_status: options.modeStatus || (corruptBoard ? 'degraded' : (base.mode_status || 'active')),
     decision: {
       ...base.decision,
       recommended_next_mode: MODE_SUGGESTIONS[normalizedMode],
     },
-    summary: options.summary || base.summary,
+    summary: options.summary || (corruptBoard
+      ? 'Forge board file was unreadable or corrupt; mode set on a rebuilt board (degraded until re-verified).'
+      : base.summary),
     session: {
       ...base.session,
       updated_at: now,
