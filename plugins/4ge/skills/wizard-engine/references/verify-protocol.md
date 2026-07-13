@@ -2,6 +2,8 @@
 
 Verification and shipping protocol for Stage 6.
 
+> **Delivery rule (HARD):** The ship menu and any accept/undo gate here are decision gates — in conversation they are delivered as native AskUserQuestion pickers; text menus and `> _` prompts are bin/CLI stdout only, never the interactive surface.
+
 ## Full Verification Triad
 
 All three must pass before offering the commit option:

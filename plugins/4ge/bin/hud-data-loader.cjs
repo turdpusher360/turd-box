@@ -3,6 +3,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { reactiveTtlMap } = require('../lib/hud-events.cjs');
+const { readBoard } = require('../lib/hud-board-store.cjs');
 
 function readJsonSafe(filePath) {
   try {
@@ -776,6 +777,7 @@ function loadHudData(opts = {}) {
     anomaly,
     transcript,
     rigContext,
+    board: readBoard(stateDir),
   };
 
   // Git state: mode-aware read via smart-order (C-10, T4.3)

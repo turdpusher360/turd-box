@@ -140,6 +140,8 @@ Inline scan, research, or execute progress indicator.
 
 Compact hotkey block shown at the bottom of interactive screens. Two-column layout.
 
+> **Delivery rule (HARD):** In conversation, a decision gate is delivered as a native AskUserQuestion picker — options mapped 1:1, recommended option first, rationale in prose before the call — and nothing on the menu executes before the operator's ruling. Text menus and `> _` prompts are 4ge bin/CLI stdout only, never the interactive surface.
+
 **Format:**
 ```
   ({key}) {label}          ({key}) {label}
@@ -275,6 +277,7 @@ Agent activity tracking for `/forge` and Agent Teams views.
 6. Do not use "OK", "GOOD", "BAD", "CRITICAL", or traffic-light metaphors — use `A`-`F` grades and `PASS`/`WARN`/`FAIL` status.
 7. Do not center or right-align any content block.
 8. Do not use box-drawing characters or decorative borders.
+9. Do not render an Action Menu, hotkey block, or `> _` prompt in conversational output — that is a decision gate and MUST be a native AskUserQuestion picker (HARD). The text form is bin/CLI stdout only.
 
 ---
 

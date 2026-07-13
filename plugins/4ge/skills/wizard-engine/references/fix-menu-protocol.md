@@ -2,6 +2,8 @@
 
 UX protocol for Stage 4 (FIX MENU) and Stage 5 (EXECUTE).
 
+> **Delivery rule (HARD):** Every menu in this protocol is a decision gate — in conversation it is delivered as a native AskUserQuestion picker (options 1:1, recommended first), and nothing executes before the operator's ruling. The text menu mockups below define CONTENT for bin/CLI stdout only, never the interactive surface.
+
 ## Risk Tiers
 
 | Tier | Description | Execution Mode | Examples |

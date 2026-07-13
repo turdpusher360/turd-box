@@ -14,6 +14,8 @@ Before producing any output, read `${CLAUDE_PLUGIN_ROOT}/skills/wizard-engine/re
 
 **Output components:** 5 (Progress Line), 6 (Action Menu), 10 (Teammate Row)
 
+> **Delivery rule (HARD):** Component 6 in conversation is a native AskUserQuestion picker — options 1:1, recommended first, nothing on the menu executes before the operator's ruling. The text Action Menu with `> _` is bin/CLI stdout only, never the interactive surface.
+
 Orchestrates complex implementation tasks through 7 phases using parallel teammates, dependency-aware scheduling, and context-aware handoff.
 
 **Reference files live in `references/` (relative to this skill file).** Read each file on demand when its protocol is needed — do not preload all references at once.
@@ -176,6 +178,21 @@ After plan approval, suggest `/compact` if >50% context used.
 8. Teammates report status: DONE | DONE_WITH_CONCERNS | BLOCKED | NEEDS_CONTEXT
 
 **Max parallel teammates:** 4 (configurable per plan).
+
+**Burn gate (pre-dispatch):** Before heavy fan-out — 3+ parallel teammates, or any
+spawn onto Fable or max effort — run the local usage gate and cite its output line
+in the wave plan:
+
+```bash
+node "${CLAUDE_PLUGIN_ROOT}/bin/usage.cjs" gate
+```
+
+It prints one line: active 5h-block time remaining, burn rate, block cost and
+projection (estimates from local transcripts — no network, no external CLI). Exit 2
+means transcripts were unreadable or the scan could not distinguish idle from
+corrupt: say so in the wave plan and size the wave conservatively; never fabricate
+a burn number. This replaces the external `ccusage blocks --active` check, which
+is not guaranteed to exist on a rig.
 
 **Teammate dispatch pattern (subagents):**
 ```

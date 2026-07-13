@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-07-10T18:28:42.192Z",
-  "sourceHead": "244d93131cf707b7c601648ac4866390f69fd03d",
+  "generatedAt": "2026-07-13T08:46:41.453Z",
+  "sourceHead": "a5f2ae1e05cfa696545b848462babb6bf398da54",
   "files": {
     "lib/aisle/.gitignore": {
       "sourceSha256": "051f52b7c0fb350f7e8e5cd2e6aceb85e7cf198ff9062f9b52959eac14209671",
@@ -10,6 +10,21 @@
     "lib/aisle/aisle-config.schema.json": {
       "sourceSha256": "08b32a7c62f07975caa21694645e2e20bc4be099c3377f675929ea2dc7b01582",
       "vendoredSha256": "08b32a7c62f07975caa21694645e2e20bc4be099c3377f675929ea2dc7b01582",
+      "transformed": false
+    },
+    "lib/aisle/broker/audit.cjs": {
+      "sourceSha256": "325e1b5c9b3c08261ebc03878b48a82a060d31ce9c9bff218768f9c04ca37d13",
+      "vendoredSha256": "325e1b5c9b3c08261ebc03878b48a82a060d31ce9c9bff218768f9c04ca37d13",
+      "transformed": false
+    },
+    "lib/aisle/broker/bindings.cjs": {
+      "sourceSha256": "6459730721e61011210a0389bfc4185cc6ada77a70e25501a55d8dd7a476f27b",
+      "vendoredSha256": "6459730721e61011210a0389bfc4185cc6ada77a70e25501a55d8dd7a476f27b",
+      "transformed": false
+    },
+    "lib/aisle/broker/token-store.cjs": {
+      "sourceSha256": "6cbb27708f20c34f334aa01661a878d3245e04b2279a650f4d4d57c7cbb94203",
+      "vendoredSha256": "6cbb27708f20c34f334aa01661a878d3245e04b2279a650f4d4d57c7cbb94203",
       "transformed": false
     },
     "lib/aisle/canaries/A/hallucinated-package.json": {
@@ -122,6 +137,21 @@
       "vendoredSha256": "a20e535c8cd09404ad153371a95ce30f12b1987d713a16173aaa6549eec4abfc",
       "transformed": false
     },
+    "lib/aisle/contracts/classify-bash.cjs": {
+      "sourceSha256": "9f0b86511f8bbe512b7ef90c7023af86b6f9542d216529c8119e80ab3a86760b",
+      "vendoredSha256": "9f0b86511f8bbe512b7ef90c7023af86b6f9542d216529c8119e80ab3a86760b",
+      "transformed": false
+    },
+    "lib/aisle/contracts/dispatch-register.cjs": {
+      "sourceSha256": "5f0196253ec7d506541ed8115a15ff7feb8b6c7b3cd59293088a1fedb5619e38",
+      "vendoredSha256": "f2675bc4270633baf5e0df638c9e4f820e08c25ebdb0fed58390976e9530300f",
+      "transformed": true
+    },
+    "lib/aisle/contracts/store.cjs": {
+      "sourceSha256": "5be669cc28e1324365781dd79eab058cb950a715da087789fdcdf2065d0e1a7e",
+      "vendoredSha256": "5be669cc28e1324365781dd79eab058cb950a715da087789fdcdf2065d0e1a7e",
+      "transformed": false
+    },
     "lib/aisle/core/ar-ingest.cjs": {
       "sourceSha256": "1e9daacb59bd814a7d674355d9344906d2723a62fe70658bb5679f2d30eda685",
       "vendoredSha256": "1e9daacb59bd814a7d674355d9344906d2723a62fe70658bb5679f2d30eda685",
@@ -196,6 +226,11 @@
       "sourceSha256": "53a7e892622166cb96974af83d0c4ee1088710fe526c486c3866801176be86d0",
       "vendoredSha256": "53a7e892622166cb96974af83d0c4ee1088710fe526c486c3866801176be86d0",
       "transformed": false
+    },
+    "lib/aisle/ingress/policy.cjs": {
+      "sourceSha256": "56985017f4a7e954a58d15bbdeb06ac7e2f2fedcca24c014f752fdce3e22087b",
+      "vendoredSha256": "1311690b69b0b188d7a5a0cfad0ed89f2e1453a3cd889f2c522091d4d165ec95",
+      "transformed": true
     },
     "lib/aisle/scanners/code-patterns.cjs": {
       "sourceSha256": "bfc93bfc0128c063d36bfd2c28af038f93f27d259a7d2d4cb3bfae1661c042a9",
@@ -272,14 +307,19 @@
       "vendoredSha256": "573c193c5d598df5b5ce4104aa75fbdd221cf4205a979cea60ad907e2a33d1c0",
       "transformed": true
     },
+    "lib/os/capabilities/authz-broker.cjs": {
+      "sourceSha256": "6594db4b9bb1ea14d98fca8c56fe45749d994457bd1798cc4a376b10189a9680",
+      "vendoredSha256": "6594db4b9bb1ea14d98fca8c56fe45749d994457bd1798cc4a376b10189a9680",
+      "transformed": false
+    },
     "lib/os/capabilities/autoresearch.cjs": {
       "sourceSha256": "fa9c3e418ab34a2d8ab24d4736adff79e188e4a82cae48d079fd30b63a239d16",
       "vendoredSha256": "fa9c3e418ab34a2d8ab24d4736adff79e188e4a82cae48d079fd30b63a239d16",
       "transformed": false
     },
     "lib/os/capabilities/file-integrity.cjs": {
-      "sourceSha256": "9549b7956fbf269cd72428b2fadeb8aecfe2c2fa88a132893452ba7f34fe6190",
-      "vendoredSha256": "9549b7956fbf269cd72428b2fadeb8aecfe2c2fa88a132893452ba7f34fe6190",
+      "sourceSha256": "a566b9517c31ccc5e8faf7b891f8252fb939116e36a28da943a001f32b266396",
+      "vendoredSha256": "a566b9517c31ccc5e8faf7b891f8252fb939116e36a28da943a001f32b266396",
       "transformed": false
     },
     "lib/os/capabilities/forge-session.cjs": {

@@ -13,6 +13,8 @@ Before producing any output, read `${CLAUDE_PLUGIN_ROOT}/skills/wizard-engine/re
 
 **Output components:** 3 (Finding Row), 5 (Progress Line), 8 (Status Table)
 
+> **Delivery rule (HARD):** Any decision gate this skill reaches is delivered as a native AskUserQuestion picker; text menus and `> _` prompts are bin/CLI stdout only, never the interactive surface.
+
 Orchestrates 5 DFE minion agents in parallel (Tier 1-2), then an adversarial agent (Tier 3), and presents a unified review report.
 
 Claude 4ge `/dfe` is the disk-first multi-agent DFE runner. It is separate from Codex `forge-codex:dfe-review`, which is a Codex-native evidence review skill and must not be described as runtime parity with this Claude command.

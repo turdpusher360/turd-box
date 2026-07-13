@@ -502,6 +502,12 @@ module.exports = {
       sync:   { description: 'Force .claude/ sync from HEAD', args: [] },
       status: { description: 'Report tracked files and last verification', args: [] },
       check:  { description: 'Run verify mode on demand', args: [] },
+      // AISLE intent-contract store (DIS-SEC-001 P2) — delegates to
+      // lib/aisle/contracts/store.cjs; the store lives on this capability per
+      // the capsule. Out-of-repo storage under <aisleStateDir>/contracts/.
+      register_contract: { description: 'Register/replace an intent contract', args: ['contract'] },
+      get_contract:      { description: 'Look up an intent contract by id or subject', args: ['contract_id|subject'] },
+      list_contracts:    { description: 'List live intent contracts', args: [] },
     },
     health() {
       return { ...(this._healthCache || { ok: false, reason: 'not initialized' }) };
@@ -656,6 +662,33 @@ module.exports = {
       }
 
       return { checked: result.checked, repaired: result.repaired };
+    },
+
+    // --- AISLE intent-contract store (DIS-SEC-001 P2) -----------------------
+    // Thin delegations to lib/aisle/contracts/store.cjs. Lazy-required so the
+    // store (and its config.cjs dependency) never loads at capability boot —
+    // zero boot-time coupling, minimal diff. Out-of-repo storage under the
+    // AISLE state dir; fail-open on a missing/corrupt store.
+
+    register_contract(args) {
+      const store = require('../../aisle/contracts/store.cjs');
+      const contract = store.register(args || {});
+      return { ok: true, contract_id: contract.contract_id, contract };
+    },
+
+    get_contract(args) {
+      const store = require('../../aisle/contracts/store.cjs');
+      const a = args || {};
+      const contract = a.contract_id
+        ? store.getById(a.contract_id)
+        : store.lookup({ session_id: a.session_id, agent_id: a.agent_id });
+      return { ok: true, found: !!contract, contract: contract || null };
+    },
+
+    list_contracts() {
+      const store = require('../../aisle/contracts/store.cjs');
+      const contracts = store.list();
+      return { ok: true, count: contracts.length, contracts };
     },
   },
 };

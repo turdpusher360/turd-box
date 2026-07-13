@@ -29,7 +29,7 @@ Agent({
 })
 ```
 
-The lead (or `/forge`) picks this agent by matching the skill's `tools_needed` and scope profile against the runtime fleet table in `.claude/rules/agent-selection.md`. See `docs/superpowers/specs/2026-04-17-agent-consolidation-design.md` §4.3 for the resolver.
+The lead (or `/forge`) picks this agent by matching the skill's `tools_needed` and scope profile against the runtime fleet table in `.claude/rules/agent-selection.md`. See `docs/superpowers/specs/2026-04-17-agent-consolidation-design.md` §4.3 for the resolver (design only — never built; agent routing is the manual fleet table in agent-selection.md).
 
 ## Precondition enforcement
 

@@ -75,6 +75,8 @@ This is state-compatibility scaffolding for Anvil and does **not** replace exist
 | `/design` | Free | Contextual design assistant — Visual/API/Data/System modes |
 | `/onboard` | Free | First-time repository onboarding scanner |
 | `/ps` | Free | Read-only process dashboard for agents, zombies, and OS health |
+| `/usage` | Free | Local usage/cost analytics from transcripts — 5h blocks, burn rate, pre-dispatch gate (costs are estimates) |
+| `/reconcile` | Free | Fold handoffs into BACKLOG.md, flag drift, archive stale runs, regenerate INDEX.md |
 | `/forge` | Pro | Multi-agent orchestrator: brainstorm → spec → plan → execute → ship |
 | `/dfe` | Pro | 6-pass adversarial code review |
 | `/audit` | Pro | Code quality audit — 70 checks across 10 domains |
@@ -138,7 +140,7 @@ AISLE reports current security posture and routes scans for supply chain integri
 |  | Free | Pro | Team |
 |--|------|-----|------|
 | **Price** | $0 | $19/mo | $39/seat/mo |
-| **Commands** | 28 free commands | + Pro machinery | Everything in Pro |
+| **Commands** | 27 free commands | + Pro machinery | Everything in Pro |
 | **DFE Review** | — | Full 6-pass adversarial | Full 6-pass adversarial |
 | **Forge Orchestration** | — | 7-phase pipeline | 7-phase pipeline |
 | **AISLE Security** | — | Posture + scans | Posture + scans |

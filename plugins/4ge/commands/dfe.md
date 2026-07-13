@@ -22,6 +22,8 @@ Parse $ARGUMENTS:
 Before producing any output, read `${CLAUDE_PLUGIN_ROOT}/skills/wizard-engine/references/output-format.md` for formatting rules.
 **Output components:** 3 (Finding Row), 5 (Progress Line), 8 (Status Table)
 
+> **Delivery rule (HARD):** Any decision gate this command reaches (fix-vs-report, scope confirmation) is delivered as a native AskUserQuestion picker; text menus and `> _` prompts are bin/CLI stdout only, never the interactive surface.
+
 ## Pipeline
 
 ### Step 1: Determine file set

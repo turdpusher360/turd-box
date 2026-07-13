@@ -2,6 +2,8 @@
 
 Dispatch protocol for Stage 3 (RESEARCH). Gathers evidence to ground fix recommendations with confidence scores.
 
+> **Delivery rule (HARD):** Any checkpoint/menu in this protocol is a decision gate — in conversation it is delivered as a native AskUserQuestion picker; text menus and `> _` prompts are bin/CLI stdout only, never the interactive surface.
+
 ## Research Depths
 
 | Depth | Time/Category | Sources | Token Estimate |

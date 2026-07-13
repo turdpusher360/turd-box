@@ -15,9 +15,18 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { readStdinJson } = require('./hook-utils.cjs');
+const { isProjectManaged } = require('./os-guard.cjs');
 
 const MARKER = '##SECRET_CAPTURE##';
 const END_MARKER = '##END_SECRET_CAPTURE##';
+
+// Raw "/secret ..." (optionally plugin-prefixed, e.g. "/4ge:secret") exactly as
+// typed by the user. UserPromptSubmit fires on the RAW prompt BEFORE slash-command
+// expansion, so the marker form below never appears at hook time on current CC —
+// the marker-only check silently passed two live /secret values into model
+// context (fixed 2026-07-13). superdupersecret is the /secret alias command.
+const RAW_COMMAND_RE = /^\s*\/(?:[A-Za-z0-9_-]+:)?(?:secret|superdupersecret)(?:\s+([\s\S]+?))?\s*$/;
+
 
 const PREFIX_MAP = [
   [/^sbp_[a-f0-9]{40,}$/i, 'SUPABASE_PAT'],
@@ -101,14 +110,29 @@ async function main() {
   let payload;
   try { payload = await readStdinJson(); } catch { process.exit(0); }
 
+  // Precedence guard (os-guard.cjs): when the project wires its own
+  // secret-redact via .claude/settings.json, that copy is authoritative —
+  // exit to avoid a double .env write + double block on /secret. stdin is
+  // already drained by readStdinJson above (no pipe-hold zombie).
+  if (isProjectManaged(payload.cwd || process.cwd(), 'secret-redact')) process.exit(0);
+
   const prompt = String(payload.prompt || '');
+
+  // Two accepted forms: marker form (expanded command body — kept for harness
+  // versions that expand slash commands before UserPromptSubmit) and raw slash
+  // form (what the hook actually receives live — see RAW_COMMAND_RE above).
+  let args = null;
   const start = prompt.indexOf(MARKER);
-  if (start === -1) process.exit(0);
+  if (start !== -1) {
+    const end = prompt.indexOf(END_MARKER, start);
+    if (end === -1) process.exit(0);
+    args = prompt.slice(start + MARKER.length, end).trim();
+  } else {
+    const m = prompt.match(RAW_COMMAND_RE);
+    if (!m) process.exit(0);
+    args = (m[1] || '').trim();
+  }
 
-  const end = prompt.indexOf(END_MARKER, start);
-  if (end === -1) process.exit(0);
-
-  const args = prompt.slice(start + MARKER.length, end).trim();
   const parsed = parseInput(args);
 
   if (!parsed) {

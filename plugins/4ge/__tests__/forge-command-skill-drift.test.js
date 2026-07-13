@@ -99,3 +99,19 @@ describe('forge command<->skill drift guard (DIS-ARC-001 P0-3)', () => {
     expect(skillParts.frontmatter).toContain('Multi-teammate orchestrator');
   });
 });
+
+describe('forge SKILL burn-gate step — installed-surface path contract', () => {
+  const skill = readPluginFile('skills/forge/SKILL.md');
+
+  // The burn gate is the one skill step that shells out to a plugin binary.
+  // A repo-relative `node plugins/4ge/bin/...` path only resolves when the
+  // consumer project IS this repository; from any installed-plugin cwd it
+  // fails MODULE_NOT_FOUND before reading a single transcript.
+  it('invokes the usage bin via CLAUDE_PLUGIN_ROOT so the gate runs from any consumer cwd', () => {
+    expect(skill).toContain('node "${CLAUDE_PLUGIN_ROOT}/bin/usage.cjs" gate');
+  });
+
+  it('never references the repo-relative usage bin path', () => {
+    expect(skill).not.toMatch(/node plugins\/4ge\/bin\/usage\.cjs/);
+  });
+});

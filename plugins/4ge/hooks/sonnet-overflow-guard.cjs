@@ -22,6 +22,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const { isProjectManaged } = require('./os-guard.cjs');
 
 const HEAVY = /\bWebFetch\b|\bWebSearch\b|web[-\s]?research|\bcomb(?:ing|s|ed)?\b|multi[-\s]?source|research[\s\S]{0,80}\b(?:all|every|comprehensive|exhaustive|deep|full|each)\b|\bfetch(?:es|ing)?\b[\s\S]{0,60}\bpages?\b|memory[_-]?search[\s\S]{0,40}\b(?:all|every|many|comb)\b/i;
 const DISCIPLINE_A = /disk[-\s]?first|do(?:n['’]?t| not)\s+(?:paste|hoard|dump|carry|accumulate)|_runs\//i;
@@ -112,6 +113,12 @@ if (require.main === module) {
     let input;
     try { input = JSON.parse(chunks.join('')); }
     catch (_e) { process.exit(0); }
+    // Precedence guard (os-guard.cjs): when the project wires its own
+    // sonnet-overflow-guard via .claude/settings.json, that copy is
+    // authoritative — exit to avoid two PreToolUse copies both able to deny
+    // (divergent versions => unpredictable agent-spawn denials). stdin is
+    // fully drained here ('end' fired), so no pipe-hold zombie.
+    if (input && isProjectManaged(input.cwd, 'sonnet-overflow-guard')) process.exit(0);
     const v = check(input);
     if (v && v.deny) {
       audit({ ts: new Date().toISOString(), tool: input.tool_name, decision: 'deny' });

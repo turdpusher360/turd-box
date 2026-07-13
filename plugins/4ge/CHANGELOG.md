@@ -3,6 +3,13 @@
 All notable public changes to the 4ge Claude Code plugin are documented here.
 Versions follow Semantic Versioning.
 
+## [2.11.0] - 2026-07-13
+
+Lead-writable color board on the live statusline.
+
+### Added
+- **HUD lead-board zone** — the session lead pushes a colored board to the operator's live statusline on demand: `bin/hud-board.cjs set --title <t> --line "<level>:<text>" (repeatable) [--ttl <sec>]`, plus `clear` and `show`. State at `_runs/os/hud-board.json` (atomic write, default TTL 900s, fail-invisible: missing/corrupt/expired state renders nothing and can never crash or slow the statusline). Line levels `info|ok|warn|alert|accent` map to palette roles. Rendered on the live statusline via a dedicated injection (after anomaly rows, before reactive/compact feeds, always yielding to the boot-pulse) and as a `board` zone (priority 7) in the composite HUD. HUD-STANDARDS §4.6.
+
 ## [2.10.0] - 2026-07-10
 
 ### Added

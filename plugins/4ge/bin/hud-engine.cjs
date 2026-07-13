@@ -22,6 +22,7 @@ const { renderGitStatusZone, ZONE_META: GIT_STATUS_META, gitStatusVisible } = re
 const { renderRigZone, renderRigCompact, RIG_META, rigContextVisible } = require('./hud-zone-rig.cjs');
 const { renderMoonphaseZone, ZONE_META: MOONPHASE_META, moonphaseVisible } = require('./hud-zone-moonphase.cjs');
 const { renderWeasleyZone, ZONE_META: WEASLEY_META, weasleyVisible } = require('./hud-zone-weasley.cjs');
+const { renderBoardZone, ZONE_META: BOARD_META, boardVisible } = require('./hud-zone-board.cjs');
 const { loadHudData, mergeHarnessStdin, resolveSessionUptime } = require('./hud-data-loader.cjs');
 const { renderSubstrateZone } = require('./hud-zone-substrate.cjs');
 const { composeScene } = require('./scene-compositor.cjs');
@@ -58,6 +59,7 @@ const ZONE_CATALOG = [
     render: renderHealthZone,
     renderZone: (state, palette) => renderHealthZone(state, palette, { detailed: true }),
   },
+  { key: 'board', meta: BOARD_META, render: renderBoardZone, visible: boardVisible },
   { key: 'rig', aliases: ['rig-context'], meta: RIG_META, render: renderRigZone, compact: renderRigCompact, visible: rigContextVisible },
   { key: 'caps', aliases: ['capabilities'], meta: CAPS_META, render: renderCapsZone, composite: false },
   { key: 'forge', meta: FORGE_META, render: renderForgeZone, visible: (state) => !!(state.forge && state.forge.active) },
@@ -222,6 +224,21 @@ function renderCompactStatuslineRows(state, palette, maxRows, gutter = DEFAULT_F
     }
   }
   return rows;
+}
+
+// Lead-authored board rows for the live statusline. Reads state.board (loaded +
+// freshness-filtered by hud-data-loader) and renders it through the board zone,
+// clamped to the remaining row budget. Fail-invisible: any error → no rows.
+function renderBoardStatuslineRows(state, palette, maxRows, gutter = DEFAULT_FEED_GUTTER) {
+  if (maxRows <= 0) return [];
+  if (!boardVisible(state)) return [];
+  let lines = [];
+  try {
+    lines = renderBoardZone(state, palette, { maxRows, gutter });
+  } catch {
+    lines = [];
+  }
+  return Array.isArray(lines) ? lines.slice(0, maxRows) : [];
 }
 
 // Breathing block: single character that cycles height based on health + time.
@@ -987,6 +1004,14 @@ function renderStatusLine(rawState, maxRows) {
     rows = rows.concat(anomalyRows);
   }
 
+  // Lead-authored board — after anomaly (a fail-safe signal outranks an explainer),
+  // before the auto-feeds (reactive/compact) so a deliberately pushed board is the
+  // most prominent non-essential surface. Yields entirely to the boot-pulse below.
+  const boardRows = renderBoardStatuslineRows(state, palette, Math.max(0, ceiling - rows.length), feedGutter);
+  if (boardRows.length > 0) {
+    rows = rows.concat(boardRows);
+  }
+
   const reactiveRows = renderReactiveStatuslineRows(state, palette, Math.max(0, ceiling - rows.length), feedGutter);
   if (reactiveRows.length > 0) {
     rows = rows.concat(reactiveRows);
@@ -1203,6 +1228,7 @@ module.exports = {
   renderReactiveStatuslineRows,
   renderAnomalyStatuslineRows,
   renderCompactStatuslineRows,
+  renderBoardStatuslineRows,
   MODEL_FACE,
   resolveModelFace,
   resolveCompanionFace,

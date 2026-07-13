@@ -8,6 +8,8 @@ paths: ["_runs/**"]
 
 Append a structured decision entry to `_runs/.decisions.jsonl`.
 
+> **Delivery rule (HARD):** If this command reaches a point where the operator must choose (ambiguous parse, confirmation), deliver it as a native AskUserQuestion picker — any `> _` example below is disk/CLI formatting only, never the interactive surface.
+
 ## Parse Arguments
 
 Extract from $ARGUMENTS:

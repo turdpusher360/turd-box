@@ -191,6 +191,8 @@ Skip this menu for `--quick`, `--auto-safe`, `--ci`, `--preflight`, or `--report
 
 **Output components:** 3 (Finding Row), 4 (Execution Tier Badges), 6 (Action Menu)
 
+> **Delivery rule (HARD):** Component 6 in conversation is a native AskUserQuestion picker — options 1:1, recommended first, nothing on the menu executes before the operator's ruling. The text Action Menu with `> _` is bin/CLI stdout only, never the interactive surface.
+
 Classify each category as PASS/WARN/FAIL:
 
 | Score Range | Grade | Action |

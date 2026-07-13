@@ -74,7 +74,7 @@ Step 5/5 — See what's running
   state. Stays updated as you work.
 
   Run:  /4ge:help
-  Full command index grouped by tier. 37 commands, 41 skills,
+  Full command index grouped by tier. 38 commands, 41 skills,
   9 OS capabilities. Try /4ge:help <command> for any command's
   full spec.
 

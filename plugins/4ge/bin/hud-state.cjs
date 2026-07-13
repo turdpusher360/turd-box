@@ -283,7 +283,10 @@ function buildCanonicalState(raw) {
   const anomaly = normalizeAnomalyState(r.anomaly);
   const rigContext = normalizeRigContextState(r.rigContext);
 
-  return { terminal, session, os, forge, context, badges, memory, transcript, forgeProgress, git, reactive, anomaly, rigContext, theme: themeConfig, mode, palette };
+  // Board — passthrough (validated + freshness-filtered by hud-board-store on load).
+  const board = (r.board && typeof r.board === 'object') ? r.board : null;
+
+  return { terminal, session, os, forge, context, badges, memory, transcript, forgeProgress, git, reactive, anomaly, rigContext, board, theme: themeConfig, mode, palette };
 }
 
 module.exports = {

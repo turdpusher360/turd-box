@@ -24,6 +24,8 @@ Use `require('${CLAUDE_PLUGIN_ROOT}/lib/causal-map.cjs')` for causal attribution
 Before producing any output, read `${CLAUDE_PLUGIN_ROOT}/skills/wizard-engine/references/output-format.md` for formatting rules.
 **Output components:** 5 (Progress Line), 6 (Action Menu), 10 (Teammate Row)
 
+> **Delivery rule (HARD):** Component 6 in conversation is a native AskUserQuestion picker — options 1:1, recommended first, nothing on the menu executes before the operator's ruling. The text Action Menu with `> _` is bin/CLI stdout only, never the interactive surface.
+
 ## Phase 4.5: Review Panel (OPTIONAL)
 
 An optional 6-agent review panel that runs between Plan (Phase 4) and Execute (Phase 5). Produces a GO/NO-GO verdict before execution begins.

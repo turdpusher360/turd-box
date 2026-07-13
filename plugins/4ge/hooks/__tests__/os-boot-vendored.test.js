@@ -42,17 +42,22 @@ describe('vendored kernel boot (stranger-project shape)', () => {
 });
 
 describe('vendored capability discovery', () => {
-  it('discovers all 9 capabilities from the vendored tree', () => {
+  it('discovers every capability shipped in the vendored tree', () => {
     const osApi = require(path.join(OS_LIB, 'index.cjs'));
     const registry = osApi.createCapabilityRegistry(osApi, {
       stateDir: path.join(tmpDir, '_runs', 'os'),
     });
     const result = registry.discover(path.join(OS_LIB, 'capabilities'));
     expect(result.invalid).toEqual([]);
-    expect(result.found.sort()).toEqual([
-      'aisle', 'audit', 'autoresearch', 'file-integrity',
-      'forge', 'forge-session', 'git', 'infra', 'process-health',
-    ]);
+    // Relational, not pinned (S533): the fleet is DESIGNED to grow. The real
+    // invariant is discovery == what the vendored tree ships (minus the
+    // registry helper itself), with the S404 nine as the floor.
+    const shipped = fs.readdirSync(path.join(OS_LIB, 'capabilities'))
+      .filter((f) => f.endsWith('.cjs') && f !== 'capability-registry.cjs')
+      .map((f) => f.replace(/\.cjs$/, ''))
+      .sort();
+    expect(result.found.sort()).toEqual(shipped);
+    expect(result.found.length).toBeGreaterThanOrEqual(9);
   });
 });
 

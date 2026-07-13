@@ -189,3 +189,36 @@ describe('4ge command contracts', () => {
     expect(command).not.toContain('preserve all fields from it and overwrite only `momentum`, `enriched`, and `enriched_at`');
   });
 });
+
+describe('command-count surfaces derive from the manifest', () => {
+  // Counts in copy are derived, never literal-pinned: the manifest is the
+  // registry of record and PRO_GATED the tier split, so this stays green
+  // across future command additions while catching stale copy.
+  it('total and free counts in plugin copy match manifest minus PRO_GATED', async () => {
+    const manifest = readManifest();
+    const total = Object.keys(manifest.commands).length;
+
+    expect(manifest.description).toContain(`${total} commands`);
+    expect(readPluginFile('commands/tour.md')).toContain(`${total} commands`);
+
+    const { createRequire } = await import('node:module');
+    const requireCjs = createRequire(import.meta.url);
+    const { PRO_GATED } = requireCjs('../lib/tier-gate.cjs');
+    const free = total - PRO_GATED.length;
+    expect(readPluginFile('README.md')).toContain(`${free} free commands`);
+
+    // every PRO_GATED name must exist in the manifest (a retired command left
+    // in the gate list would silently skew the derived free count)
+    for (const name of PRO_GATED) {
+      expect(manifest.commands[name], `PRO_GATED entry "${name}" missing from manifest`).toBeDefined();
+    }
+  });
+});
+
+describe('/usage installed-path contract', () => {
+  it('quotes CLAUDE_PLUGIN_ROOT so whitespace-bearing plugin paths remain executable', () => {
+    const command = readPluginFile('commands/usage.md');
+    expect(command).toContain('node "${CLAUDE_PLUGIN_ROOT}/bin/usage.cjs" $ARGUMENTS');
+    expect(command).not.toContain('node ${CLAUDE_PLUGIN_ROOT}/bin/usage.cjs $ARGUMENTS');
+  });
+});
