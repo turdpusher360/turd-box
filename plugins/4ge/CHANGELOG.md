@@ -3,6 +3,16 @@
 All notable public changes to the 4ge Claude Code plugin are documented here.
 Versions follow Semantic Versioning.
 
+## [2.11.1] - 2026-09-19
+
+Commands stop choosing the model; `/recompile` ships.
+
+### Fixed
+- **Every command pinned a model in the manifest.** `.claude-plugin/plugin.json` carried `"model"` on all 38 released commands (`opus` on forge, dfe, audit, aisle, blueprint, reconcile; `sonnet` on the rest), so invoking any `/4ge:*` command directed the harness to run that turn as the pinned alias instead of the model the user selected for the session. All 38 keys are removed; commands now inherit the session model. The pins dated from the early plugin-maturity work and survived later pin-removal sweeps because those only read markdown frontmatter. A contract test now fails if a manifest command, command file or skill frontmatter carries a `model` key.
+
+### Added
+- `/recompile` — rebuild the task lock from the user's recent messages: separate instruction / diagnosis / exploration / emphasis, return a compact MODE/TASK/KEEP/CHANGE/DO NOT/DONE WHEN lock, and continue. Recovery command for conversational drift or a heated correction. Free tier. (Command count 38 → 39.)
+
 ## [2.11.0] - 2026-07-13
 
 Lead-writable color board on the live statusline.

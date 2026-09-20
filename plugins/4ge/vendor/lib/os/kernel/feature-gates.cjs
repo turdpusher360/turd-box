@@ -1,3 +1,4 @@
+// @ts-check
 'use strict';
 
 // Phase 2 pre-positioning: this module will be wired into os-boot.cjs and

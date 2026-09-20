@@ -4,10 +4,9 @@ description: Audit team lead - coordinates domain auditors, cross-correlates fin
 tools: Bash, Grep, Glob, Read, Write, WebSearch, WebFetch, SendMessage, TaskUpdate, TaskList, TaskGet, mcp__dev-memory__memory_search, mcp__dev-memory__memory_store
 model: inherit
 effort: max
-permissionMode: plan
 maxTurns: 200
 memory: project
-last-verified: 2026-04-16
+last-verified: 2026-08-05
 ---
 
 ## Dev-Memory MCP (Deferred Tools)

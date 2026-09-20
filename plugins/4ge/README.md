@@ -54,6 +54,7 @@ This is state-compatibility scaffolding for Anvil and does **not** replace exist
 | `/help` | Free | Command index and usage guide |
 | `/recall` | Free | Guided Knowledge hub — memory search, repo map, budget (or `/recall <query>` for dev-memory search) |
 | `/debug` | Free | Systematic root-cause analysis |
+| `/recompile` | Free | Rebuild the task lock from your recent messages after drift or a heated correction |
 | `/hud` | Free | Toggle the OS HUD status pane |
 | `/fix` | Free | Capture maintenance issues without interrupting flow |
 | `/tour` | Free | 5-step guided walkthrough for new users |
@@ -140,7 +141,7 @@ AISLE reports current security posture and routes scans for supply chain integri
 |  | Free | Pro | Team |
 |--|------|-----|------|
 | **Price** | $0 | $19/mo | $39/seat/mo |
-| **Commands** | 27 free commands | + Pro machinery | Everything in Pro |
+| **Commands** | 28 free commands | + Pro machinery | Everything in Pro |
 | **DFE Review** | — | Full 6-pass adversarial | Full 6-pass adversarial |
 | **Forge Orchestration** | — | 7-phase pipeline | 7-phase pipeline |
 | **AISLE Security** | — | Posture + scans | Posture + scans |

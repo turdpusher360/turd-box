@@ -1,3 +1,4 @@
+// @ts-check
 'use strict';
 
 /**
@@ -289,8 +290,14 @@ function computeDeadline(contract, overrideMs) {
  *   list(): object[],
  *   history(agentType: string, limit: number): object[],
  *   compact(): void,
+ *   recordHeartbeat(pid: number): void,
+ *   getChildren(pid: number): object[],
+ *   getAncestors(pid: number): number[],
+ *   getStaleProcesses(thresholdMs: number): number[],
+ *   getActiveProcesses(): object[],
  *   getAgentBudget(agentType: string): number|null,
  *   getRemainingTurns(pid: number): number|null,
+ *   incrementTurns(pid: number, count?: number): void,
  *   getExpiredProcesses(): object[],
  *   markForKill(pid: number, phase: string): void,
  *   setRecoveryBranch(pid: number, branch: string): void,
@@ -380,9 +387,10 @@ function createRegistry(stateDir, opts) {
 
     // P0 safety: acquire a concurrency slot in process-caps (best-effort; errors never block spawn)
     try {
-      const capsType = (processCategory === 'child_process' || processCategory === 'process')
-        ? processCategory
-        : 'agent';
+      // spawn() only registers agent-category processes (processCategory is
+      // agent|hook|service|background|null, never 'child_process'/'process'), so the
+      // caps slot is always the agent pool.
+      const capsType = 'agent';
       const capId = String(pid);
       const releaser = getCaps().acquire(capsType, capId);
       entry._capsRelease = releaser;

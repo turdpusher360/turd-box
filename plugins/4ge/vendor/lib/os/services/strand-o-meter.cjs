@@ -1,3 +1,4 @@
+// @ts-check
 'use strict';
 
 /**
@@ -102,6 +103,12 @@ const REFRESH_DEBOUNCE_MS = 10 * 60 * 1000;
 // defense — it stops the hung process from EVER holding .git/index.lock in
 // the first place, independent of whether the process itself terminates.
 const MAX_RUNTIME_MS = 15 * 60 * 1000;
+// Upper bound on the number of local branches to run the per-branch `git cherry`
+// merged-residue refinement over (see countAheadBranches). Above this, the
+// refinement is skipped and the raw ahead-count is used — a pathological repo
+// with hundreds of local branches would otherwise fork one `git cherry` per
+// ahead-branch.
+const BRANCH_REFINE_CAP = 200;
 
 /**
  * Load the list of portfolio repo roots from a JSON config file. Defaults to
@@ -153,7 +160,7 @@ function runGit(args, cwd) {
       env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' },
     });
     if (result.error || result.signal) {
-      const reason = result.error ? (result.error.code || result.error.message) : `killed:${result.signal}`;
+      const reason = result.error ? (/** @type {NodeJS.ErrnoException} */(result.error).code || result.error.message) : `killed:${result.signal}`;
       return { ok: false, stdout: '', reason };
     }
     if (result.status !== 0) {
@@ -167,8 +174,48 @@ function runGit(args, cwd) {
 }
 
 /**
- * Count local branches that are ahead of their configured upstream by 1+
- * commits (branches with no upstream are not counted — nothing to strand).
+ * Resolve a repo's default branch ref (e.g. "origin/main") for the merged-residue
+ * refinement below. Tries origin/HEAD, then common fallbacks. Returns null when
+ * none resolves — callers then keep the raw ahead-count (fail-open).
+ *
+ * @param {string} repoPath
+ * @returns {string|null}
+ */
+function resolveDefaultBranch(repoPath) {
+  const head = runGit(['symbolic-ref', '--short', 'refs/remotes/origin/HEAD'], repoPath);
+  if (head.ok && head.stdout.trim()) return head.stdout.trim();
+  for (const cand of ['origin/main', 'origin/master', 'main', 'master']) {
+    const v = runGit(['rev-parse', '--verify', '--quiet', `${cand}^{commit}`], repoPath);
+    if (v.ok && v.stdout.trim()) return cand;
+  }
+  return null;
+}
+
+/**
+ * Count local branches that hold genuinely-unmerged work ahead of the portfolio.
+ *
+ * A branch is a CANDIDATE when its configured upstream reports it "ahead". But a
+ * branch that was squash- or rebase-merged into the default branch stays "ahead
+ * of upstream" forever — its original commits still exist locally even though
+ * their content already landed. Counting those as stranded is a persistent false
+ * positive (upstream: 13/13 branches flagged on drop_stream were all merged PRs).
+ *
+ * Refinement: for each candidate, `git cherry <default> <branch>` compares by
+ * PATCH-ID. A '-' line means that commit is already patch-applied in the default
+ * branch; '+' means it is not. A branch whose ahead-commits are ALL '-' is merge
+ * residue and is NOT counted; a branch with any '+' commit has real unmerged work
+ * and IS counted.
+ *
+ * HONEST LIMITATION (upstream): patch-id equality only holds when the merged content
+ * still matches. A squash-merge whose lines were further changed on the default
+ * branch afterwards has a DIFFERENT patch-id, so `git cherry` (and any diff- or
+ * merge-tree comparison) cannot recognize it as merged — only the PR/merge event
+ * can. Those diverged squash-merges stay counted here. That is a conservative
+ * over-count (this instrument never HIDES a strand), not a silent drop.
+ *
+ * Bounded + fail-open: repos with more than BRANCH_REFINE_CAP local branches skip
+ * the per-branch cherry pass (raw ahead-count); any git failure counts the branch
+ * (better to over-flag than to hide a strand).
  *
  * @param {string} repoPath
  * @returns {{ count: number|null, reason: string|null }}
@@ -176,13 +223,32 @@ function runGit(args, cwd) {
 function countAheadBranches(repoPath) {
   const r = runGit(['for-each-ref', '--format=%(refname:short)|%(upstream:track)', 'refs/heads'], repoPath);
   if (!r.ok) return { count: null, reason: r.reason };
-  let count = 0;
-  for (const line of r.stdout.split('\n')) {
-    if (!line) continue;
-    const m = line.match(/ahead (\d+)/);
-    if (m && parseInt(m[1], 10) > 0) count += 1;
+
+  const allLines = r.stdout.split('\n').filter(Boolean);
+  const candidates = [];
+  for (const line of allLines) {
+    const sep = line.indexOf('|');
+    const name = sep === -1 ? line : line.slice(0, sep);
+    const track = sep === -1 ? '' : line.slice(sep + 1);
+    const m = track.match(/ahead (\d+)/);
+    if (m && parseInt(m[1], 10) > 0) candidates.push(name);
   }
-  return { count, reason: null };
+  if (candidates.length === 0) return { count: 0, reason: null };
+
+  // Skip the per-branch git-cherry refinement on pathological branch counts.
+  const def = allLines.length <= BRANCH_REFINE_CAP ? resolveDefaultBranch(repoPath) : null;
+  if (!def) return { count: candidates.length, reason: null };
+
+  let stranded = 0;
+  for (const name of candidates) {
+    const c = runGit(['cherry', def, name], repoPath);
+    if (!c.ok) { stranded += 1; continue; } // fail-open: can't prove merged -> count it
+    const cLines = c.stdout.split('\n').filter(Boolean);
+    // Any '+' line is a commit not patch-present in the default branch -> a real
+    // strand. All-'-' (or empty) means every ahead-commit already landed -> residue.
+    if (cLines.some((l) => l.startsWith('+'))) stranded += 1;
+  }
+  return { count: stranded, reason: null };
 }
 
 /**

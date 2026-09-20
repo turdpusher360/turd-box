@@ -1,3 +1,4 @@
+// @ts-check
 'use strict';
 // @aspirational — instantiated every boot, zero producers/consumers ever (no scheduler-queue.jsonl); superseded by the harness Workflow/Agent tools. Disposition: LABEL (upstream, owner-chosen over REMOVE). Do not cite as an active subsystem.
 

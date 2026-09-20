@@ -115,6 +115,14 @@ Construct the final JSON object from current live state. If an existing cartridg
 - `enriched`
 - `enriched_at`
 
+Derive the `git` block mechanically — never hand-type or eyeball-transcribe it. Run:
+
+```bash
+node -e "const w=require('./.claude/hooks/session-cartridge-writer.cjs');process.stdout.write(JSON.stringify(w.collectGitContext(),null,2))"
+```
+
+and paste the result verbatim as the `git` value. (Defect class this guards against: a hand-derived list once shipped `ASKING.md` — shell `$(...)`/display trims eat the leading status-space of the first porcelain line, and a manual `cut -c4-`-style transcription then drops the path's first character. The writer module's parser handles that class; it is the single source of truth for `uncommitted`.)
+
 Never preserve prior-session `git`, `modified_files`, `decisions`, or `tasks` into the enriched output. If building from scratch, include the full schema:
 
 ```json
@@ -177,14 +185,41 @@ fi
 
 Report what it moved (e.g. "rotating 2 rows / 3 entries to archive") or "nothing to rotate" if both are still under the caps. The plugin-shipped helper targets the current project directory by default; the repo-local helper remains the fallback for this source checkout. This is safe every time it runs: it dry-runs by default (only `--apply` mutates), writes atomically (temp file + rename), and aborts with no mutation at all if line-count conservation ever fails. Overflow lands in gitignored archives (`_runs/tasking-archive.md`, `_runs/.decisions.archive.jsonl`) — nothing is lost, it just moves off the files read whole every closeout.
 
+**Board-advance sub-step (campaign sessions only — pre-stage).** If `_runs/forge-board/campaign.json` exists AND this session is a campaign session (its dispatch card names a C-position), advance the board now, BEFORE staging:
+
+- Update `position` / `block` / `state` per the session outcome.
+- Append the `sessions[]` entry: `pos`, `s_number`, `date`, `type`, `verdict`, `shipped_range`.
+- Bump or reset `tripwire_counter` (board sessions only — spec §5.4).
+- Append the `gates[]` entry when the card is a gate.
+
+Apply the update via a Bash node heredoc with atomic tmp+rename (the Step 6 cartridge pattern):
+
+```bash
+node - <<'NODE'
+const fs = require('fs');
+const file = '_runs/forge-board/campaign.json';
+const board = JSON.parse(fs.readFileSync(file, 'utf8'));
+// apply the updates above: position/block/state, sessions[] entry,
+// tripwire_counter, gates[] entry (gate cards only)
+const tmp = file + '.' + process.pid + '.tmp';
+fs.writeFileSync(tmp, JSON.stringify(board, null, 2) + '\n');
+fs.renameSync(tmp, file);
+NODE
+```
+
+Non-campaign session or file absent → skip silently. Board facts are session-close facts needing no post-commit HEAD, so the board rides its OWN session's continuity commit (spec §6.3 invocation-point decision, P2-1).
+
 Then stage ONLY the (now-bounded) continuity files (never `git add .` — `guard-git-scope` blocks it). Force-add the latest handoff if one was written this session (handoffs are gitignored):
 
 ```bash
 git add TASKING.md _runs/.decisions.jsonl _runs/.constraints.jsonl _runs/session-cartridge.json 2>/dev/null
+[ -f _runs/forge-board/campaign.json ] && git add -f _runs/forge-board/campaign.json
 LATEST_HO=$(ls _runs/HANDOFF-S*.md 2>/dev/null | sort -t S -k2 -n | tail -1)
 [ -n "$LATEST_HO" ] && git add -f "$LATEST_HO" 2>/dev/null
 git diff --cached --name-only
 ```
+
+Why the board line needs its own `-f`: plain `git add` will NOT do — `.gitignore:50` (`_runs/*`) refuses NEW files under `_runs/`, and the first `git add` line's `2>/dev/null` swallows that refusal silently; latest.json and the cartridge survive only because already tracked. `-f` is harmless once tracked and effective while ignored-new, matching the handoff force-add precedent in this same block. A gitignore negation was rejected (3-line dir-unignore dance). This design is FINAL (adjudicated P1-1) — do not redesign.
 
 **If the staged list above is empty**, the continuity was already committed this session — report "continuity already committed — nothing to land" and skip to Step 8. Otherwise commit it **signed and timeout-boxed** (git commit is atomic — a killed signing makes no commit, so the timeout is safe). Use the session number you just enriched; if unknown, omit it:
 
@@ -203,6 +238,26 @@ Then branch on the result — do NOT improvise:
 
 **Never land an unsigned closeout here** — an unsigned commit is the exact anti-pattern `commit-signature-guard` exists to catch. Signed, or staged-with-a-loud-reminder — never unsigned, never silent. Do NOT push: pushing is operator-gated (main has PR-required branch protection).
 
+## Step 7.5: Emit the session pill (pill-only, fail-open)
+
+Emit the session pill NOW — after Step 7's commit — because the pill needs the FINAL HEAD: emitting earlier bakes a HEAD that Step 7's own commit immediately stales (pill design constraints 1–2 — docs/transition-kit.md design record; spec §6.3). This step is PILL-ONLY; the board already advanced pre-stage in Step 7.
+
+Dual-resolution invocation (same shape as the rotate-continuity helper in Step 7):
+
+```bash
+if [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -f "$CLAUDE_PLUGIN_ROOT/bin/emit-pill.cjs" ]; then
+  node "$CLAUDE_PLUGIN_ROOT/bin/emit-pill.cjs" || echo "pill: FAILED — boot from cartridge/handoff"
+elif [ -f scripts/emit-pill.cjs ]; then
+  node scripts/emit-pill.cjs || echo "pill: FAILED — boot from cartridge/handoff"
+else
+  echo "pill: no emit-pill helper found — boot from cartridge/handoff"
+fi
+```
+
+The emitter prints the raw pill to stdout and writes it to `_runs/pill-latest.md` (default; `--out <path>` overrides), exiting 0 on success / 1 on failure. Then relay the emitted pill to the operator as a FENCED block in the closing response — that is the copy surface (one phone screen, spec §6.5).
+
+Fail-open contract: emission failure warns and NEVER blocks or un-lands the already-committed continuity (spec §6.3). The pill file (`_runs/pill-latest.md`) is gitignored/ephemeral by design — never stage it.
+
 ## Step 8: Confirm
 
 Print a brief confirmation:
@@ -212,6 +267,7 @@ Print a brief confirmation:
   Branch: <branch>
   Momentum: <first sentence of summary>
   Enriched at: <enriched_at>
+  Pill: <emitted → _runs/pill-latest.md | FAILED — boot from cartridge/handoff>
 ```
 
 If `$ARGUMENTS` was provided, also print:

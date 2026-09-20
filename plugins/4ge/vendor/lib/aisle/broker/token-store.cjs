@@ -36,6 +36,16 @@ const NONCE_BYTES = 16; // -> 32 hex chars
 const TOKEN_ID_BYTES = 12; // -> 24 hex chars, public handle
 const PASTE_TOKEN_RE = /^[0-9a-f]{32}\.[0-9a-f]{16}$/;
 
+// GC retention window: consumed/ files and expired-unconsumed pending/ files
+// OLDER than this are reclaimable. This is NOT the 45-min token TTL and NOT a
+// mirror of any contract TTL — it is a deliberate on-disk RETENTION policy for
+// the already-inert terminal population. Justification: audit.jsonl holds the
+// durable forensic record, and nothing functional reads a consumed/ file after
+// consumption (findPendingByNonceHash / listPending only scan pending/), so a
+// terminal token file is inspection-only. Default 7 days; operator-overridable
+// via opts.maxAgeMs (library) / --max-age-days (CLI).
+const DEFAULT_GC_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+
 // ---------------------------------------------------------------------------
 // Path + IO helpers
 // ---------------------------------------------------------------------------
@@ -467,8 +477,204 @@ function getPendingRaw(tokenId, opts = {}) {
   return readRecord(d.pending, tokenId);
 }
 
+// ---------------------------------------------------------------------------
+// Garbage collection — reclaim consumed/ + expired-unconsumed pending/ files
+// ---------------------------------------------------------------------------
+//
+// The token store accumulates two never-reclaimed populations:
+//   1. consumed/  — every consumed / revoked / TTL-expired token renamed here by
+//      consume() / terminate(); nothing ever deletes them.
+//   2. pending/   — 'approved' records whose TTL elapsed but that were never
+//      consumed; they linger as dead weight (consume() would only deny+burn them).
+//
+// GC is RECLAIM-ONLY and security-inert: it removes already-terminal / already-
+// expired files that no live authorization depends on, and NEVER writes to the
+// append-only audit.jsonl (the forensic trail is preserved untouched). It never
+// touches:
+//   - awaiting-operator-approval pending records (a LIVE operator decision, no TTL),
+//   - approved pending records still inside their TTL (LIVE tokens),
+//   - audit.jsonl (a sibling of pending/ and consumed/, .jsonl not .json, and it
+//     lives in neither scanned subdir — structurally excluded three ways).
+
+/**
+ * Resolve the GC retention window from opts, FAILING SAFE on a bad value. A
+ * delete path must never silently fall back to a reclaim-everything threshold,
+ * so a provided-but-invalid maxAgeMs throws rather than defaulting.
+ * @param {object} opts
+ * @returns {number} positive ms window
+ */
+function resolveGcMaxAge(opts) {
+  if (!opts || opts.maxAgeMs === undefined || opts.maxAgeMs === null) return DEFAULT_GC_MAX_AGE_MS;
+  const v = opts.maxAgeMs;
+  if (typeof v !== 'number' || !Number.isFinite(v) || v <= 0) {
+    throw new Error(`token-store GC: maxAgeMs must be a positive finite number of ms (got ${JSON.stringify(v)})`);
+  }
+  return v;
+}
+
+/**
+ * The timestamp the retention window measures from. Prefers explicit lifecycle
+ * stamps, then expires_at — the TTL-expiry-during-consume path renames
+ * pending->consumed WITHOUT stamping a terminal time (consume() step 4), and a
+ * failed terminate() stamp leaves the same gap — then finally file mtime, so a
+ * stamp-less terminal file is still reclaimable rather than stuck forever.
+ * @returns {number|null} ms epoch, or null if it cannot be determined
+ */
+function gcReferenceTime(record, fp) {
+  for (const k of ['consumed_at', 'revoked_at', 'expired_at', 'expires_at']) {
+    if (typeof record[k] === 'number' && Number.isFinite(record[k])) return record[k];
+  }
+  try {
+    return fs.statSync(fp).mtimeMs;
+  } catch {
+    return null; // cannot determine — never reclaimed blind
+  }
+}
+
+/**
+ * Anomaly = a .json token file that won't parse or lacks the minimal token
+ * shape. Deliberately NOT triggered by an unexpected `status` value: a
+ * status:'approved' file legitimately lands in consumed/ via the TTL-expiry
+ * consume path, so LOCATION (which dir), not status, decides reclaim.
+ */
+function isGcAnomaly(parsed) {
+  return !parsed
+    || typeof parsed !== 'object'
+    || Array.isArray(parsed)
+    || typeof parsed.token_id !== 'string'
+    || parsed.token_id.length === 0;
+}
+
+/**
+ * Scan ONE store subdir (read-only). `kind` is 'consumed' (location=terminal,
+ * every old-enough file is reclaimable) or 'pending' (reclaim ONLY an approved
+ * record whose TTL already elapsed and is old enough). Only .json files are
+ * considered; an unparseable/shape-broken .json is recorded as an anomaly and
+ * NEVER unlinked.
+ */
+function scanReclaimableDir(dirPath, kind, nowMs, maxAgeMs) {
+  const reclaimable = [];
+  const anomalies = [];
+  let files;
+  try {
+    files = fs.readdirSync(dirPath).filter((f) => f.endsWith('.json'));
+  } catch {
+    return { reclaimable, anomalies }; // dir absent -> nothing
+  }
+  for (const file of files) {
+    const fp = path.join(dirPath, file);
+    let parsed = null;
+    let parseFailed = false;
+    try {
+      parsed = JSON.parse(fs.readFileSync(fp, 'utf8'));
+    } catch {
+      parseFailed = true;
+    }
+    if (parseFailed || isGcAnomaly(parsed)) {
+      anomalies.push({ dir: kind, file, fp, reason: parseFailed ? 'unparseable-json' : 'missing-token-id-or-bad-shape' });
+      continue;
+    }
+    if (kind === 'consumed') {
+      const ref = gcReferenceTime(parsed, fp);
+      if (ref !== null && ref + maxAgeMs < nowMs) {
+        reclaimable.push({ dir: kind, file, fp, token_id: parsed.token_id, status: parsed.status || null, reason: 'consumed-dir', ref_time: ref });
+      }
+    } else {
+      // pending/: only a dead (expired) approved token is reclaimable. An
+      // awaiting-operator-approval record has no expires_at and is a live
+      // decision; an unexpired approved record is a live token — both spared.
+      if (parsed.status === 'approved'
+        && typeof parsed.expires_at === 'number'
+        && Number.isFinite(parsed.expires_at)
+        && nowMs > parsed.expires_at) {
+        const ref = parsed.expires_at;
+        if (ref + maxAgeMs < nowMs) {
+          reclaimable.push({ dir: kind, file, fp, token_id: parsed.token_id, status: parsed.status, reason: 'expired-unconsumed', ref_time: ref });
+        }
+      }
+    }
+  }
+  return { reclaimable, anomalies };
+}
+
+/**
+ * Read-only scan of both store subdirs. Shared by listReclaimable() (preview)
+ * and reclaim() (delete) so a dry-run shows EXACTLY the set an --apply would act
+ * on — no drift. Returns the reclaimable set and any anomalies found.
+ */
+function scanReclaimable(stateDir, nowMs, maxAgeMs) {
+  const brokerDir = path.join(stateDir, 'broker');
+  const consumed = scanReclaimableDir(path.join(brokerDir, 'consumed'), 'consumed', nowMs, maxAgeMs);
+  const pending = scanReclaimableDir(path.join(brokerDir, 'pending'), 'pending', nowMs, maxAgeMs);
+  return {
+    reclaimable: [...consumed.reclaimable, ...pending.reclaimable],
+    anomalies: [...consumed.anomalies, ...pending.anomalies],
+  };
+}
+
+/**
+ * Preview the token files a GC pass would reclaim, WITHOUT deleting anything
+ * (the dry-run half). READ-ONLY. Also surfaces anomalies so an operator sees a
+ * store that GC would refuse to touch.
+ * @param {object} [opts] {stateDir?, now?, maxAgeMs?}
+ * @returns {{max_age_ms:number, reclaimable:object[], anomalies:object[]}}
+ */
+function listReclaimable(opts = {}) {
+  const d = dirs(opts);
+  const t = nowMs(opts);
+  const maxAgeMs = resolveGcMaxAge(opts);
+  const { reclaimable, anomalies } = scanReclaimable(d.stateDir, t, maxAgeMs);
+  return {
+    max_age_ms: maxAgeMs,
+    reclaimable: reclaimable.map((r) => ({
+      dir: r.dir, file: r.file, token_id: r.token_id, status: r.status,
+      reason: r.reason, ref_time: r.ref_time, age_ms: t - r.ref_time,
+    })),
+    anomalies: anomalies.map((a) => ({ dir: a.dir, file: a.file, reason: a.reason })),
+  };
+}
+
+/**
+ * Reclaim (unlink) the eligible token files. WRITE PATH (unlink only — never
+ * touches audit.jsonl). REFUSES CLOSED: if ANY anomaly (unparseable / bad-shape
+ * file) is present, it deletes NOTHING and returns {refused:true, anomalies}.
+ * This is a deliberately STRICTER posture than the sibling contracts GC (which
+ * skips-corrupt-and-proceeds) — a security store with unparseable entries is not
+ * safe to reclaim blind. A benign GC-unlink vs consume-rename race surfaces as
+ * ENOENT and is swallowed; any other unlink error is reported, not silently lost.
+ * @param {object} [opts] {stateDir?, now?, maxAgeMs?}
+ * @returns {{removed:number, refused:boolean, anomalies:object[], errors:object[]}}
+ */
+function reclaim(opts = {}) {
+  const d = dirs(opts);
+  const t = nowMs(opts);
+  const maxAgeMs = resolveGcMaxAge(opts);
+  const { reclaimable, anomalies } = scanReclaimable(d.stateDir, t, maxAgeMs);
+  if (anomalies.length > 0) {
+    return {
+      removed: 0,
+      refused: true,
+      anomalies: anomalies.map((a) => ({ dir: a.dir, file: a.file, reason: a.reason })),
+      errors: [],
+    };
+  }
+  let removed = 0;
+  const errors = [];
+  for (const cand of reclaimable) {
+    try {
+      fs.unlinkSync(cand.fp);
+      removed++;
+    } catch (err) {
+      if (err && err.code === 'ENOENT') continue; // benign GC/consume race
+      errors.push({ file: cand.file, code: (err && err.code) || 'unknown' });
+    }
+  }
+  return { removed, refused: false, anomalies: [], errors };
+}
+
 module.exports = {
   DEFAULT_TTL_MS,
+  DEFAULT_GC_MAX_AGE_MS,
   PASTE_TOKEN_RE,
   createRequest,
   mint,
@@ -479,6 +685,9 @@ module.exports = {
   listPending,
   getPending,
   getPendingRaw,
+  // garbage collection (reclaim consumed/ + expired-unconsumed pending/)
+  listReclaimable,
+  reclaim,
   // exposed for the CLI/capability to derive dirs consistently
   _dirs: dirs,
 };

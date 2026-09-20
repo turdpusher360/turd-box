@@ -107,19 +107,21 @@ function enforceTimeout(ms) {
   setTimeout(() => process.exit(0), ms).unref();
 }
 
-// Cache for deriveSessionNumber keyed by _runs/ dir mtime.
-const _sessionNumCache = new Map();
+// Cache for deriveNextHandoffNumber keyed by _runs/ dir mtime.
+const _nextHandoffNumCache = new Map();
 
 /**
- * Derive the current session number from shipped handoff markers:
+ * Derive the next durable handoff number from shipped handoff markers:
  * max(_runs/HANDOFF-S<N>*) + 1. Returns 1 when no handoffs exist (fresh
  * installs). Cached per _runs/ mtime.
- * (Additive: mirror of lib/hook-utils.cjs deriveSessionNumber.)
+ * (Additive: mirror of lib/hook-utils.cjs deriveNextHandoffNumber. The
+ * returned value is a closeout candidate, not proof that the current
+ * runtime session owns a durable S-number.)
  *
  * @param {string} [repoRoot=process.cwd()] - Project root containing _runs/
  * @returns {number}
  */
-function deriveSessionNumber(repoRoot) {
+function deriveNextHandoffNumber(repoRoot) {
   const path = require('node:path');
   const fs = require('node:fs');
   const root = repoRoot || process.cwd();
@@ -127,7 +129,7 @@ function deriveSessionNumber(repoRoot) {
 
   try {
     const mtime = fs.statSync(runsDir).mtimeMs;
-    const cached = _sessionNumCache.get(runsDir);
+    const cached = _nextHandoffNumCache.get(runsDir);
     if (cached && cached.mtime === mtime) return cached.result;
   } catch { /* _runs missing — fall through */ }
 
@@ -142,10 +144,18 @@ function deriveSessionNumber(repoRoot) {
     }
     try {
       const mtime = fs.statSync(runsDir).mtimeMs;
-      _sessionNumCache.set(runsDir, { mtime, result: maxShipped + 1 });
+      _nextHandoffNumCache.set(runsDir, { mtime, result: maxShipped + 1 });
     } catch { /* best-effort cache */ }
   } catch { /* no _runs dir */ }
   return maxShipped + 1;
 }
 
-module.exports = { readStdinJson, parseToolInput, enforceTimeout, deriveSessionNumber };
+/**
+ * Legacy alias retained for existing hook consumers (os-boot).
+ * Prefer deriveNextHandoffNumber() for new code.
+ */
+function deriveSessionNumber(repoRoot) {
+  return deriveNextHandoffNumber(repoRoot);
+}
+
+module.exports = { readStdinJson, parseToolInput, enforceTimeout, deriveNextHandoffNumber, deriveSessionNumber };

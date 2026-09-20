@@ -1,3 +1,4 @@
+// @ts-check
 'use strict';
 
 const fs = require('node:fs');
@@ -81,6 +82,7 @@ module.exports = {
       ship:   { description: 'Verify + commit + push', args: ['message', 'files'] },
       pr:     { description: 'Verify + commit + push + gh pr create', args: ['title', 'body', 'files'] },
     },
+    /** @returns {import('../kernel/contracts.cjs').HealthResult} */
     health() {
       return { ...(this._healthCache || { ok: false, reason: 'not initialized' }) };
     },
@@ -89,9 +91,11 @@ module.exports = {
 
   _os: null,
   _stateDir: null,
+  /** @type {import('../kernel/contracts.cjs').HealthResult} */
   _healthCache: { ok: false, reason: 'not initialized' },
 
   probeCost: 'cheap',
+  /** @returns {import('../kernel/contracts.cjs').HealthResult} */
   probe() {
     try {
       const res = spawnSync('git', ['--version'], { timeout: 5000, encoding: 'utf8' });

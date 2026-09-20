@@ -1,3 +1,4 @@
+// @ts-check
 'use strict';
 // @aspirational — instantiated every boot, zero producers/consumers ever (no scheduler-queue.jsonl); superseded by the harness Workflow/Agent tools. Disposition: LABEL (upstream, owner-chosen over REMOVE). Do not cite as an active subsystem.
 
@@ -26,7 +27,7 @@ function appendEvent(filePath, entry) {
  * Create a priority queue with JSONL persistence and backpressure.
  *
  * @param {string} stateDir - Directory where scheduler-queue.jsonl is written
- * @param {{ maxConcurrent?: number }} options
+ * @param {{ maxConcurrent?: number }} [options] - Optional; defaults applied via `options || {}`
  * @returns {{ enqueue, dequeue, release, active, stats, recover }}
  */
 function createPriorityQueue(stateDir, options) {

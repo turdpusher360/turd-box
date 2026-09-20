@@ -1,3 +1,4 @@
+// @ts-check
 'use strict';
 
 /**
@@ -313,7 +314,7 @@ function evaluateSingle(check, repoRoot, opts) {
  *
  * @param {object|object[]|undefined|null} checkOrArray
  * @param {string} repoRoot
- * @param {{ readCrontab?: () => string }} [opts] — test-only injection point; see readCrontab().
+ * @param {{ readCrontab?: () => string }} [opts] - test-only injection point; see readCrontab().
  * @returns {{ ok: boolean|null, detail: string, results: Array<{ok:boolean,detail:string}> }}
  */
 function evaluateCheck(checkOrArray, repoRoot, opts) {

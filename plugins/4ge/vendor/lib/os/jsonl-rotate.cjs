@@ -1,3 +1,4 @@
+// @ts-check
 'use strict';
 /**
  * jsonl-rotate.cjs — JSONL rotation utility for the Agentic OS
@@ -15,22 +16,35 @@
  *   3. Delete oldest rotated files beyond maxRotated
  *
  * Defaults: 10,000 entries OR 5 MB, keep 3 rotated files.
+ *
+ * Opt-in coordinated mode serializes append/rotation with a directory lease.
+ * On contention or an oversized entry, it publishes a complete immutable
+ * archive. Readers must include findRotatedFiles(), not only the active file.
+ * maxEntries: Infinity selects the byte-only fast path; maxRotated: Infinity
+ * preserves all history. This bounds the active file, not total archive storage.
+ * All producers and explicit rotation checks for a shared log must adopt the
+ * coordinated option together. The legacy mode remains available unchanged.
  */
 
 const fs = require('fs');
 const path = require('path');
+const { randomUUID } = require('node:crypto');
+const { performance } = require('node:perf_hooks');
+const WAIT_CELL = new Int32Array(new SharedArrayBuffer(4));
 
-/** @type {Readonly<{maxEntries: number, maxBytes: number, maxRotated: number}>} */
+/** @type {Readonly<{maxEntries: number, maxBytes: number, maxRotated: number, coordinated: boolean, lockTimeoutMs: number}>} */
 const DEFAULT_OPTS = Object.freeze({
   maxEntries: 10_000,
   maxBytes: 5 * 1024 * 1024, // 5 MB
   maxRotated: 3,
+  coordinated: false,
+  lockTimeoutMs: 25,
 });
 
 /**
  * Resolve full options, merging caller opts with defaults.
  * @param {object|undefined} opts
- * @returns {{maxEntries: number, maxBytes: number, maxRotated: number}}
+ * @returns {{maxEntries: number, maxBytes: number, maxRotated: number, coordinated: boolean, lockTimeoutMs: number}}
  */
 function resolveOpts(opts) {
   return Object.assign({}, DEFAULT_OPTS, opts);
@@ -152,6 +166,8 @@ function escapeRegex(s) {
  * @param {number} maxRotated
  */
 function pruneOldRotated(filePath, maxRotated) {
+  // Infinity explicitly preserves audit history and avoids directory scans.
+  if (maxRotated === Infinity) return;
   const rotated = findRotatedFiles(filePath);
   const excess = rotated.length - maxRotated;
   if (excess <= 0) return;
@@ -163,6 +179,131 @@ function pruneOldRotated(filePath, maxRotated) {
       // best-effort; skip if already gone
     }
   }
+}
+
+/**
+ * A directory lease is shared by native Windows and WSL producers on the same
+ * volume. Never guess whether a foreign/stale PID is safe to evict. On bounded
+ * contention, appenders publish an immutable archive instead of losing an event.
+ * @param {string} filePath
+ * @param {number} waitMs
+ * @returns {null|(() => void)}
+ */
+function acquireWriterLease(filePath, waitMs) {
+  const lockPath = `${filePath}.writer-lock`;
+  const ownerPath = path.join(lockPath, 'owner.json');
+  const token = randomUUID();
+  const deadline = performance.now() + Math.min(1000, Math.max(0, Number.isFinite(waitMs) ? waitMs : 25));
+  for (;;) {
+    try {
+      fs.mkdirSync(lockPath);
+    } catch (error) {
+      const code = /** @type {NodeJS.ErrnoException} */ (error).code;
+      // Windows may report a directory pending deletion as EPERM rather than
+      // EEXIST. Do not force the lease or change permissions; retain this event
+      // in its own archive when the lease path is unavailable.
+      if (code === 'EPERM' || code === 'EACCES' || code === 'EBUSY') return null;
+      if (code !== 'EEXIST') throw error;
+      if (performance.now() >= deadline) return null;
+      Atomics.wait(WAIT_CELL, 0, 0, Math.min(2, Math.max(0, deadline - performance.now())));
+      continue;
+    }
+    try {
+      fs.writeFileSync(ownerPath, JSON.stringify({ token, pid: process.pid, platform: process.platform }), { flag: 'wx' });
+    } catch (error) {
+      try { fs.rmdirSync(lockPath); } catch { /* do not remove unknown contents */ }
+      throw error;
+    }
+    return () => {
+      try {
+        if (JSON.parse(fs.readFileSync(ownerPath, 'utf8')).token !== token) return;
+        fs.unlinkSync(ownerPath);
+        fs.rmdirSync(lockPath);
+      } catch { /* an unavailable lease causes future events to use archives */ }
+    };
+  }
+}
+
+/**
+ * Publish a complete event by rename. Temporary files are not JSONL archives.
+ * Callers/readers must collect the active file AND findRotatedFiles(filePath).
+ * Use maxRotated: Infinity when every audit event must be retained.
+ * @param {string} filePath
+ * @param {string} line
+ * @param {string} reason
+ */
+function archiveEvent(filePath, line, reason) {
+  const stem = path.basename(filePath, '.jsonl');
+  const destination = path.join(path.dirname(filePath), `${stem}.${new Date().toISOString().slice(0, 10)}.${reason}.${randomUUID()}.jsonl`);
+  const temporary = `${destination}.tmp`;
+  let descriptor;
+  let created = false;
+  try {
+    descriptor = fs.openSync(temporary, 'wx');
+    created = true;
+    fs.writeFileSync(descriptor, line, 'utf8');
+    fs.closeSync(descriptor);
+    descriptor = undefined;
+    fs.renameSync(temporary, destination);
+  } catch (error) {
+    if (descriptor !== undefined) { try { fs.closeSync(descriptor); } catch { /* retain original failure */ } }
+    if (created) { try { fs.unlinkSync(temporary); } catch { /* retain original failure */ } }
+    throw error;
+  }
+  return { status: 'archived', reason, path: destination };
+}
+
+/** Atomic rename only; copy/delete can lose writes and is not a safe fallback.
+ * @param {string} filePath
+ * @param {{maxRotated: number}} opts
+ * @returns {{rotated: true}|{rotated: false, code: string}}
+ */
+function rotateAtomically(filePath, opts) {
+  if (!fs.existsSync(filePath)) return { rotated: false, code: 'ENOENT' };
+  try { fs.renameSync(filePath, buildRotatePath(filePath)); } catch (error) {
+    const code = /** @type {NodeJS.ErrnoException} */ (error).code;
+    // Keep the filesystem identity without returning arbitrary exception text.
+    return { rotated: false, code: typeof code === 'string' && /^[A-Z][A-Z0-9_]{0,63}$/.test(code) ? code : 'UNKNOWN' };
+  }
+  pruneOldRotated(filePath, opts.maxRotated);
+  return { rotated: true };
+}
+
+/** @param {string} filePath
+ * @param {{maxBytes: number, maxEntries: number}} opts
+ * @param {number} [incomingBytes]
+ */
+function coordinatedRotationNeeded(filePath, opts, incomingBytes = 0) {
+  const bytes = fileBytes(filePath);
+  return bytes >= opts.maxBytes || (bytes > 0 && bytes + incomingBytes > opts.maxBytes)
+    || (Number.isFinite(opts.maxEntries) && countLines(filePath) >= opts.maxEntries);
+}
+
+/** @param {string} filePath
+ * @param {string} line
+ * @param {ReturnType<typeof resolveOpts>} opts
+ */
+function appendCoordinated(filePath, line, opts) {
+  const incomingBytes = Buffer.byteLength(line, 'utf8');
+  if (incomingBytes > opts.maxBytes) return archiveEvent(filePath, line, 'oversized');
+  const release = acquireWriterLease(filePath, opts.lockTimeoutMs);
+  if (!release) return archiveEvent(filePath, line, 'lease-unavailable');
+  try {
+    if (coordinatedRotationNeeded(filePath, opts, incomingBytes)) {
+      const rotation = rotateAtomically(filePath, opts);
+      if (rotation.rotated === false) return {
+        ...archiveEvent(filePath, line, 'rotation-unavailable'),
+        diagnostic: {
+          subsystem: 'jsonl-rotate', operation: 'rename', phase: 'rotation', resource: filePath,
+          code: rotation.code, message: 'Active log rotation failed; incoming event preserved in an archive.',
+          recovery: 'Read the active log and archives; inspect the filesystem error before retrying rotation.',
+          proof_plane: 'runtime-artifact',
+        },
+      };
+    }
+    fs.appendFileSync(filePath, line, 'utf8');
+    return { status: 'appended', path: filePath };
+  } finally { release(); }
 }
 
 /**
@@ -208,14 +349,20 @@ function rotateIfNeeded(filePath, opts) {
 
   if (!fs.existsSync(filePath)) return false;
 
+  if (o.coordinated) {
+    const release = acquireWriterLease(filePath, o.lockTimeoutMs);
+    if (!release) return false;
+    try { return coordinatedRotationNeeded(filePath, o) && rotateAtomically(filePath, o).rotated; }
+    finally { release(); }
+  }
+
   const bytes = fileBytes(filePath);
   if (bytes >= o.maxBytes) {
     rotate(filePath, o);
     return true;
   }
 
-  const lines = countLines(filePath);
-  if (lines >= o.maxEntries) {
+  if (Number.isFinite(o.maxEntries) && countLines(filePath) >= o.maxEntries) {
     rotate(filePath, o);
     return true;
   }
@@ -234,9 +381,14 @@ function rotateIfNeeded(filePath, opts) {
  * @param {number} [opts.maxEntries=10000]
  * @param {number} [opts.maxBytes=5242880]
  * @param {number} [opts.maxRotated=3]
+ * @param {boolean} [opts.coordinated=false] All producers of a shared file must opt in together.
+ * @param {number} [opts.lockTimeoutMs=25] Bounded wait before publishing a complete archive.
  */
 function appendJsonl(filePath, entry, opts) {
   const o = resolveOpts(opts);
+  const serialized = JSON.stringify(entry);
+  if (serialized === undefined) throw new TypeError('JSONL entry must be JSON-serializable');
+  const line = serialized + '\n';
 
   // Ensure parent directory exists
   const dir = path.dirname(filePath);
@@ -246,10 +398,11 @@ function appendJsonl(filePath, entry, opts) {
     // already exists or unrecoverable — attempt write anyway
   }
 
+  if (o.coordinated) return appendCoordinated(filePath, line, o);
+
   // Rotate BEFORE appending so the entry lands in the fresh file
   rotateIfNeeded(filePath, o);
 
-  const line = JSON.stringify(entry) + '\n';
   fs.appendFileSync(filePath, line, 'utf8');
 }
 

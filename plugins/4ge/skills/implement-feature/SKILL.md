@@ -28,7 +28,7 @@ Dispatch on `sonnet-execute`.
 - Follow existing patterns and conventions
 - Memory search before implementing
 - Run tsc + eslint + vitest after changes
-- Ghost reversion: atomic heredoc for .claude/ writes
+- `.claude/` writes may be refused before mutation. Follow the target repo's deliberate config-write procedure; staging/commit approval is separate.
 
 ## Handoff
 

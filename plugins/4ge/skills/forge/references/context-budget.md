@@ -16,7 +16,7 @@ Injected into all teammate prompts as preamble. These rules prevent context rot 
 
 5. **No bulk reads.** Do not read every file in a directory. Use Grep to find the specific lines you need.
 
-6. **Disk-first output.** Write your work summary to `_runs/` BEFORE sending a summary to the lead. If your context is lost, the disk output survives.
+6. **Disk-first output.** Write your work summary to `_runs/` BEFORE sending a summary to the lead. Use a basename that does not start `REPORT`, `SUMMARY`, `FINDINGS`, or `ANALYSIS` when true pre-final persistence is required. Claude Code 2.1.215 rejects those reserved subagent targets; for an exact reserved target, attempt once, return the full text, and let the wired `SubagentStop` rescue materialize it. Verify after stop; do not retry or Bash-bypass. If your context is lost, the disk output or returned text survives.
 
 ## Rationale
 

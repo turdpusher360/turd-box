@@ -1,3 +1,4 @@
+// @ts-check
 'use strict';
 
 const fs = require('node:fs');
@@ -137,6 +138,7 @@ module.exports = {
       check: { description: 'Check all container health', args: [] },
       heal:  { description: 'Restart a degraded/down container', args: ['container'] },
     },
+    /** @returns {import('../kernel/contracts.cjs').HealthResult} */
     health() {
       return { ...(this._healthCache || { ok: false, reason: 'not initialized' }) };
     },
@@ -144,6 +146,7 @@ module.exports = {
   },
 
   probeCost: 'expensive',
+  /** @returns {import('../kernel/contracts.cjs').HealthResult} */
   probe() {
     // Use cached getDockerInfo() to avoid re-spawning WSL within the 30s TTL.
     const info = getDockerInfo();
@@ -153,6 +156,7 @@ module.exports = {
 
   _os: null,
   _stateDir: null,
+  /** @type {import('../kernel/contracts.cjs').HealthResult} */
   _healthCache: { ok: false, reason: 'not initialized' },
   _lastCheck: null,
 

@@ -18,6 +18,8 @@ Before producing any output, read `${CLAUDE_PLUGIN_ROOT}/skills/wizard-engine/re
 
 Orchestrates complex implementation tasks through 7 phases using parallel teammates, dependency-aware scheduling, and context-aware handoff.
 
+**Front door (consolidation doctrine):** /forge is the consolidated entry point for substantive multi-phase work — the hub the command surface was consolidated around. Running spec/plan/execute work ad-hoc in chat instead of through this pipeline is off-doctrine: the ceremony (gates included) exists precisely so quality does not depend on any one session's judgment.
+
 **Reference files live in `references/` (relative to this skill file).** Read each file on demand when its protocol is needed — do not preload all references at once.
 
 ## Parse $ARGUMENTS
@@ -132,6 +134,15 @@ answers appended. The subagent never prompts the user directly.
 
 After Phase 2-3, suggest `/compact` if >50% context used.
 
+## Phase 3.5: Spec Gate (REQUIRED)
+
+Reviews are never optional in this repo. (`1f560d28`, 2026-05-29, documented the review panel as "NOT a mandatory gate" — that wording was the drift that let the ceremony erode until the operator-ordered 2026-07-21 restore. Do not reintroduce optionality.)
+
+1. Dispatch a single-lens adversarial DFE pass on the spec — `Agent(subagent_type: "DFE", mode: "bypassPermissions")`, model per routing. Document target ⇒ instruct NO minion fan-out.
+2. Verdict disk-first: `_runs/<date>/<slug>-packet-review/spec-dfe.md` — GO / GO-WITH-FIXES / NO-GO.
+3. GO-WITH-FIXES: apply the spec fixes before Phase 4. NO-GO: return to Phase 2/3.
+4. A gate may be waived ONLY by explicit operator word in-chat; record the waiver in the state file (`packet_review.waived_by_operator`) and `_runs/.decisions.jsonl`. Silence is never a waiver.
+
 ## Phase 4: Plan
 
 **Context mode:** Low-context (budget <15K tokens). Plan lives on disk.
@@ -163,6 +174,20 @@ Plans use the `depends_on` field format defined in `references/plan-template.md`
 Each task declares file scope and dependencies per `references/dag-format.md`.
 
 After plan approval, suggest `/compact` if >50% context used.
+
+## Phase 4.5: Plan Gate (REQUIRED)
+
+The plan does not stage, execute, or ride a signoff unreviewed:
+
+1. Paired reviews, dispatched in parallel on spec + plan + state:
+   - **DFE** — single-lens adversarial (fidelity of claims/cites, cold-start executability, DAG defects, security gaps).
+   - **GAMBIT** — coverage battery per `references/gambit-battery.md` (full traceability matrix, no sampling).
+2. Verdicts disk-first: `_runs/<date>/<slug>-packet-review/{dfe,gambit}.md`.
+3. The forge state JSON may only carry `state: "staged"` (or advance to `executing`) with a recorded review block:
+   `"packet_review": {"dfe": "<path>", "gambit": "<path>", "verdicts": "<...>"}`.
+   rig-sentinel `forge-packet-review-gate` FAILS any staged/executing state without it (or an explicit recorded operator waiver).
+4. **Escalated form:** when the spec touches `.claude/`, permissions, hooks, or security-critical logic, the 6-agent review panel (see the `/forge` command doc) REPLACES the pair — equally required, never optional.
+5. P1 findings are fixed before Phase 5. P2/P3 become plan tasks or are explicitly operator-waived.
 
 ## Phase 5: Execute
 

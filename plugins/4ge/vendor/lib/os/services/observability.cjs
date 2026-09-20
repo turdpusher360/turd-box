@@ -1,3 +1,4 @@
+// @ts-check
 'use strict';
 
 /**
@@ -89,6 +90,8 @@ function readAllEntries(jsonlPath) {
  *   log(stream: string, event: string, data: object, meta?: object): void,
  *   query(opts: {stream?: string, event?: string, agentId?: string, since?: string, limit?: number}): object[],
  *   summary(): {total: number, byStream: object, byEvent: object, uniqueAgents: number},
+ *   registerAlert(stream: string, event: string, opts: {threshold: number, windowMs: number, callback: Function}): void,
+ *   getEventSummary(): {totalEvents: number, eventsByStream: object, eventsByType: object, durationMinutes: number},
  * }}
  */
 function createObservability(stateDir) {

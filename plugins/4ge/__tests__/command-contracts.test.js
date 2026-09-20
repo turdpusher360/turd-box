@@ -215,6 +215,52 @@ describe('command-count surfaces derive from the manifest', () => {
   });
 });
 
+describe('commands inherit the session model', () => {
+  // A "model" on a manifest command makes the harness run that command's turn as
+  // the pinned alias instead of the model the operator selected. The pins sat in
+  // the manifest from S230 because earlier sweeps only read markdown frontmatter
+  // (agents were already `inherit`). Commands never choose the model.
+  it('no manifest command pins a model', () => {
+    const manifest = readManifest();
+    const pinned = Object.entries(manifest.commands)
+      .filter(([, entry]) => entry.model !== undefined)
+      .map(([name, entry]) => `${name}=${entry.model}`);
+
+    expect(pinned, 'manifest commands must not carry a "model" key').toEqual([]);
+  });
+
+  it('no command or skill frontmatter pins a model', () => {
+    // Tolerates a UTF-8 BOM and blank lines ahead of the opening fence.
+    const frontmatterOf = (text) => {
+      const body = text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
+      const match = /^(?:[ \t]*\r?\n)*---\r?\n([\s\S]*?)\r?\n---/.exec(body);
+      return match ? match[1] : '';
+    };
+    // Top-level key only: `model:`, `model :`, `"model":`, `'model':`. An indented
+    // (nested) `model:` and keys such as `models:` / `model_prefix:` do not match.
+    const pinsModel = (frontmatter) => /^["']?model["']?[ \t]*:/m.test(frontmatter);
+    const commandFiles = fs
+      .readdirSync(path.join(pluginRoot, 'commands'))
+      .filter((name) => name.endsWith('.md'))
+      .map((name) => `commands/${name}`);
+    const skillFiles = fs
+      .readdirSync(path.join(pluginRoot, 'skills'), { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => `skills/${entry.name}/SKILL.md`)
+      .filter((relativePath) => fs.existsSync(path.join(pluginRoot, relativePath)));
+
+    // An empty scan would pass vacuously; assert the relationship, not a count.
+    expect(commandFiles.length, 'no command files were scanned').toBeGreaterThan(0);
+    expect(skillFiles.length, 'no skill files were scanned').toBeGreaterThan(0);
+
+    const pinned = [...commandFiles, ...skillFiles].filter((relativePath) =>
+      pinsModel(frontmatterOf(readPluginFile(relativePath))),
+    );
+
+    expect(pinned, 'command and skill frontmatter must not carry a "model" key').toEqual([]);
+  });
+});
+
 describe('/usage installed-path contract', () => {
   it('quotes CLAUDE_PLUGIN_ROOT so whitespace-bearing plugin paths remain executable', () => {
     const command = readPluginFile('commands/usage.md');

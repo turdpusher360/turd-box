@@ -32,7 +32,7 @@ claude --version
 Determine the previous version from two sources (first wins):
 
 1. Search memory: `memory_search query="CC version harness-internals" limit=3`
-2. Read the version stamp at the top of `docs/harness-internals.md` — line format: `Last verified against: vX.Y.Z (YYYY-MM-DD).`
+2. Read the version stamp at the top of `docs/harness-internals.md` — on this rig it is the sentence `Installed runtime (session-verified, stamp-only …): vX.Y.Z (YYYY-MM-DD, S-label …)` inside the header paragraph; the separate "Changelog overlay current to" floor and the deep-mechanics source floor are NOT the installed version — do not confuse them.
 
 Compute the delta:
 - If current == previous: report "No version change detected. Nothing to do." and stop.
@@ -42,7 +42,7 @@ Compute the delta:
 
 ## Phase 2: RESEARCH
 
-Fetch official release notes for every version between `PREV_VER` and `NEW_VER` (inclusive of new):
+Primary source on this rig: Claude Code's own changelog cache `~/.claude/cache/changelog.md` — read every `## <ver>` section between `NEW_VER` and `PREV_VER` end-to-end (not every version number is published, e.g. .242/.244/.249/.253–.256 at the .257 ingest; some, e.g. 2.1.243, exist only in the changelog and not as a GitHub release). Use the GitHub Releases API only for versions the cache lacks; `gh api` is an `ask` rule in this rig's user settings, so in auto/headless lanes use `curl https://api.github.com/repos/anthropics/claude-code/releases` instead. Then, for cross-check, fetch official release notes for every version between `PREV_VER` and `NEW_VER` (inclusive of new):
 
 ```bash
 gh api repos/anthropics/claude-code/releases --jq '.[].tag_name' 2>/dev/null | head -10
@@ -88,6 +88,9 @@ Scan the codebase for stale references introduced by the version delta.
 
 ```bash
 # Check for removed/renamed CLI commands or flags in hook files and skills
+# NOTE (2.1.257): `claude agents` is the BACKGROUND-session manager, not an agent-definition
+# lister — the definition listing plane is the in-session available-agent roster; `claude plugin validate <dir>`
+# (2.1.233+) validates plugin manifests and bare .claude/skills frontmatter.
 grep -rn --include='*.cjs' --include='*.md' \
   -E 'claude (agents|update|powerup|fork|batch|loop)' \
   .claude/ plugins/ 2>/dev/null | head -20
@@ -172,8 +175,10 @@ npx vitest run 2>&1 | tail -10
 
 ```bash
 # hook-utils.cjs smoke test — verify require() works
-node -e "const u = require('./.claude/hooks/hook-utils.cjs'); console.log('hook-utils OK, exports:', Object.keys(u).join(', '));"
+node -e "const u = require('./lib/hook-utils.cjs'); console.log('hook-utils OK, exports:', Object.keys(u).join(', '));"
 ```
+
+Rig notes (2.1.257 audit): `hook-utils.cjs` lives at `lib/hook-utils.cjs` — `.claude/hooks/hook-utils.cjs` is a ghost path removed at startup, so a smoke against it always fails. If the main checkout's vitest cannot start (the rolldown-binding break), run vitest in an ext4 worktree with a fresh `npm ci` and state plainly that it tests HEAD (plus whatever you copied in), not the dirty tree.
 
 Record baseline counts:
 - TypeScript errors before fixes: N
@@ -192,6 +197,8 @@ fix work (≥5 files or ≥100 lines total), dispatch to `@sonnet-execute` via t
 `implement-feature` or relevant `fix-*` skill — this routes the heavy edit volume
 to Sonnet rates while keeping orchestration here. For isolated single-file fixes,
 edit inline (Opus rates, but tiny scope).
+
+**Rig deviation (commits are operator-signed via 1Password; a lane never commits):** replace every per-fix `git commit` below with an entry in a staging list (`_runs/<date>/<lane>/staging-list.md`: exact repo-relative paths grouped docs / skills / register, plus `git status --short` as proof). `.claude/`, `~/.claude/`, `.codex/`, `~/.codex/` and `.gemini/` are hook-guarded and operator-gated: for those, emit unified diffs under `_runs/<date>/<lane>/patches/NN-<surface>.diff` proven with `git apply --check` (repo files) or `patch --dry-run` (home files), never direct edits. Tracked docs, skills and `lib/os/registry/*.json` may be edited directly.
 
 Apply fixes for each item flagged in Phase 3, in priority order:
 
@@ -247,7 +254,7 @@ Re-run the smoke test suite from Phase 4:
 ```bash
 npx tsc --noEmit 2>&1 | tail -5
 npx vitest run 2>&1 | tail -10
-node -e "const u = require('./.claude/hooks/hook-utils.cjs'); console.log('hook-utils OK');"
+node -e "const u = require('./lib/hook-utils.cjs'); console.log('hook-utils OK');"
 ```
 
 Compare against Phase 4 baseline:
@@ -261,13 +268,13 @@ If any new failures appear → diagnose and fix before proceeding. Do not procee
 
 ## Phase 7: STORE
 
-Store a version delta summary in memory:
+Store a version delta summary in memory (a headless lane with no MCP attached hands back "memory candidates" + the exact MEMORY.md line replacement in its report instead; the lead stores them after verification):
 
 ```
 memory_store content="CC upgraded from v<PREV_VER> to v<NEW_VER> on <TODAY_DATE>. Delta: <N> hook events, <N> frontmatter changes, <N> stale refs fixed. Notable: <top 2-3 changes from release notes>. harness-internals.md updated. Tests: <N> passing." importance=0.8 tags=["cc-version","harness","upgrade"]
 ```
 
-Update the Settings line in `~/.claude/projects/O--Sand-Box-Dev/memory/MEMORY.md`:
+Update the Settings line in `~/.claude/projects/-mnt-o-Sand-Box-Dev/memory/MEMORY.md` (the WSL project slug; `O--Sand-Box-Dev` was the archived Windows-native brain):
 
 Find the line starting with `- Model:` and update the CC version reference from `v<PREV_VER>` to `v<NEW_VER>` (the line currently reads `CC v<PREV_VER> (upgraded...)`).
 

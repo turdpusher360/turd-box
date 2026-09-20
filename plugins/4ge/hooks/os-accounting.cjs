@@ -22,7 +22,7 @@
 // --- Module-scope requires (P0 #3: hoisted for performance) ---
 const fs = require('fs');
 const path = require('path');
-const { readStdinJson, deriveSessionNumber } = require('./hook-utils.cjs');
+const { readStdinJson, deriveNextHandoffNumber } = require('./hook-utils.cjs');
 // [D3] Plugin-managed OS resolution + collision guard.
 const { isProjectManaged, resolveOsRoot } = require('./os-guard.cjs');
 
@@ -137,6 +137,8 @@ async function main() {
   const caller = classifyCaller(input);
   const aid = sanitizeAgentId(caller.id);
   const sid = input.session_id || '';
+  // One timestamp per invocation — every write site below shares it.
+  const nowIso = new Date().toISOString();
 
   const stateDir = path.join(process.cwd(), '_runs', 'os');
   const ledgerPath = path.join(stateDir, 'resource-ledger.jsonl');
@@ -190,7 +192,7 @@ async function main() {
     agentState.recent_searches = (agentState.recent_searches || []).filter(
       s => now - new Date(s.ts).getTime() < 30000
     );
-    agentState.recent_searches.push({ pattern: toolInput.pattern || '', tool: toolName, ts: new Date().toISOString(), dir: searchDir });
+    agentState.recent_searches.push({ pattern: toolInput.pattern || '', tool: toolName, ts: nowIso, dir: searchDir });
     const sameDirSearches = agentState.recent_searches.filter(s => s.dir === searchDir);
     if (sameDirSearches.length >= 3) {
       leaks.push({ pattern: 'scatter_search', detail: `${sameDirSearches.length} searches in ${searchDir} within 30s` });
@@ -215,7 +217,7 @@ async function main() {
 
   // --- Write tool event to ledger ---
   const toolEvent = {
-    ts: new Date().toISOString(), sid, aid: caller.id, caller: caller.type, name: caller.name,
+    ts: nowIso, sid, aid: caller.id, caller: caller.type, name: caller.name,
     event: 'tool', tool: toolName, success: isSuccess, file_op: isFileOp,
     est_tokens: tokenEst.est_tokens, leaks: leaks.map(l => l.pattern),
   };
@@ -237,7 +239,7 @@ async function main() {
   // --- Tier 2: Agent tool extraction ---
   if (toolName === 'Agent' && toolResponse && typeof toolResponse === 'object' && toolResponse.status === 'completed') {
     const agentSummary = {
-      ts: new Date().toISOString(), sid, aid: caller.id, caller: caller.type, name: caller.name,
+      ts: nowIso, sid, aid: caller.id, caller: caller.type, name: caller.name,
       event: 'agent_summary',
       totalTokens: safeNum(toolResponse.totalTokens),
       totalToolUseCount: safeNum(toolResponse.totalToolUseCount),
@@ -265,20 +267,20 @@ async function main() {
   const heartbeatPath = path.join(heartbeatDir, `${aid}.json`);
   let hbData = { caller: caller.type, name: caller.name, last_seen: '', tool_count: 0, leak_count: 0 };
   try { hbData = JSON.parse(fs.readFileSync(heartbeatPath, 'utf8')); } catch { /* first write */ }
-  hbData.last_seen = new Date().toISOString();
+  hbData.last_seen = nowIso;
   hbData.tool_count = (hbData.tool_count || 0) + 1;
   hbData.leak_count = (hbData.leak_count || 0) + leaks.length;
   try { fs.writeFileSync(heartbeatPath, JSON.stringify(hbData)); } catch { /* best-effort */ }
 
   // --- Session-level heartbeat for session-reaper.cjs ---
   try {
+    // No existsSync pre-check: the read throws ENOENT when absent, which the
+    // catch treats as "no registry" — one fewer stat on every call.
     const sessionRegPath = path.join(stateDir, 'session-processes.json');
-    if (fs.existsSync(sessionRegPath)) {
-      const reg = JSON.parse(fs.readFileSync(sessionRegPath, 'utf8'));
-      reg.last_heartbeat = new Date().toISOString();
-      fs.writeFileSync(sessionRegPath, JSON.stringify(reg, null, 2));
-    }
-  } catch { /* best-effort */ }
+    const reg = JSON.parse(fs.readFileSync(sessionRegPath, 'utf8'));
+    reg.last_heartbeat = nowIso;
+    fs.writeFileSync(sessionRegPath, JSON.stringify(reg, null, 2));
+  } catch { /* absent or unreadable — best-effort */ }
 
   // --- ZOM-PRV-002 T9: Bridge heartbeat to kernel process-registry JSONL ---
   try {
@@ -287,7 +289,7 @@ async function main() {
       const heartbeatEvent = JSON.stringify({
         event: 'heartbeat',
         osPid: process.pid,
-        ts: new Date().toISOString(),
+        ts: nowIso,
         sid,
         aid,
         callerType: caller.type,
@@ -298,34 +300,39 @@ async function main() {
   } catch { /* best-effort — never block PostToolUse */ }
 
   // --- HUD context writer (T19) ---
-  try {
-    const ctxPath = path.join(stateDir, 'hud-context.json');
-    const cwd = input.cwd || process.cwd();
-    let workflow = null, phase = '', progress = '', label = 'idle';
+  // Main-caller gate hoisted ABOVE the workflow-file stats: only main ever
+  // writes hud-context.json, so subagent/teammate calls skip the 1-3
+  // existsSync probes entirely (they dominate call volume during fan-out).
+  if (caller.type === 'main') {
+    try {
+      const ctxPath = path.join(stateDir, 'hud-context.json');
+      const cwd = input.cwd || process.cwd();
+      let workflow = null, phase = '', progress = '', label = 'idle';
 
-    if (fs.existsSync(path.join(cwd, '.forge-session.json'))) {
-      try {
-        const forge = JSON.parse(fs.readFileSync(path.join(cwd, '.forge-session.json'), 'utf8'));
-        workflow = 'forge';
-        phase = forge.phase || '';
-        const done = (forge.completed_tasks || []).length;
-        const total = (forge.current_phase_tasks || []).length + done + (forge.blocked_tasks || []).length;
-        progress = total ? `${done}/${total}` : '';
-        label = `forge:${phase}`;
-      } catch { workflow = 'forge'; label = 'forge'; }
-    } else if (fs.existsSync(path.join(cwd, '.maintain-session.json'))) {
-      workflow = 'maintain'; label = 'maintain';
-    } else if (fs.existsSync(path.join(cwd, '.dfe-session.json'))) {
-      workflow = 'dfe'; label = 'dfe';
-    }
+      if (fs.existsSync(path.join(cwd, '.forge-session.json'))) {
+        try {
+          const forge = JSON.parse(fs.readFileSync(path.join(cwd, '.forge-session.json'), 'utf8'));
+          workflow = 'forge';
+          phase = forge.phase || '';
+          const done = (forge.completed_tasks || []).length;
+          const total = (forge.current_phase_tasks || []).length + done + (forge.blocked_tasks || []).length;
+          progress = total ? `${done}/${total}` : '';
+          label = `forge:${phase}`;
+        } catch { workflow = 'forge'; label = 'forge'; }
+      } else if (fs.existsSync(path.join(cwd, '.maintain-session.json'))) {
+        workflow = 'maintain'; label = 'maintain';
+      } else if (fs.existsSync(path.join(cwd, '.dfe-session.json'))) {
+        workflow = 'dfe'; label = 'dfe';
+      }
 
-    if (workflow && caller.type === 'main') {
-      fs.writeFileSync(ctxPath, JSON.stringify({
-        workflow, phase, progress, label,
-        updated_at: new Date().toISOString()
-      }));
-    }
-  } catch { /* non-fatal */ }
+      if (workflow) {
+        fs.writeFileSync(ctxPath, JSON.stringify({
+          workflow, phase, progress, label,
+          updated_at: nowIso
+        }));
+      }
+    } catch { /* non-fatal */ }
+  }
 
   // --- HUD live data layer: running counters + gated cheap health refresh ---
   try {
@@ -333,13 +340,17 @@ async function main() {
     if (fs.existsSync(metaPath)) {
       const meta = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
 
-      // Self-heal session_number from _runs/HANDOFF-S*.md every refresh.
-      // Source-of-truth = shipped work products. Survives stale meta from
-      // boots that ran before the derive-from-handoffs migration.
+      // Self-heal next_handoff_number from _runs/HANDOFF-S*.md every refresh.
+      // This value is a closeout candidate, not proof that the current runtime
+      // session should mint a new durable S-number.
       try {
-        const derived = deriveSessionNumber(process.cwd());
-        if (derived > 0) meta.session_number = derived;
-      } catch { /* keep existing session_number */ }
+        const derived = deriveNextHandoffNumber(process.cwd());
+        if (derived > 0) {
+          meta.next_handoff_number = derived;
+          meta.session_number = derived; // legacy alias for HUD/readers during migration
+          meta.session_number_note = 'legacy alias for next_handoff_number; compact/resume does not mint a durable S-number';
+        }
+      } catch { /* keep existing handoff metadata */ }
 
       // Running counter updates (O(1) per hook invocation)
       const estDelta = Number.isFinite(tokenEst.est_tokens) ? tokenEst.est_tokens : 0;
@@ -371,24 +382,20 @@ async function main() {
       const now = Date.now();
       const lastRefresh = meta.last_refresh_ms || 0;
       if (now - lastRefresh >= cooldown) {
-        // Mark last_refresh_ms BEFORE async detach so next hook
-        // invocation does not also schedule a refresh.
         meta.last_refresh_ms = now;
-        require('node:timers').setImmediate(() => {
-          try {
-            const { refreshCheap } = require(path.join(_osRoot.root, 'lib', 'os', 'health-refresh.cjs'));
-            const capDir = path.join(_osRoot.root, 'lib', 'os', 'capabilities');
-            const newHealth = refreshCheap(capDir, stateDir);
-            const stillDegraded = Object.values(newHealth).some(v => v && v.ok === false);
-            try {
-              const freshMeta = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
-              freshMeta.consecutive_healthy = stillDegraded ? 0 : (freshMeta.consecutive_healthy || 0) + 1;
-              const tmp = metaPath + '.' + process.pid + '.refresh.tmp';
-              fs.writeFileSync(tmp, JSON.stringify(freshMeta, null, 2), 'utf8');
-              fs.renameSync(tmp, metaPath);
-            } catch { /* best-effort - next hook invocation will overwrite */ }
-          } catch { /* best-effort */ }
-        });
+        // Inline (bounded) refresh. The previous setImmediate detach NEVER ran:
+        // main() ends in process.exit(0), and Node does not drain the immediate
+        // queue on exit — while last_refresh_ms above kept re-arming the
+        // schedule. Running it inline is gated to once per cooldown (>=30s),
+        // and folding the outcome into `meta` here means ONE atomic meta write
+        // below instead of a second read+write+rename racing this one.
+        try {
+          const { refreshCheap } = require(path.join(_osRoot.root, 'lib', 'os', 'health-refresh.cjs'));
+          const capDir = path.join(_osRoot.root, 'lib', 'os', 'capabilities');
+          const newHealth = refreshCheap(capDir, stateDir);
+          const stillDegraded = Object.values(newHealth).some(v => v && v.ok === false);
+          meta.consecutive_healthy = stillDegraded ? 0 : (meta.consecutive_healthy || 0) + 1;
+        } catch { /* best-effort — counters still written below */ }
       }
 
       // Atomic write session-meta.json

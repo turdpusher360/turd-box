@@ -1,3 +1,4 @@
+// @ts-check
 'use strict';
 
 /**
@@ -151,8 +152,22 @@ function enumerateWiredHooks(settingsObj) {
 }
 
 /**
+ * Shared shape for the gate-check context bag. All keys optional; object-valued
+ * inputs are typed loosely since these checks read heterogeneous config surfaces.
+ * @typedef {object} GateCtx
+ * @property {any} [settingsObj]
+ * @property {any} [manifest]
+ * @property {any} [corpus]
+ * @property {any} [tierDefaults]
+ * @property {string} [repoRoot]
+ * @property {any} [fileCache]
+ * @property {boolean} [includeSurfaces]
+ */
+
+/**
  * Check H — hook classification (C1). Bidirectional diff of the live wired set against
  * the manifest-classified set. `inert`-status entries pass but are counted.
+ * @param {GateCtx} [opts]
  * @returns {{unclassified:string[], stale:string[], inertCount:number, total:number, wiredCount:number}}
  */
 function checkHookClassification({ settingsObj, manifest } = {}) {
@@ -174,6 +189,7 @@ function checkHookClassification({ settingsObj, manifest } = {}) {
  * `artifact` type, each named reader must exist in the corpus AND its source must
  * reference the artifact basename.
  * @returns {{broken:Array<{hook:string, artifact:(string|null), reason:string}>}}
+ * @param {GateCtx} [opts]
  */
 function checkArtifactReaders({ manifest, corpus } = {}) {
   const m = manifest || emptyManifest();
@@ -205,6 +221,7 @@ function checkArtifactReaders({ manifest, corpus } = {}) {
  * `process.env.<KEY>` reader in the corpus (verified in full mode only — no corpus
  * means completeness-only).
  * @returns {{undeclared:string[], unconsumed:string[], harnessCount:number, total:number}}
+ * @param {GateCtx} [opts]
  */
 function checkEnvKeys({ settingsObj, manifest, corpus } = {}) {
   const m = manifest || emptyManifest();
@@ -242,6 +259,7 @@ function checkEnvKeys({ settingsObj, manifest, corpus } = {}) {
  * `tierDefaults` (injected TIER_DEFAULTS.standard) drives undeclared detection;
  * tierDefaults=null skips it (fail-open on economy-config unavailability).
  * @returns {{undeclared:string[], zeroConsumer:string[], unbuiltCount:number, total:number}}
+ * @param {GateCtx} [opts]
  */
 function checkLeverConsumers({ manifest, tierDefaults, corpus } = {}) {
   const m = manifest || emptyManifest();
@@ -282,6 +300,7 @@ function fileIncludes(p, pattern, fileCache) {
  * requires adding that surface to the manifest in the same commit. All surfaces missing
  * on disk -> fired (fail-open read, still detects).
  * @returns {{fired:Array<{id:string, why:string}>, liveCount:number, total:number}}
+ * @param {GateCtx} [opts]
  */
 function checkFactSentinels({ manifest, repoRoot, fileCache } = {}) {
   const m = manifest || emptyManifest();
@@ -310,6 +329,7 @@ function countLines(src) {
  * floor is a fault unless the same commit lowers baselineLines. A declared surface
  * missing on disk is reported separately (adapter decides hard vs soft by mode).
  * @returns {{shrunk:Array<{path,baseline,current,floor}>, missing:string[], okCount:number, total:number}}
+ * @param {GateCtx} [opts]
  */
 function checkContentVolume({ manifest, repoRoot, fileCache } = {}) {
   const m = manifest || emptyManifest();
@@ -340,6 +360,7 @@ function checkContentVolume({ manifest, repoRoot, fileCache } = {}) {
  * content. `includeSurfaces:false` (boot) omits the ~20 auto-read content surfaces:
  * reading them all is the ~67ms-on-drvfs cost the content-volume check carries, which
  * is why content-volume runs in FULL mode only (the boot subset stays sentinel-cheap).
+ * @param {GateCtx} [opts]
  */
 function buildFileCache({ manifest, repoRoot, includeSurfaces = true } = {}) {
   const m = manifest || emptyManifest();

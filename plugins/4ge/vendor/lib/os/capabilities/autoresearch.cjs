@@ -1,3 +1,4 @@
+// @ts-check
 'use strict';
 
 const fs = require('node:fs');
@@ -15,8 +16,12 @@ module.exports = {
       status: { description: 'Show domain statuses', args: [] },
       heal:   { description: 'Fix a failing domain', args: ['domain'] },
     },
+    /** @returns {import('../kernel/contracts.cjs').HealthResult} */
     health() {
-      return { ...(this._healthCache || { ok: false, reason: 'not initialized' }) };
+      // Read the cache off module.exports, not `this` — a bare `manifest.health()`
+      // call binds `this` to the manifest object (which has no _healthCache),
+      // so `this._healthCache` would always miss (case-36 FP-bench this-binding).
+      return { ...(module.exports._healthCache || { ok: false, reason: 'not initialized' }) };
     },
     resources: { typical_duration: '5m' },
   },
@@ -25,9 +30,11 @@ module.exports = {
   _stateDir: null,
   _harnessPath: null,
   _domainsDir: null,
+  /** @type {import('../kernel/contracts.cjs').HealthResult} */
   _healthCache: { ok: false, reason: 'not initialized' },
 
   probeCost: 'cheap',
+  /** @returns {import('../kernel/contracts.cjs').HealthResult} */
   probe() {
     try {
       const pathMod = require('node:path');

@@ -1,3 +1,4 @@
+// @ts-check
 'use strict';
 
 const fs = require('node:fs');
@@ -183,8 +184,14 @@ function checkLockfile({ cwd, fsImpl = fs }) {
     };
   }
 
+  // npm writes the lockfile BEFORE package.json inside a single install/update, so on
+  // healthy state the lockfile sits a few ms "older" — a strict comparison warns forever
+  // (upstream: live delta was 17ms). Real desync (package.json edited, install never run)
+  // shows minutes-to-days, so a one-minute tolerance separates the two cleanly.
+  const LOCKFILE_MTIME_TOLERANCE_MS = 60 * 1000;
   const packageStat = safeStat(packagePath, fsImpl);
-  const stale = found.filter(entry => packageStat && entry.stat.mtime.getTime() < packageStat.mtime.getTime());
+  const stale = found.filter(entry => packageStat
+    && entry.stat.mtime.getTime() < (packageStat.mtime.getTime() - LOCKFILE_MTIME_TOLERANCE_MS));
   return {
     status: stale.length > 0 ? 'warn' : 'ok',
     summary: stale.length > 0

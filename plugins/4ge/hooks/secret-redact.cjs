@@ -72,6 +72,46 @@ function escapeRe(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+// --- `--file <path>` target support ----------------------------------------
+// `--file <path>` may appear before or after the KEY=value / token in the
+// args. The path must be an env-style file the operator named; absent, the
+// default is the project .env (unchanged). Rejection reasons NEVER echo the
+// offending token — a mistyped "path" can be the secret value itself.
+const FILE_FLAG_TOKEN = /(^|\s)--file(=|\s|$)/;
+const FILE_FLAG_CAPTURE = /(^|\s)--file(?:=|\s+)(\S+)/;
+
+function extractFileFlag(args) {
+  const m = args.match(FILE_FLAG_CAPTURE);
+  if (m) {
+    const before = args.slice(0, m.index);
+    const after = args.slice(m.index + m[0].length);
+    return { filePath: m[2], rest: (before + after).trim() };
+  }
+  if (FILE_FLAG_TOKEN.test(args)) return { missingPath: true };
+  return { filePath: null, rest: args };
+}
+
+function isEnvStyle(base) {
+  return base === '.env' || base.startsWith('.env.') || /\.env$/.test(base);
+}
+
+function resolveTarget(cwd, filePath) {
+  const abs = path.isAbsolute(filePath)
+    ? filePath
+    : path.resolve(cwd || process.cwd(), filePath);
+  const base = path.basename(abs);
+  // Env-style filename only. Checked first so a mistyped KEY=value "path" is
+  // rejected here without echoing it back.
+  if (!isEnvStyle(base)) {
+    return { error: '--file target must be an env-style file (.env, .env.local, *.env)' };
+  }
+  // Never persist a secret into the session-artifact tree.
+  if (abs.split(/[\\/]+/).includes('_runs')) {
+    return { error: '--file target may not be inside _runs/' };
+  }
+  return { path: abs, label: base };
+}
+
 function upsertEnv(envPath, key, value) {
   let lines = [];
   let existed = false;
@@ -133,26 +173,55 @@ async function main() {
     args = (m[1] || '').trim();
   }
 
-  const parsed = parseInput(args);
+  const fileFlag = extractFileFlag(args);
+  if (fileFlag.missingPath) {
+    emit({
+      decision: 'block',
+      reason: '[secret-redact] --file requires a path, e.g. /secret --file .env.local KEY=value',
+      continue: false,
+      stopReason: 'secret --file missing path'
+    });
+    process.exit(0);
+  }
+
+  let envPath, targetLabel;
+  if (fileFlag.filePath) {
+    const target = resolveTarget(payload.cwd, fileFlag.filePath);
+    if (target.error) {
+      emit({
+        decision: 'block',
+        reason: '[secret-redact] ' + target.error,
+        continue: false,
+        stopReason: 'secret --file target rejected'
+      });
+      process.exit(0);
+    }
+    envPath = target.path;
+    targetLabel = target.label;
+  } else {
+    envPath = path.join(payload.cwd || process.cwd(), '.env');
+    targetLabel = '.env';
+  }
+
+  const parsed = parseInput(fileFlag.rest);
 
   if (!parsed) {
     emit({
       decision: 'block',
-      reason: '[secret-redact] could not parse input. Try:\n  /secret KEY=value\n  /secret KEY value\n  /secret <token with recognized prefix>',
+      reason: '[secret-redact] could not parse input. Try:\n  /secret KEY=value\n  /secret KEY value\n  /secret --file <path.env> KEY=value\n  /secret <token with recognized prefix>',
       continue: false,
       stopReason: 'secret input not parsed'
     });
     process.exit(0);
   }
 
-  const envPath = path.join(payload.cwd || process.cwd(), '.env');
   let result;
   try {
     result = upsertEnv(envPath, parsed.key, parsed.value);
   } catch (e) {
     emit({
       decision: 'block',
-      reason: '[secret-redact] failed to write .env: ' + e.message,
+      reason: '[secret-redact] failed to write ' + targetLabel + ': ' + e.message,
       continue: false,
       stopReason: 'env write failed'
     });
@@ -162,7 +231,7 @@ async function main() {
   const action = result.existed ? 'updated' : 'added';
   const note = parsed.mode === 'auto' ? ' (key auto-detected from prefix)' : '';
   const reason = '[secret-redact] ' + action + ' ' + parsed.key +
-    ' in .env (length ' + parsed.value.length + ')' + note;
+    ' in ' + targetLabel + ' (length ' + parsed.value.length + ')' + note;
 
   emit({
     decision: 'block',

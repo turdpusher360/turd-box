@@ -33,7 +33,7 @@ Dispatch on `sonnet-execute` for hook system work: fixing, modifying, or creatin
 - PreToolUse blocks via stderr + exit(2); PostToolUse always exits 0
 - PostToolUse stdin field is `tool_response`, NOT `tool_result`
 - `process.env.CLAUDE_SESSION_ID` is UNSET -- use `input.session_id`
-- Ghost reversion: atomic heredoc for `.claude/` writes, or Read-before-Edit
+- `.claude/` writes may be refused by a project gate or Claude Code's file-state check. Follow the target repo's deliberate config-write procedure; staging/commit approval is separate.
 
 ## Handoff
 

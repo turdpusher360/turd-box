@@ -184,16 +184,24 @@ module.exports = {
         if (fs.existsSync(bootStatusPath)) {
           const bootStatus = JSON.parse(fs.readFileSync(bootStatusPath, 'utf8'));
           if (bootStatus && bootStatus.capabilities && bootStatus.capabilities.aisle) {
-            const aisleEntry = bootStatus.capabilities.aisle;
+            // Build a candidate without mutating the parsed on-disk view. Rung A1 compares
+            // that original view with this candidate before the self-patch is allowed to land.
+            const nextBootStatus = JSON.parse(JSON.stringify(bootStatus));
+            const aisleEntry = nextBootStatus.capabilities.aisle;
             const newStatus = result.ok ? 'ready' : 'degraded';
             const newReason = result.ok ? undefined : result.reason;
             // Propagate shelved flag from _healthCache (init-time) so HUD
             // can recognize fail-closed as intentional posture.
             const cachedShelved = this._healthCache && this._healthCache.shelved === true;
             const newShelved = cachedShelved && !result.ok;
+            // upstream: normalize `shelved` to a strict boolean on BOTH sides. On a healthy
+            // on-disk entry `shelved` is absent (undefined) while newShelved is a strict
+            // boolean, so a bare `!==` read `undefined !== false` as "changed" on EVERY
+            // probe — rewriting boot-status.json every 1-5s during HUD activity and
+            // defeating the upstream write-on-change fix (written_by stuck at aisle-refresh).
             const entryChanged = aisleEntry.status !== newStatus ||
               aisleEntry.reason !== newReason ||
-              aisleEntry.shelved !== newShelved;
+              (aisleEntry.shelved === true) !== (newShelved === true);
             if (entryChanged) {
               aisleEntry.status = newStatus;
               if (newReason) {
@@ -209,13 +217,59 @@ module.exports = {
               aisleEntry.refreshed_at = new Date().toISOString();
             }
 
-            const nextOverall = deriveOverallFromCapabilities(bootStatus.capabilities);
+            const nextOverall = deriveOverallFromCapabilities(nextBootStatus.capabilities);
             if (entryChanged || bootStatus.overall !== nextOverall) {
-              bootStatus.overall = nextOverall;
-              // Atomic write (match capability-registry._writeJson pattern)
-              const tmp = `${bootStatusPath}.${process.pid}.tmp`;
-              fs.writeFileSync(tmp, JSON.stringify(bootStatus, null, 2), 'utf8');
-              fs.renameSync(tmp, bootStatusPath);
+              nextBootStatus.overall = nextOverall;
+              // Rung B: this self-patch is now the file's most-recent writer.
+              // Refresh the `written_by` stamp so boot-status.json does not
+              // falsely credit the boot hook for an aisle-driven rewrite.
+              // Best-effort — attribution must never break the probe.
+              const osStateDir = path.dirname(bootStatusPath);
+              let attribution = null;
+              let writer = null;
+              try {
+                attribution = require('../write-attribution.cjs');
+                writer = attribution.deriveWriter({ surface: 'aisle-refresh', stateDir: osStateDir });
+                nextBootStatus.written_by = writer;
+              } catch { /* attribution optional */ }
+
+              // Rung A1: the post-boot AISLE self-patch is a real boot-status writer too.
+              // Hold a foreign-session degraded candidate over a strictly-healthier recent
+              // view; otherwise retain the historical fail-safe behavior and write normally.
+              let gate = { suppress: false };
+              try {
+                if (attribution && typeof attribution.shouldSuppressWrite === 'function') {
+                  gate = attribution.shouldSuppressWrite(bootStatus, nextBootStatus, {});
+                }
+              } catch { gate = { suppress: false }; }
+
+              if (gate.suppress) {
+                try {
+                  attribution.recordSuppressedWrite(
+                    osStateDir,
+                    'boot-status.json',
+                    writer,
+                    nextBootStatus,
+                    gate.reason,
+                    bootStatus,
+                  );
+                } catch { /* journal optional */ }
+              } else {
+                // Atomic write (match capability-registry._writeJson pattern)
+                const tmp = `${bootStatusPath}.${process.pid}.tmp`;
+                fs.writeFileSync(tmp, JSON.stringify(nextBootStatus, null, 2), 'utf8');
+                fs.renameSync(tmp, bootStatusPath);
+                try {
+                  if (writer && attribution) {
+                    attribution.recordWrite(
+                      osStateDir,
+                      'boot-status.json',
+                      writer,
+                      `${nextOverall} (aisle-refresh)`,
+                    );
+                  }
+                } catch { /* journal optional */ }
+              }
             }
           }
         }
@@ -276,8 +330,9 @@ module.exports = {
 
       // Boot is synchronous — no await needed (P0-B fix).
       // Hard wall-clock guard: if boot somehow exceeds 6s, log a warning.
-      // boot.cjs has its own 30s BOOT_TIMEOUT_MS budget but that is too wide
-      // for the SessionStart hook's enforceTimeout(9000) context.
+      // boot.cjs has its own 30s BOOT_TIMEOUT_MS budget, matched by the SessionStart
+      // hook's enforceTimeout(30000) (upstream cold-boot headroom); this 6s warn stays an
+      // early boot-slowness signal well inside both.
       const sessionId = (args && args.sessionId) || null;
       const bootStart = Date.now();
       const result = boot(os, this._stateDir, sessionId);

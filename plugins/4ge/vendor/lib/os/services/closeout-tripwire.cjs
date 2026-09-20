@@ -1,3 +1,4 @@
+// @ts-check
 'use strict';
 
 /**
@@ -57,7 +58,7 @@ function runGit(args, cwd) {
   try {
     const result = gitRead(args, { cwd, timeout: GIT_TIMEOUT_MS });
     if (result.error || result.signal) {
-      const reason = result.error ? (result.error.code || result.error.message) : `killed:${result.signal}`;
+      const reason = result.error ? (/** @type {NodeJS.ErrnoException} */(result.error).code || result.error.message) : `killed:${result.signal}`;
       return { ok: false, stdout: '', reason };
     }
     if (result.status !== 0) {

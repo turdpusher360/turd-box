@@ -1,3 +1,4 @@
+// @ts-check
 'use strict';
 
 /**
@@ -41,6 +42,7 @@ module.exports = {
       pending: { description: 'List pending authorization requests with disk-computed bindings', args: [] },
       audit:   { description: 'Tail the broker audit log', args: ['limit'] },
     },
+    /** @returns {import('../kernel/contracts.cjs').HealthResult} */
     health() {
       return module.exports._healthCache || { ok: false, reason: 'not initialized' };
     },
@@ -49,9 +51,11 @@ module.exports = {
 
   _os: null,
   _stateDir: null,
+  /** @type {import('../kernel/contracts.cjs').HealthResult} */
   _healthCache: { ok: false, reason: 'not initialized' },
 
   probeCost: 'cheap',
+  /** @returns {import('../kernel/contracts.cjs').HealthResult} */
   probe() {
     try {
       const fs = require('node:fs');

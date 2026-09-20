@@ -684,7 +684,9 @@ function loadHudData(opts = {}) {
     try {
       const { refreshAll } = require(path.resolve(cwd, 'lib/os/health-refresh.cjs'));
       const capDir = path.resolve(cwd, 'lib/os/capabilities');
-      refreshAll(capDir, stateDir);
+      // Attribute this on-demand /4ge HUD refresh so the boot-writers journal records
+      // entry:'cli' instead of 'unknown'.
+      refreshAll(capDir, stateDir, { entry: 'cli' });
     } catch { /* best-effort */ }
   }
 
@@ -960,6 +962,114 @@ function mergeHarnessStdin(state, harness) {
   return state;
 }
 
+// --- Session isolation (operator-ruled; contract: docs/reference/hud-vocabulary.md entry 33)
+// A statusline speaks ONLY for its own session. The `_runs/os` singletons
+// (boot-status.json, session-meta.json, rig-context.json) are shared by every
+// session rendering this repo, so whichever session wrote last would bleed into
+// every other session's statusline (live repro: foreign boot-pulse, foreign
+// S-label, foreign coherence banner, foreign active-sessions nag). Policy is
+// SUPPRESSION, not labeling — foreign state simply does not render — and
+// multi-instance is NORMAL, never a warning surface. Fleet/full-HUD modes keep
+// foreign visibility deliberately by never calling this.
+//
+// Boot-slice semantics come from boot-coherence (the same module behind the
+// statusline coherence row): `self_fork` (boot stamped by the pre-fork ancestor
+// id within ±60s of this session's start — the `claude --continue` gap) is OUR
+// boot; `d1_foreign` / `d2_cold_boot` are not. Meta and rig slices key on their
+// own ownership stamps, with self-fork extending ownership the same way.
+let _isoCoherenceMod;
+function loadIsolationCoherence() {
+  if (_isoCoherenceMod !== undefined) return _isoCoherenceMod;
+  const candidates = [
+    '../vendor/lib/os/services/boot-coherence.cjs', // installed plugin tree
+    '../../../lib/os/services/boot-coherence.cjs',  // dev checkout
+  ];
+  _isoCoherenceMod = null;
+  for (const rel of candidates) {
+    try { _isoCoherenceMod = require(rel); break; } catch { /* try next */ }
+  }
+  return _isoCoherenceMod;
+}
+
+function applySessionIsolation(rawState, { stateDir, liveSessionId, stdin = null, now = Date.now() } = {}) {
+  if (!rawState || typeof rawState !== 'object') return rawState;
+  const iso = {
+    liveSessionId: (typeof liveSessionId === 'string' && liveSessionId) ? liveSessionId : null,
+    bootOwn: true,
+    metaOwn: true,
+    rigOwn: true,
+    selfFork: false,
+  };
+  rawState.sessionIsolation = iso;
+  // No live identity (no harness stdin session_id) → ownership is undecidable;
+  // render as before. Disk-only entries (TTY runs, boot dashboard) land here.
+  if (!iso.liveSessionId || !stateDir) return rawState;
+
+  // --- boot slice --------------------------------------------------------------
+  let checks = null;
+  try {
+    const bc = loadIsolationCoherence();
+    if (bc && typeof bc.formatBootCoherenceLine === 'function') {
+      const coh = bc.formatBootCoherenceLine({ stateDir, liveSessionId: iso.liveSessionId, now });
+      checks = (coh && coh.checks) || null;
+    }
+  } catch { /* fall through to the raw stamp compare */ }
+  if (checks && checks.present === false) {
+    iso.bootOwn = true; // no boot-status at all — nothing foreign to suppress
+  } else if (checks && !checks.corrupt) {
+    iso.selfFork = !!checks.self_fork;
+    iso.bootOwn = !(checks.d1_foreign || checks.d2_cold_boot);
+  } else {
+    const bs = readJsonSafe(path.join(stateDir, 'boot-status.json'));
+    const owner = (bs && bs.written_by && typeof bs.written_by.session_id === 'string' && bs.written_by.session_id)
+      || (bs && typeof bs.session_id === 'string' ? bs.session_id : '');
+    iso.bootOwn = !owner || owner === iso.liveSessionId;
+  }
+
+  // --- meta slice (S-label, meta-cumulative counters, estimated ctx) ------------
+  const meta = readJsonSafe(path.join(stateDir, 'session-meta.json'));
+  const metaOwner = meta && typeof meta.session_id === 'string' ? meta.session_id : '';
+  iso.metaOwn = !metaOwner || metaOwner === iso.liveSessionId || iso.selfFork;
+  if (!iso.metaOwn && rawState.session && typeof rawState.session === 'object') {
+    rawState.session.sessionNumber = 0; // foreign S-label never renders
+    rawState.session.toolCount = 0;     // foreign session's cumulative counter
+    const stdinCtx = stdin && stdin.context_window
+      && typeof stdin.context_window.used_percentage === 'number';
+    if (!stdinCtx) {
+      rawState.session.contextPct = 0;  // foreign estimate; live value arrives via stdin only
+      rawState.session.contextLabel = 'est.';
+    }
+  }
+
+  // --- rig slice -----------------------------------------------------------------
+  const rig = rawState.rigContext;
+  if (rig && typeof rig === 'object') {
+    const rigOwner = typeof rig.sessionId === 'string' ? rig.sessionId : '';
+    iso.rigOwn = !!rigOwner && (rigOwner === iso.liveSessionId || iso.selfFork);
+    if (!iso.rigOwn) {
+      rawState.rigContext = null; // foreign (or unattributed) rig state: suppress whole
+    } else if (Array.isArray(rig.issues)) {
+      // Own rig state: concurrent sessions are NORMAL — the active_sessions
+      // check never renders on a statusline (operator-ruled: multi-instance
+      // is a normal operating mode, not a warning).
+      const kept = rig.issues.filter((issue) => !(issue && issue.name === 'active_sessions'));
+      if (kept.length !== rig.issues.length) {
+        rig.issues = kept;
+        rig.issueCount = kept.length;
+        rig.status = kept.reduce(
+          (current, issue) => (rigStatusRank(issue.status) > rigStatusRank(current) ? issue.status : current),
+          'ok'
+        );
+        rig.headline = kept.length === 0
+          ? 'rig context ok'
+          : `${kept.length} rig ${kept.length === 1 ? 'check needs' : 'checks need'} attention`;
+      }
+    }
+  }
+
+  return rawState;
+}
+
 module.exports = {
   loadHudData,
   buildCapabilities,
@@ -987,4 +1097,5 @@ module.exports = {
   RIG_CONTEXT_DEFAULT_TTL_MS,
   appendHudHistorySample,
   mergeHarnessStdin,
+  applySessionIsolation,
 };

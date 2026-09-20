@@ -1,3 +1,4 @@
+// @ts-check
 'use strict';
 
 /**
@@ -104,6 +105,7 @@ function deriveStatus(entry, healthIndicator) {
  * @returns {Array<{level: 'warning'|'critical', message: string}>}
  */
 function generateAlerts(processes) {
+  /** @type {Array<{level: 'warning'|'critical', message: string}>} */
   const alerts = [];
 
   for (const proc of processes) {
@@ -142,6 +144,7 @@ module.exports = {
     actions: {
       ps: { description: 'Process health status summary + per-process details + alerts', args: [] },
     },
+    /** @returns {import('../kernel/contracts.cjs').HealthResult} */
     health() {
       return { ...(this._healthCache || { ok: false, reason: 'not initialized' }) };
     },
@@ -150,10 +153,12 @@ module.exports = {
 
   _os: null,
   _stateDir: null,
+  /** @type {import('../kernel/contracts.cjs').HealthResult} */
   _healthCache: { ok: false, reason: 'not initialized' },
   _bootTime: null,
 
   probeCost: 'cheap',
+  /** @returns {import('../kernel/contracts.cjs').HealthResult} */
   probe() {
     try {
       const osDir = require('node:path').join(process.cwd(), '_runs', 'os');
@@ -211,9 +216,10 @@ module.exports = {
 
   actions: {
     /**
-     * Return the full process health status per spec section 7.1.
+     * Return the full process health status per spec section 7.1, or an
+     * error object when the process registry is unavailable.
      *
-     * @returns {{ summary: object, processes: object[], alerts: object[] }}
+     * @returns {{ summary: object, processes: object[], alerts: object[] } | { error: string }}
      */
     ps(_args, os) {
       const registry = os && os.kernel && os.kernel.registry;

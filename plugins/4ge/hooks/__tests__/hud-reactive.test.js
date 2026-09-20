@@ -219,6 +219,41 @@ describe('detectEvent', () => {
     });
   });
 
+  // ── test-result boundary: '0 failed' substring bug (S578 regression) ──────────
+  // A failure count ENDING IN 0 ("10 failed", "20 failed") CONTAINS the substring
+  // "0 failed", so the pre-fix guard `!outputStr.includes('0 failed')` skipped the
+  // fail branch and the run was misclassified as test-pass. The FP-benchmark
+  // (_runs/2026-07-16/fp-benchmark) flagged this as a live bug. Detection must key
+  // on the numeric failure COUNT, not a substring.
+  describe("test-result boundary — '0 failed' substring (S578 regression)", () => {
+    it('returns "test-fail" for "10 failed" (contains the "0 failed" substring)', () => {
+      const { detectEvent } = requireFresh();
+      expect(detectEvent({
+        tool_name: 'Bash',
+        tool_input: { command: 'npx vitest run' },
+        tool_response: 'Tests  10 failed | 90 passed',
+      })).toBe('test-fail');
+    });
+
+    it('returns "test-fail" for "20 failed" (another count ending in 0)', () => {
+      const { detectEvent } = requireFresh();
+      expect(detectEvent({
+        tool_name: 'Bash',
+        tool_input: { command: 'npx vitest run' },
+        tool_response: 'Tests  20 failed | 80 passed',
+      })).toBe('test-fail');
+    });
+
+    it('still returns "test-pass" for a genuine "0 failed" run (no over-correction)', () => {
+      const { detectEvent } = requireFresh();
+      expect(detectEvent({
+        tool_name: 'Bash',
+        tool_input: { command: 'npx vitest run' },
+        tool_response: 'Tests  100 passed | 0 failed',
+      })).toBe('test-pass');
+    });
+  });
+
   // ── forge-phase ───────────────────────────────────────────────────────────────
   describe('forge-phase event', () => {
     it('returns "forge-phase" for TaskUpdate with forge in subject', () => {

@@ -17,7 +17,7 @@ You are a RUNTIME. Domain knowledge comes from:
   (b) the domain vocabulary doc referenced as skill precondition — Phase B ref-doc-gate will deny edits without it
   (c) CONTEXT_MAP injection at SubagentStart (automatic)
 
-Read-before-Edit on `.claude/` files. Ghost-reversion: atomic commit pattern if a session has compacted. Verify before claiming done (tests, lint, typecheck). Memory protocol: search the domain tag before implementing; store key decisions after.
+For `.claude/` writes, follow the target repo's deliberate config-write procedure: a read-only gate may refuse the write regardless of Read state, and staging/commit approval remains separate. Never describe an up-front refusal as a later revert. Verify before claiming done (tests, lint, typecheck). Memory protocol: search the domain tag before implementing; store key decisions after.
 
 ## How to dispatch
 

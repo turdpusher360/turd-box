@@ -126,6 +126,63 @@ function buildHashMap(dirs) {
   return map;
 }
 
+// Full-rehash floor for the incremental baseline path: even when every file's
+// {mtimeMs, size} pair is unchanged, re-hash everything once this interval has
+// elapsed since the last full pass, so a hypothetical mtime+size-preserving
+// tamper cannot hide behind hash reuse forever.
+const FULL_REHASH_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+/**
+ * Incremental variant of buildHashMap. Reuses the previous baseline's hash for
+ * any file whose {mtimeMs, size} stat pair is unchanged; hashes everything
+ * else. Falls back to a full rehash when the previous baseline is absent,
+ * pre-incremental (no meta sidecar), or past FULL_REHASH_TTL_MS.
+ *
+ * Security property: a file whose mtime or size changed is ALWAYS rehashed;
+ * reuse only ever applies to stat-identical files, bounded by the TTL floor.
+ * The pin-hooks manifest verification in boot Step 3 (the enforcement surface
+ * for pinned files) is unaffected — it hashes its manifest set unconditionally.
+ *
+ * @param {string[]} dirs - absolute directory paths
+ * @param {{hashes?: Object.<string,string>, meta?: Object.<string,{mtimeMs:number,size:number}>, lastFullHashAt?: number}|null} prevBaseline
+ * @returns {{hashes: Object.<string,string>, meta: Object.<string,{mtimeMs:number,size:number}>, reused: number, hashed: number, fullRehash: boolean}}
+ */
+function buildHashMapIncremental(dirs, prevBaseline) {
+  const cwd = process.cwd();
+  const prevHashes = (prevBaseline && prevBaseline.hashes) || null;
+  const prevMeta = (prevBaseline && prevBaseline.meta) || null;
+  const lastFull = prevBaseline && typeof prevBaseline.lastFullHashAt === 'number'
+    ? prevBaseline.lastFullHashAt
+    : 0;
+  const canReuse = !!(prevHashes && prevMeta) && (Date.now() - lastFull) <= FULL_REHASH_TTL_MS;
+
+  const hashes = {};
+  const meta = {};
+  let reused = 0;
+  let hashed = 0;
+  for (const dir of dirs) {
+    for (const filePath of collectFiles(dir)) {
+      try {
+        const rel = path.relative(cwd, filePath).split(path.sep).join('/');
+        const stat = fs.statSync(filePath);
+        const prev = canReuse ? prevMeta[rel] : undefined;
+        if (prev && prev.mtimeMs === stat.mtimeMs && prev.size === stat.size &&
+            typeof prevHashes[rel] === 'string') {
+          hashes[rel] = prevHashes[rel];
+          reused++;
+        } else {
+          hashes[rel] = hashFile(filePath);
+          hashed++;
+        }
+        meta[rel] = { mtimeMs: stat.mtimeMs, size: stat.size };
+      } catch (_err) {
+        // unreadable file — skip (matches buildHashMap)
+      }
+    }
+  }
+  return { hashes, meta, reused, hashed, fullRehash: !canReuse };
+}
+
 // ---------------------------------------------------------------------------
 // Agent contract parsing
 // ---------------------------------------------------------------------------
@@ -480,11 +537,21 @@ function boot(osContext, stateDir, sessionId) {
         try { fs.statSync(d); return true; } catch { return false; }
       });
 
-      const hashMap = buildHashMap(dirsToHash.filter(d => {
-        try { return fs.statSync(d).isDirectory(); } catch { return false; }
-      }));
+      // Incremental rebuild (QOL): reuse prior hashes for stat-identical files
+      // instead of unconditionally rehashing 400+ files (~1.5s of every boot).
+      // Changed files are always rehashed; buildHashMapIncremental falls back
+      // to a full pass when the prior baseline is unusable or TTL-expired.
+      let prevBaseline = null;
+      try {
+        prevBaseline = JSON.parse(fs.readFileSync(baselinePath, 'utf8'));
+      } catch { /* absent or unreadable — full rehash */ }
 
-      // Also hash settings.json if it's a file
+      const incremental = buildHashMapIncremental(dirsToHash.filter(d => {
+        try { return fs.statSync(d).isDirectory(); } catch { return false; }
+      }), prevBaseline);
+      const hashMap = incremental.hashes;
+
+      // Also hash settings.json if it's a file (single file — always rehash)
       const settingsPath = path.join(cwd, 'settings.json');
       if (fs.existsSync(settingsPath)) {
         try {
@@ -497,7 +564,11 @@ function boot(osContext, stateDir, sessionId) {
       fs.mkdirSync(baselinesDir, { recursive: true });
       const baselineData = {
         createdAt: Date.now(),
+        lastFullHashAt: incremental.fullRehash
+          ? Date.now()
+          : (prevBaseline && prevBaseline.lastFullHashAt) || Date.now(),
         hashes: hashMap,
+        meta: incremental.meta,
       };
 
       if (fs.existsSync(baselinePath)) {
@@ -932,4 +1003,5 @@ function checkDeps() {
 // Exports
 // ---------------------------------------------------------------------------
 
-module.exports = { boot, getState };
+// buildHashMap/buildHashMapIncremental exported as test seams (like getState).
+module.exports = { boot, getState, buildHashMap, buildHashMapIncremental };

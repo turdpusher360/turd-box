@@ -1,3 +1,4 @@
+// @ts-check
 'use strict';
 
 /**
@@ -36,7 +37,7 @@ const { createObservability } = require('../services/observability.cjs');
  * Run a step function and capture timing + status.
  *
  * @param {string} name - Step identifier
- * @param {() => 'ok'|'degraded'|'failed'} fn - Step implementation
+ * @param {() => string} fn - Step implementation (returns a status token: 'ok'|'degraded'|'failed')
  * @returns {{ name: string, status: string, ms: number }}
  */
 function runStep(name, fn) {

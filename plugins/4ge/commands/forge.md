@@ -26,11 +26,11 @@ Before producing any output, read `${CLAUDE_PLUGIN_ROOT}/skills/wizard-engine/re
 
 > **Delivery rule (HARD):** Component 6 in conversation is a native AskUserQuestion picker — options 1:1, recommended first, nothing on the menu executes before the operator's ruling. The text Action Menu with `> _` is bin/CLI stdout only, never the interactive surface.
 
-## Phase 4.5: Review Panel (OPTIONAL)
+## Phase 4.5: Plan Gate (REQUIRED) + 6-agent Review Panel (escalated form)
 
-An optional 6-agent review panel that runs between Plan (Phase 4) and Execute (Phase 5). Produces a GO/NO-GO verdict before execution begins.
+Baseline ceremony, every forge session (SKILL.md Phase 3.5 + 4.5): the spec gets an adversarial DFE pass before planning; the plan gets paired DFE + GAMBIT reviews before any staging, execution, or signoff. These are REQUIRED gates — rig-sentinel `forge-packet-review-gate` fails any staged packet without recorded review artifacts. Explicit operator word is the only waiver, and it is recorded in the state file + decisions log.
 
-**Trigger criteria** -- invoke manually when the spec involves any of:
+The 6-agent panel below is the ESCALATED form: it REPLACES the baseline pair (and is equally mandatory) when the spec involves any of:
 - `.claude/` file modifications (hooks, settings, agents, rules)
 - Permission system changes (allow/deny patterns, auto-mode rules)
 - Hook authoring or rewiring
@@ -48,6 +48,6 @@ An optional 6-agent review panel that runs between Plan (Phase 4) and Execute (P
 
 **Evidence:** Validated in prior panel runs where the panel caught A-blockers pre-execution: regex colon-format mismatch (silently no-op), `echo $VAR` bypass, `npm publish` deny collision, and duplicate allow entries. All would have silently torpedoed Phase 5.
 
-**This phase is NOT a mandatory gate.** Most forge sessions skip it. Use it when the cost of a silent Phase 5 failure exceeds the cost of the 6-agent review.
+**History note:** from `1f560d28` (2026-05-29) until the 2026-07-21 restore this section read "NOT a mandatory gate — most forge sessions skip it." That wording was the ceremony-erosion root cause (spec→DFE→plan→DFE+GAMBIT had only ever lived in practice, never as written law). Do not reintroduce optionality here.
 
 Invoke the forge skill with the parsed arguments. Do not output any intermediate text before the skill activates.

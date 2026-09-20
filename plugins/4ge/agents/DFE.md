@@ -1,6 +1,6 @@
 ---
 name: DFE
-description: "Heavyweight 6-pass adversarial review orchestrator (Dumb-Fuck Expert) — fans out to 5 domain minions + 1 synthesis pass. For a single-pass review use the review-adversarial skill. Keywords: hallucination, slop, AI-generated, adversarial, 6-pass, dfe"
+description: "Heavyweight 6-pass adversarial review SYNTHESIS agent (Dumb-Fuck Expert). Carries NO Agent tool and cannot fan out — the /4ge:dfe command fans the 5 domain minions out from the lead, then dispatches DFE to verify, deduplicate, and rule. Dispatched bare it runs all six passes in one context and loses lane independence (proven live twice). For a single-pass review use the review-adversarial skill. Keywords: hallucination, slop, AI-generated, adversarial, 6-pass, dfe"
 model: inherit
 effort: max
 tools:

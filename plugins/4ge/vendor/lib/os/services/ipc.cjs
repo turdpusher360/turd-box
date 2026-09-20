@@ -1,3 +1,4 @@
+// @ts-check
 'use strict';
 
 /**
@@ -40,6 +41,7 @@ const VALID_TYPES = ['REQUEST', 'RESPONSE', 'BROADCAST', 'HEARTBEAT', 'HANDOFF',
  *   send(opts: object): object,
  *   receive(pid: number|string, opts?: object): object[],
  *   broadcast(opts: object): object,
+ *   cleanup(maxAgeMs: number): number,
  * }}
  */
 function createIPC(stateDir, sessionId) {
@@ -162,9 +164,9 @@ function createIPC(stateDir, sessionId) {
   /**
    * Send a message to all recipients (pid: '*').
    *
-   * @param {object} opts
+   * @param {object} [opts]
    * @param {string} [opts.type='BROADCAST'] - Message type (defaults to BROADCAST).
-   * @param {object}  opts.payload           - Arbitrary message data.
+   * @param {any} [opts.payload]             - Arbitrary message data.
    * @param {object} [opts.from]             - Sender descriptor.
    * @param {string} [opts.correlationId]    - Optional correlation ID.
    * @returns {object} The persisted message object.

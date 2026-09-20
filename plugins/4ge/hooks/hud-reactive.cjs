@@ -230,11 +230,15 @@ function detectEvent(input) {
       return 'push';
     }
     if (cmd.includes('vitest') || cmd.includes('jest')) {
-      // Check failures FIRST — "3 failed | 97 passed" contains both "failed" and "passed"
-      if (outputStr.includes('failed') && !outputStr.includes('0 failed')) {
+      // Check failures FIRST — "3 failed | 97 passed" contains both "failed" and "passed".
+      // Parse the failure COUNT numerically: a substring test for '0 failed' misreads
+      // "10 failed" (which CONTAINS "0 failed") as a pass (S578 fix).
+      const failedMatch = outputStr.match(/(\d+)\s+failed/);
+      const failedCount = failedMatch ? Number(failedMatch[1]) : null;
+      if (outputStr.includes('failed') && failedCount !== 0) {
         return 'test-fail';
       }
-      if (outputStr.includes('0 failed') || (outputStr.includes('Tests  ') && outputStr.includes('passed'))) {
+      if (failedCount === 0 || (outputStr.includes('Tests  ') && outputStr.includes('passed'))) {
         return 'test-pass';
       }
     }

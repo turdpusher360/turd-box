@@ -14,6 +14,7 @@ Every teammate prompt must say:
 - not to revert unrelated changes,
 - which proof plane the teammate is covering,
 - where to write the disk-first report under `_runs/`,
+- that Claude Code 2.1.215 reserves subagent basenames beginning `REPORT`, `SUMMARY`, `FINDINGS`, or `ANALYSIS`: attempt an intended contained `_runs/` target once, let the wired `SubagentStop` rescue land it, verify after stop, and never retry or Bash-bypass the refusal,
 - what files, generated outputs, proof planes, or low-confidence findings were skipped.
 
 ## Implementation Template
@@ -40,6 +41,7 @@ Do NOT edit files outside this scope. If you need changes outside your scope, us
 
 ## Output
 Write your work summary to _runs/{date}/{slug}-{teammate}.md FIRST.
+Keep `{slug}` outside the reserved `REPORT`/`SUMMARY`/`FINDINGS`/`ANALYSIS` prefixes when true disk-before-final behavior is required. If an exact reserved target is required, attempt `Write` once and return the full report text so the `SubagentStop` rescue/fallback path remains complete.
 Then send a one-paragraph summary to the lead.
 
 ## Verification

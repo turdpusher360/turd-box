@@ -450,32 +450,149 @@ function classesForTools(tools) {
 }
 
 /**
- * Remove expired contract files. WRITE PATH. Returns the count removed.
- * @param {object} [opts] {stateDir?:string, now?:number}
- * @returns {{removed:number}}
+ * Anomaly = a `.json` contract file that won't parse or lacks the minimal
+ * contract shape (a non-empty `contract_id` string). `normalizeContract` stamps
+ * `contract_id` on every write path (register / registerTypeContract), so a
+ * stored file missing it was never written by this store — it is a corruption /
+ * alien-writer signal the GC delete path must not reclaim blind.
+ *
+ * Deliberately NOT triggered by contract CONTENT (an expired vs live contract, a
+ * novel/extra field): expiry is the normal reclaim target and unknown keys are
+ * harmless. Only a parse failure or a broken identity shape is anomalous — the
+ * faithful analog of the broker token-store's `isGcAnomaly` (which keys on
+ * `token_id`). This mirrors the broker's refuse-closed posture into the contract
+ * store (upstream operator-ruled parity).
+ * @param {*} parsed the raw JSON.parse result (NOT normalized)
+ * @returns {boolean}
  */
-function expire(opts = {}) {
-  const stateDir = opts.stateDir || resolveStateDir();
-  const nowMs = typeof opts.now === 'number' ? opts.now : Date.now();
+function isGcAnomaly(parsed) {
+  return !parsed
+    || typeof parsed !== 'object'
+    || Array.isArray(parsed)
+    || typeof parsed.contract_id !== 'string'
+    || parsed.contract_id.length === 0;
+}
+
+/**
+ * Scan the contract store for expired records AND parse/shape anomalies.
+ * READ-ONLY. Shared by expire() (delete) and listExpired() (dry-run preview) so a
+ * preview shows EXACTLY the set — and the exact anomalies — an --apply pass would
+ * act on (no drift between the two).
+ *
+ * GC-safety invariants baked in here:
+ *  - only files ending in `.json` are considered; the append-only audit trail is
+ *    `audit.jsonl` and orphaned `.tmp` writes are structurally out of scope.
+ *  - the raw bytes are parsed HERE (not via readContractFile) so a parse failure
+ *    can be distinguished from a shape break and reported by reason. An anomalous
+ *    file is recorded, NEVER unlinked: refuse-closed leaves the whole store
+ *    untouched when any anomaly is present.
+ * @param {string} stateDir
+ * @param {number} nowMs
+ * @returns {{expired:{file:string, fp:string, contract:object}[],
+ *            anomalies:{file:string, fp:string, reason:string}[]}}
+ */
+function scanExpired(stateDir, nowMs) {
   const dir = contractsDir(stateDir);
+  const expired = [];
+  const anomalies = [];
   let entries;
   try {
     entries = fs.readdirSync(dir);
   } catch {
-    return { removed: 0 };
+    return { expired, anomalies }; // no store yet -> nothing to collect
+  }
+  for (const name of entries) {
+    if (!name.endsWith('.json')) continue; // never the audit.jsonl trail / .tmp orphans
+    const fp = path.join(dir, name);
+    let parsed = null;
+    let parseFailed = false;
+    try {
+      parsed = JSON.parse(fs.readFileSync(fp, 'utf8'));
+    } catch {
+      parseFailed = true;
+    }
+    if (parseFailed || isGcAnomaly(parsed)) {
+      anomalies.push({ file: name, fp, reason: parseFailed ? 'unparseable-json' : 'missing-contract-id-or-bad-shape' });
+      continue;
+    }
+    const contract = normalizeContract(parsed, { now: nowMs });
+    if (isExpired(contract, nowMs)) expired.push({ file: name, fp, contract });
+  }
+  return { expired, anomalies };
+}
+
+/**
+ * Remove expired contract files. WRITE PATH. REFUSES CLOSED: if ANY anomaly
+ * (unparseable / shape-broken `.json`) is present, it deletes NOTHING and returns
+ * {removed:0, refused:true, anomalies}. The scan runs HERE (independently of any
+ * prior preview) so the refusal re-checks at apply time — a race that introduced
+ * an anomaly after a clean dry-run still refuses. This is the broker token-store
+ * GC posture (upstream operator-ruled parity); a security store with unparseable
+ * entries is not safe to reclaim blind.
+ *
+ * Covers BOTH namespaces: the per-name `t-<hex>.json` contracts (whose unbounded
+ * cross-session accrual is the reason this GC lane exists — each new session_id
+ * mints fresh files that nothing else reclaims) and the `<hex>.json` lead/agent-
+ * keyed contracts. Never touches the append-only `audit.jsonl`. A benign
+ * GC-unlink/register race surfaces as ENOENT and is swallowed; any other unlink
+ * error is reported in `errors`, not silently lost.
+ * @param {object} [opts] {stateDir?:string, now?:number}
+ * @returns {{removed:number, refused:boolean, anomalies:{file:string, reason:string}[], errors:{file:string, code:string}[]}}
+ */
+function expire(opts = {}) {
+  const stateDir = opts.stateDir || resolveStateDir();
+  const nowMs = typeof opts.now === 'number' ? opts.now : Date.now();
+  const { expired, anomalies } = scanExpired(stateDir, nowMs);
+  if (anomalies.length > 0) {
+    return {
+      removed: 0,
+      refused: true,
+      anomalies: anomalies.map((a) => ({ file: a.file, reason: a.reason })),
+      errors: [],
+    };
   }
   let removed = 0;
-  for (const name of entries) {
-    if (!name.endsWith('.json')) continue;
-    const fp = path.join(dir, name);
-    const parsed = readContractFile(fp);
-    if (!parsed) continue;
-    const contract = normalizeContract(parsed, { now: nowMs });
-    if (isExpired(contract, nowMs)) {
-      try { fs.unlinkSync(fp); removed++; } catch { /* already gone */ }
+  const errors = [];
+  for (const cand of expired) {
+    try {
+      fs.unlinkSync(cand.fp);
+      removed++;
+    } catch (err) {
+      if (err && err.code === 'ENOENT') continue; // benign GC/register race
+      errors.push({ file: cand.file, code: (err && err.code) || 'unknown' });
     }
   }
-  return { removed };
+  return { removed, refused: false, anomalies: [], errors };
+}
+
+/**
+ * Preview the expired contracts a GC pass would remove AND any parse/shape
+ * anomalies that would make it refuse, WITHOUT deleting anything (the dry-run
+ * half of the GC lane). READ-ONLY — no I/O beyond reads. Each expired descriptor
+ * tags the `t-` per-name namespace so the operator can see the growth source at a
+ * glance; anomalies carry a reason so the operator knows what to inspect.
+ * @param {object} [opts] {stateDir?:string, now?:number}
+ * @returns {{expired:{file:string, contract_id:string, subject:object, is_type_contract:boolean, expires_at:number|null}[],
+ *            anomalies:{file:string, reason:string}[]}}
+ */
+function listExpired(opts = {}) {
+  const stateDir = opts.stateDir || resolveStateDir();
+  const nowMs = typeof opts.now === 'number' ? opts.now : Date.now();
+  const { expired, anomalies } = scanExpired(stateDir, nowMs);
+  return {
+    expired: expired.map(({ file, contract }) => {
+      const created = Date.parse(contract.created_at);
+      const ttl = Number.isFinite(contract.ttl_ms) && contract.ttl_ms > 0 ? contract.ttl_ms : DEFAULT_TTL_MS;
+      return {
+        file,
+        contract_id: contract.contract_id,
+        subject: contract.subject,
+        is_type_contract: file.startsWith('t-'),
+        expires_at: Number.isNaN(created) ? null : created + ttl,
+      };
+    }),
+    anomalies: anomalies.map((a) => ({ file: a.file, reason: a.reason })),
+  };
 }
 
 /**
@@ -703,6 +820,7 @@ module.exports = {
   lookupByType,
   getById,
   list,
+  listExpired,
   // write path
   register,
   registerFromDispatch,

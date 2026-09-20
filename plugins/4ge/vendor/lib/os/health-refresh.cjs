@@ -1,7 +1,9 @@
+// @ts-check
 'use strict';
 
 const fs = require('node:fs');
 const path = require('node:path');
+const { deriveWriter, recordWrite } = require('./write-attribution.cjs');
 
 /**
  * Discover capability modules in capDir and return { name, module } for each
@@ -62,8 +64,16 @@ function runProbes(entries) {
 
 /**
  * Atomic write of a flat health map to stateDir/health.json.
+ *
+ * health.json itself stays a pure flat cap->health map (no wrapper keys) — its
+ * readers iterate every top-level key as a capability. Rung B attribution for
+ * this file therefore lives in the boot-writers journal, not in the payload.
+ *
+ * @param {string} stateDir
+ * @param {object} healthMap
+ * @param {object} [writerOpts] Optional attribution hints (sessionId, entry, surface).
  */
-function writeHealth(stateDir, healthMap) {
+function writeHealth(stateDir, healthMap, writerOpts) {
   try {
     fs.mkdirSync(stateDir, { recursive: true });
   } catch { /* ignore */ }
@@ -71,25 +81,40 @@ function writeHealth(stateDir, healthMap) {
   const tmp = `${target}.${process.pid}.tmp`;
   fs.writeFileSync(tmp, JSON.stringify(healthMap, null, 2), 'utf8');
   fs.renameSync(tmp, target);
+
+  // Journal the write (best-effort — must never break the health write).
+  try {
+    const writer = deriveWriter({ ...(writerOpts || {}), stateDir });
+    const okCount = Object.values(healthMap).filter(h => h && h.ok).length;
+    recordWrite(stateDir, 'health.json', writer, `${okCount}/${Object.keys(healthMap).length} ok`);
+  } catch { /* attribution is best-effort */ }
 }
 
 /**
  * Run cheap probes only. Used by os-accounting PostToolUse hook.
+ *
+ * @param {string} capDir
+ * @param {string} stateDir
+ * @param {object} [writerOpts] Optional attribution hints forwarded to writeHealth.
  */
-function refreshCheap(capDir, stateDir) {
+function refreshCheap(capDir, stateDir, writerOpts) {
   const { cheap } = classifyProbes(capDir);
   const healthMap = runProbes(cheap);
-  writeHealth(stateDir, healthMap);
+  writeHealth(stateDir, healthMap, writerOpts);
   return healthMap;
 }
 
 /**
  * Run cheap + expensive probes. Used by /4ge on-demand path.
+ *
+ * @param {string} capDir
+ * @param {string} stateDir
+ * @param {object} [writerOpts] Optional attribution hints forwarded to writeHealth.
  */
-function refreshAll(capDir, stateDir) {
+function refreshAll(capDir, stateDir, writerOpts) {
   const { cheap, expensive } = classifyProbes(capDir);
   const healthMap = { ...runProbes(cheap), ...runProbes(expensive) };
-  writeHealth(stateDir, healthMap);
+  writeHealth(stateDir, healthMap, writerOpts);
   return healthMap;
 }
 

@@ -1,4 +1,15 @@
+// @ts-check
 'use strict';
+
+/**
+ * Health snapshot returned by a capability's `manifest.health()` / `probe()`
+ * and cached on its `_healthCache`. The kernel contract is exactly `ok` plus
+ * optional `reason` (capability-registry boot reads `health.ok` /
+ * `health.reason`; health-refresh probes read `h.ok`). Every other key is a
+ * capability-specific diagnostic passed through opaquely to health.json /
+ * boot-status consumers, hence the open index signature.
+ * @typedef {{ ok: boolean, reason?: string, [extra: string]: unknown }} HealthResult
+ */
 
 const DEFAULT_CONTRACT = {
   priority: 'normal',

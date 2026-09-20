@@ -4,10 +4,9 @@ description: "Legacy master-auditor compatibility variant; inherits runtime mode
 tools: Bash, Grep, Glob, Read, Write, WebSearch, WebFetch, SendMessage, TaskUpdate, TaskList, TaskGet, mcp__dev-memory__memory_search, mcp__dev-memory__memory_store
 model: inherit
 effort: high
-permissionMode: plan
 maxTurns: 200
 memory: project
-last-verified: 2026-04-17
+last-verified: 2026-08-05
 ---
 
 ## Dev-Memory MCP (Deferred Tools)

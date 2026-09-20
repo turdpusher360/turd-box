@@ -23,7 +23,7 @@ const { renderRigZone, renderRigCompact, RIG_META, rigContextVisible } = require
 const { renderMoonphaseZone, ZONE_META: MOONPHASE_META, moonphaseVisible } = require('./hud-zone-moonphase.cjs');
 const { renderWeasleyZone, ZONE_META: WEASLEY_META, weasleyVisible } = require('./hud-zone-weasley.cjs');
 const { renderBoardZone, ZONE_META: BOARD_META, boardVisible } = require('./hud-zone-board.cjs');
-const { loadHudData, mergeHarnessStdin, resolveSessionUptime } = require('./hud-data-loader.cjs');
+const { loadHudData, mergeHarnessStdin, resolveSessionUptime, applySessionIsolation } = require('./hud-data-loader.cjs');
 const { renderSubstrateZone } = require('./hud-zone-substrate.cjs');
 const { composeScene } = require('./scene-compositor.cjs');
 const {
@@ -720,8 +720,32 @@ function renderCompact(rawState) {
 // --- StatusLine Mode Renderer ---
 // Face on row 1 (gradient eyes), dense info rows below.
 // Designed for the statusLine slot with --max-rows=N.
+// Rung D (S590 boot-coherence ladder): lazily load the read-only coherence formatter.
+// Prefer the vendored copy (the only tree that exists in an installed plugin), fall back
+// to the repo source (dev checkout). Cached after the first resolve. Any failure yields
+// null so the statusline simply omits the coherence flag — it never throws.
+let _bootCoherenceMod;
+function loadBootCoherence() {
+  if (_bootCoherenceMod !== undefined) return _bootCoherenceMod;
+  const candidates = [
+    '../vendor/lib/os/services/boot-coherence.cjs',
+    '../../../lib/os/services/boot-coherence.cjs',
+  ];
+  _bootCoherenceMod = null;
+  for (const rel of candidates) {
+    try {
+      _bootCoherenceMod = require(rel);
+      break;
+    } catch { /* try the next candidate */ }
+  }
+  return _bootCoherenceMod;
+}
+
 function renderStatusLine(rawState, maxRows) {
   const state = buildCanonicalState(rawState);
+  // S595 per-instance isolation flags (set by applySessionIsolation on the
+  // statusline CLI path; absent → legacy behavior, everything renders).
+  const iso = (rawState && rawState.sessionIsolation) || null;
   const projectRoot = resolveProjectRoot({
     envProjectDir: rawState && rawState.projectRoot,
     fallbackRoot: process.env.CLAUDE_PROJECT_DIR || path.resolve(__dirname, '..', '..', '..'),
@@ -744,13 +768,16 @@ function renderStatusLine(rawState, maxRows) {
   const verMatch = modelId.match(/(\d+)-(\d+)/);
   let modelVer = verMatch ? `${verMatch[1]}.${verMatch[2]}` : '';
   if (!modelVer) { const sv = modelId.match(/-(\d+)(?:\[|$)/); if (sv) modelVer = sv[1]; }
-  // Session number from session-meta.json (set by os-boot.cjs)
+  // Session number from session-meta.json (set by os-boot.cjs). Foreign meta
+  // (another session's stamp) never renders its S-label here (S595 isolation).
   let sessionNumber = 0;
-  try {
-    const metaPath = require('node:path').join(projectRoot, '_runs', 'os', 'session-meta.json');
-    const meta = JSON.parse(require('node:fs').readFileSync(metaPath, 'utf8'));
-    sessionNumber = meta.session_number || 0;
-  } catch { /* no session number */ }
+  if (!iso || iso.metaOwn !== false) {
+    try {
+      const metaPath = require('node:path').join(projectRoot, '_runs', 'os', 'session-meta.json');
+      const meta = JSON.parse(require('node:fs').readFileSync(metaPath, 'utf8'));
+      sessionNumber = meta.session_number || 0;
+    } catch { /* no session number */ }
+  }
   const sessionLabel = sessionNumber > 0 ? `\x1b[38;5;103mS${sessionNumber}\x1b[0m` : '';
   // Repo label from project-root basename \u2014 lets concurrent sessions across
   // repos and worktrees self-identify at a glance. Same root resolution as the
@@ -884,9 +911,13 @@ function renderStatusLine(rawState, maxRows) {
   // Row 1: face · model · caps · ctx% · 5h% ↻timer · effort · think:off
   const r1 = [
     `${faceStr}${facePad}${modelLabel}`,
-    `${LO}${capTotal - degradedCount}/${capTotal}${RST}`,
-    `\x1b[1m\x1b[38;5;75m\u25C8${RST} \x1b[38;5;75m${ctxPct}%${RST}`,
   ];
+  // Caps ratio reads shared boot/health state \u2014 a foreign-owned boot never
+  // renders its capability count on this session's statusline (S595).
+  if (!iso || iso.bootOwn !== false) {
+    r1.push(`${LO}${capTotal - degradedCount}/${capTotal}${RST}`);
+  }
+  r1.push(`\x1b[1m\x1b[38;5;75m\u25C8${RST} \x1b[38;5;75m${ctxPct}%${RST}`);
   if (rl && typeof rl.fiveHour === 'number') {
     const c5 = rlColor(rl.fiveHour);
     let l5 = `${c5}5h:${Math.round(rl.fiveHour)}%${RST}`;
@@ -999,6 +1030,33 @@ function renderStatusLine(rawState, maxRows) {
     ];
   }
 
+  // Boot-coherence flag (rung D, S590): is the boot-status this HUD is rendering actually
+  // THIS session's, or a foreign/killed/out-of-band write we would otherwise trust silently?
+  // Read-only; renders a single warning row ONLY when the check is red, so steady state stays
+  // silent. Placed above the auto-feeds because it qualifies every OS-health signal below it.
+  // Fail-safe: any failure disables the flag and never breaks the statusline.
+  // S595 isolation: a foreign-owned boot-status is SUPPRESSED, not labeled —
+  // the d1/d2 red banner belongs to sessions that own the boot they distrust.
+  // Own-boot alarms (d3 dead sentinel / d4 divergence / d5 no attribution)
+  // still render because bootOwn stays true for them.
+  try {
+    const bc = (!iso || iso.bootOwn !== false) ? loadBootCoherence() : null;
+    if (bc && typeof bc.formatBootCoherenceLine === 'function' && rows.length < ceiling) {
+      const coh = bc.formatBootCoherenceLine({
+        stateDir: require('node:path').join(projectRoot, '_runs', 'os'),
+        liveSessionId: session.id,
+      });
+      if (coh && coh.red && coh.reason) {
+        const role = coh.checks && coh.checks.severe ? 'error' : 'warn';
+        const cohRow = feedGutter
+          + colorize(palette, 'muted', 'boot ')
+          + colorize(palette, role, clipStatusText(coh.reason, 96));
+        // Sit just below the header/companion rows, above anomaly/board/feeds.
+        rows.splice(Math.min(rows.length, 3), 0, cohRow);
+      }
+    }
+  } catch { /* coherence flag unavailable — render the statusline normally */ }
+
   const anomalyRows = renderAnomalyStatuslineRows(state, palette, Math.max(0, ceiling - rows.length), feedGutter);
   if (anomalyRows.length > 0) {
     rows = rows.concat(anomalyRows);
@@ -1029,7 +1087,10 @@ function renderStatusLine(rawState, maxRows) {
     const bootStatusPath = require('node:path').join(projectRoot, '_runs', 'os', 'boot-status.json');
     const bs = JSON.parse(require('node:fs').readFileSync(bootStatusPath, 'utf8'));
     const booted = Date.parse(bs && bs.booted_at);
-    if (Number.isFinite(booted) && (Date.now() - booted) <= 12000) {
+    // S595 isolation: only the session that owns this boot gets the expanded
+    // pulse — a foreign session's fresh boot must not hijack this statusline.
+    const bootPulseOwn = !iso || iso.bootOwn !== false;
+    if (bootPulseOwn && Number.isFinite(booted) && (Date.now() - booted) <= 12000) {
       // Fresh boot — expand to show capabilities + health + boot timing.
       const capsObj = (bs && bs.capabilities) || {};
       const capNames = Object.keys(capsObj);
@@ -1153,6 +1214,15 @@ if (require.main === module) {
           runExpensiveProbes: false,
         });
         if (stdinData) mergeHarnessStdin(rawState, stdinData);
+        // S595 per-instance isolation (operator ruling S594): a statusline
+        // speaks only for its own session — suppress foreign-session OS state
+        // (boot/meta/rig singletons) instead of rendering or labeling it.
+        // Statusline mode only; fleet/full modes keep foreign visibility.
+        applySessionIsolation(rawState, {
+          stateDir: require('node:path').join(effectiveRoot, '_runs', 'os'),
+          liveSessionId: stdinData && stdinData.session_id,
+          stdin: stdinData,
+        });
       } else {
         // Other modes: generic shallow merge (stdin as state override)
         rawState = loadHudData({

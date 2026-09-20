@@ -1,3 +1,4 @@
+// @ts-check
 'use strict';
 
 /**
@@ -19,7 +20,11 @@ const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
 const os = require('node:os');
-const { spawnSync } = require('node:child_process');
+// 2026-07-21: read-only git accelerator. On DrvFs (/mnt/*) the boot HEAD-diff below
+// pays a per-file 9P round-trip on native WSL git (~4.7s at boot); gitRead routes
+// it through git.exe (~0.5s) and falls back to native off-DrvFs or on spawn error.
+// Drop-in for spawnSync('git', ...) — same result shape, CRLF-normalized.
+const { gitRead } = require('../../fast-git.cjs');
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -164,13 +169,13 @@ function isInsideCwd(resolvedPath) {
  * SessionStart must not restore from HEAD because it cannot distinguish
  * Claude cache reversion from legitimate in-progress edits.
  *
- * @returns {{ restored: number, files: string[], skipped: number, reason?: string }}
+ * @returns {{ restored: number, files: string[], skipped: number, degraded?: boolean, reason?: string }}
  */
 function boot() {
   try {
-    const diffResult = spawnSync('git', [
+    const diffResult = gitRead([
       'diff', 'HEAD', '--name-only', '--', ...TARGETS,
-    ], { encoding: 'utf8', timeout: 8000, env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' } });
+    ], { timeout: 8000 });
 
     // Distinguish a timeout / spawn failure from a genuinely clean tree.
     // On drvfs (WSL Windows mounts) `git diff` can exceed a tight timeout; a
@@ -179,8 +184,11 @@ function boot() {
     // check reported healthy while never actually running (#42383 defense was a
     // silent no-op on the operator's primary box). Surface UNKNOWN, not clean.
     if (diffResult.error || diffResult.signal) {
-      const reason = diffResult.error
-        ? (diffResult.error.code || diffResult.error.message)
+      // spawnSync's .error is typed as plain Error, but Node spawn failures
+      // carry an errno code (ETIMEDOUT, ENOENT, ...) — prefer it for the reason.
+      const spawnErr = /** @type {NodeJS.ErrnoException | undefined} */ (diffResult.error);
+      const reason = spawnErr
+        ? (spawnErr.code || spawnErr.message)
         : `killed:${diffResult.signal}`;
       process.stderr.write(
         `${PREFIX} WARNING: integrity check could not run (git diff ${reason}); status UNKNOWN, not clean\n`
@@ -509,6 +517,7 @@ module.exports = {
       get_contract:      { description: 'Look up an intent contract by id or subject', args: ['contract_id|subject'] },
       list_contracts:    { description: 'List live intent contracts', args: [] },
     },
+    /** @returns {import('../kernel/contracts.cjs').HealthResult} */
     health() {
       return { ...(this._healthCache || { ok: false, reason: 'not initialized' }) };
     },
@@ -516,9 +525,19 @@ module.exports = {
   },
 
   _os: null,
+  /**
+   * @type {import('../kernel/contracts.cjs').HealthResult & {
+   *   tracked_files?: number,
+   *   last_check_ms?: number|null,
+   *   reverts_repaired?: number,
+   *   dirty_protected_files?: number,
+   *   session_id?: string,
+   * }}
+   */
   _healthCache: { ok: false, reason: 'not initialized' },
 
   probeCost: 'cheap',
+  /** @returns {import('../kernel/contracts.cjs').HealthResult} */
   probe() {
     try {
       const path = require('node:path');

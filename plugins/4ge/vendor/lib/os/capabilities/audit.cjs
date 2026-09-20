@@ -1,3 +1,4 @@
+// @ts-check
 'use strict';
 
 const fs = require('node:fs');
@@ -13,6 +14,7 @@ module.exports = {
       run:     { description: 'Interactive audit (interview + engine + report)', args: [] },
       status:  { description: 'Last audit results summary', args: [] },
     },
+    /** @returns {import('../kernel/contracts.cjs').HealthResult} */
     health() {
       return { ...(this._healthCache || { ok: false, reason: 'not initialized' }) };
     },
@@ -22,6 +24,7 @@ module.exports = {
   _os: null,
   _stateDir: null,
   _enginePath: null,
+  /** @type {import('../kernel/contracts.cjs').HealthResult & { mode?: string }} */
   _healthCache: { ok: false, reason: 'not initialized' },
 
   probeCost: 'cheap',
@@ -31,6 +34,7 @@ module.exports = {
     'opus-audit.md',
   ],
 
+  /** @returns {import('../kernel/contracts.cjs').HealthResult} */
   probe() {
     try {
       const pathMod = require('node:path');

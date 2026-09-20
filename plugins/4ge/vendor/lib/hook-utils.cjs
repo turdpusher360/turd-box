@@ -103,6 +103,79 @@ function parseToolInput(input, field, defaultValue = '') {
 }
 
 /**
+ * Determine whether a SessionEnd / PreCompact hook input describes a REAL
+ * interactive session, as opposed to an ephemeral utility session.
+ *
+ * On CC v2.1.212 a `claude update` run from a repo cwd spins an ephemeral
+ * session that fires the project SessionEnd hook chain on exit with no real
+ * transcript. Left unguarded, that fire let session-cartridge-writer.cjs
+ * clobber a committed cartridge working copy (upstream incident). This predicate
+ * lets both SessionEnd hooks bail before writing anything.
+ *
+ * Returns true ONLY when stdin's `transcript_path` points to a readable,
+ * non-empty transcript containing at least one genuine user or assistant
+ * conversation turn. Absent, unreadable, empty, or turnless transcripts return
+ * false — the failure mode being guarded is a destructive continuity write by a
+ * no-op session, so uncertainty resolves to "do not write."
+ *
+ * Transcript JSONL shape (verified against real transcripts on this rig in
+ * ~/.claude/projects/<slug>/<session>.jsonl):
+ *   { type: 'user'|'assistant'|'system'|..., message: { role, content }, ... }
+ * A line counts as a real turn when its top-level `type` is 'user'/'assistant'
+ * OR its `message.role` is 'user'/'assistant' — unless the record is flagged
+ * `isMeta: true` (harness-injected records never count, whatever their shape).
+ * Meta-only records (mode, permission-mode, system, bridge-session,
+ * attachment, last-prompt) never match.
+ *
+ * @param {object|null} input - Parsed SessionEnd stdin (BaseHookInput)
+ * @param {object} [opts]
+ * @param {number} [opts.maxBytes=20971520] - Files larger than this are treated
+ *   as unambiguously real without a full read (never ephemeral).
+ * @returns {boolean}
+ */
+function sessionHasRealTranscript(input, opts = {}) {
+  const { maxBytes = 20 * 1024 * 1024 } = opts;
+  try {
+    const transcriptPath = input && input.transcript_path;
+    if (!transcriptPath || typeof transcriptPath !== 'string') return false;
+
+    let stat;
+    try { stat = fs.statSync(transcriptPath); } catch { return false; }
+    if (!stat.isFile() || stat.size === 0) return false;
+    // A transcript this large is unambiguously a real session — skip the read.
+    if (stat.size > maxBytes) return true;
+
+    const raw = fs.readFileSync(transcriptPath, 'utf8');
+    // Manual line scan with early return: real turns appear near the top of a
+    // transcript, so this short-circuits without allocating a full line array.
+    let idx = 0;
+    const len = raw.length;
+    while (idx < len) {
+      let nl = raw.indexOf('\n', idx);
+      if (nl === -1) nl = len;
+      const line = raw.slice(idx, nl);
+      idx = nl + 1;
+      if (!line) continue;
+      let obj;
+      try { obj = JSON.parse(line); } catch { continue; }
+      if (!obj || typeof obj !== 'object') continue;
+      // Meta-wrapped records (harness-injected caveats, summaries, etc.) can
+      // carry type 'user' or a message.role without being a genuine turn
+      // (review 211-2) — never let them mark a transcript as real.
+      if (obj.isMeta === true) continue;
+      if (obj.type === 'user' || obj.type === 'assistant') return true;
+      const msg = obj.message;
+      if (msg && typeof msg === 'object' && (msg.role === 'user' || msg.role === 'assistant')) return true;
+    }
+    return false;
+  } catch {
+    // Any unexpected error resolves to "not a real transcript" — the safe
+    // direction is to bail rather than risk a destructive write.
+    return false;
+  }
+}
+
+/**
  * Hard-exit safety net. Ensures the hook process terminates even if
  * async work hangs. Uses setTimeout with .unref() so it doesn't
  * keep the event loop alive on its own.
@@ -364,6 +437,124 @@ function deriveSessionNumber(repoRoot) {
   return deriveNextHandoffNumber(repoRoot);
 }
 
+// Commands that consume a heredoc body as DATA. Allowlist, never a denylist:
+// an unrecognized command word must fall back to scanning the raw text.
+const HEREDOC_DATA_SINKS = new Set(['cat', 'tee']);
+
+// Shapes that hand the body to a consumer this helper cannot identify (pipe,
+// command substitution, process substitution, backtick) or continue the header
+// onto the next physical line, making the "body" ordinary command text.
+const HEREDOC_SINK_DISQUALIFIER = /[|`]|\$\(|>\(|<\(|\\$/;
+
+// A capture-or-execute context ANYWHERE earlier in the command feeds the sink's
+// stdout straight back to the shell, so the body executes even though the sink
+// is `cat`: `eval "$(cat <<'EOF' … )"`, `bash <(cat <<'EOF' … )`, backticks.
+// Verified in bash. Deliberately blunt — an already-closed substitution
+// disqualifies too, because tracking paren balance through shell quoting can
+// only fail in the dangerous direction.
+const HEREDOC_CAPTURE_CONTEXT = /[`]|\$\(|<\(|>\(/;
+
+// The sink word is the first token after the last of these.
+const HEREDOC_SEGMENT_SEPARATORS = ['\n', ';', '&', '|', '(', '{', '`'];
+
+const HEREDOC_STRIPPED_BODY = '[heredoc-body-stripped]\n';
+
+// Two passes rather than one alternation so each regex is valid standalone and
+// its terminator can back-reference the tag it actually captured.
+// `(?<!<)<<(?!<)` keeps herestrings (<<<WORD) and bit-shifts ($((1 << N))) out.
+const HEREDOC_QUOTED_RE =
+  /(?<!<)(<<(?!<)-?[ \t]*(['"])([A-Za-z_][A-Za-z0-9_]*)\2([^\n]*)\n)[\s\S]*?\n[ \t]*\3[ \t]*(?=\n|$|;)/g;
+const HEREDOC_ESCAPED_RE =
+  /(?<!<)(<<(?!<)-?[ \t]*\\([A-Za-z_][A-Za-z0-9_]*)([^\n]*)\n)[\s\S]*?\n[ \t]*\2[ \t]*(?=\n|$|;)/g;
+
+/**
+ * True only when the command feeding this heredoc is an allowlisted data sink
+ * and nothing on the segment can route the body to an unknown consumer.
+ *
+ * @param {string} src - the string being scanned (pass 2 sees pass 1's output)
+ * @param {number} opStart - index of the `<<` operator within src
+ * @param {string} headerRemainder - header-line text following the tag
+ */
+function heredocSinkAllowed(src, opStart, headerRemainder) {
+  if (HEREDOC_SINK_DISQUALIFIER.test(headerRemainder)) return false;
+  if (HEREDOC_CAPTURE_CONTEXT.test(src.slice(0, opStart))) return false;
+  let segStart = -1;
+  for (const sep of HEREDOC_SEGMENT_SEPARATORS) {
+    const at = src.lastIndexOf(sep, opStart - 1);
+    if (at > segStart) segStart = at;
+  }
+  const segment = src.slice(segStart + 1, opStart);
+  if (HEREDOC_SINK_DISQUALIFIER.test(segment)) return false;
+  const words = segment.trim().split(/\s+/).filter(Boolean);
+  return words.length > 0 && HEREDOC_DATA_SINKS.has(words[0]);
+}
+
+/**
+ * Strip heredoc BODIES from a shell command string before pattern-scanning it.
+ *
+ * Guard hooks (guard-git-scope, guard-social-interaction) regex-scan the whole
+ * command string, so a heredoc that merely DOCUMENTS a dangerous command (a lane
+ * report quoting a force-push, a run-log carrying a ready-to-run PR-create line)
+ * trips the same block as running it.
+ *
+ * DESIGN INTENT: false-positive hygiene for a cooperative agent, NOT a security
+ * boundary. These guards are substring matchers an intent-bearing agent can
+ * already evade trivially; the helper's job is to avoid WIDENING that gap, which
+ * is why every ambiguous shape below falls back to scanning the RAW text.
+ *
+ * Scope honesty: the content-blind substring class fired three times on
+ * 2026-08-27 (upstream, `_runs/.constraints.jsonl`), and only ONE of the three was
+ * heredoc-shaped (a minion report written through a heredoc). The other two were
+ * a PostToolUse trigger matching the bare substring `commit`, and a `printf`
+ * whose QUOTED ARGUMENT named the trigger phrase. Neither is addressed here.
+ *
+ * The command LINE (redirection, tag, and the rest of the line) is preserved;
+ * only the body between the header and its terminator is replaced. Stripping
+ * requires ALL of the following — each unmet condition falls back to raw text:
+ *
+ * - The delimiter is QUOTED (`<<'EOF'`, `<<"EOF"`) or BACKSLASH-ESCAPED
+ *   (`<<\EOF`). An unquoted delimiter makes bash expand `$(...)`, backticks and
+ *   `${...}` in the body BEFORE the sink sees it, so that body can execute.
+ * - The command feeding it is an allowlisted data sink (`cat`, `tee`). An
+ *   interpreter — python3, node, `bash -s`, perl, psql, ssh — EXECUTES the body,
+ *   and this repo's own `.claude/` apply doctrine is `python3 << 'PYEOF'`, so an
+ *   unrecognized command word must fail closed.
+ * - No pipe or line continuation is in play on that segment, and no capture-or-
+ *   execute context (`$(`, `<(`, `>(`, backtick) appears anywhere earlier in the
+ *   command. `eval "$(cat <<'EOF' … )"` and `bash <(cat <<'EOF' … )` execute the
+ *   body despite the sink being `cat` — verified in bash.
+ * - The `<<` is a real heredoc operator, not a herestring or a bit-shift.
+ * - The heredoc is TERMINATED.
+ *
+ * Terminator semantics deliberately diverge from bash: a trailing `;` is
+ * accepted as well as end-of-line, where bash requires the delimiter alone on
+ * its line. The helper therefore ends a body EARLIER than bash would and leaves
+ * trailing text visible to the scanner — the over-blocking direction.
+ *
+ * Also left untouched, all fail-closed: CRLF-authored heredocs, second and later
+ * heredocs sharing one command line, and any input past the size/count cap.
+ */
+function stripHeredocBodies(command) {
+  const src = String(command);
+  if (!src.includes('<<')) return src;
+  // Body scanning is superlinear in the number of distinct unmatched tags, and
+  // the whole Bash guard chain shares one 9.5s fail-closed budget.
+  if (src.length > 32768 || (src.match(/<</g) || []).length > 64) return src;
+
+  const afterQuoted = src.replace(
+    HEREDOC_QUOTED_RE,
+    (match, header, _quote, tag, rest, offset, whole) => (
+      heredocSinkAllowed(whole, offset, rest) ? header + HEREDOC_STRIPPED_BODY + tag : match
+    )
+  );
+  return afterQuoted.replace(
+    HEREDOC_ESCAPED_RE,
+    (match, header, tag, rest, offset, whole) => (
+      heredocSinkAllowed(whole, offset, rest) ? header + HEREDOC_STRIPPED_BODY + tag : match
+    )
+  );
+}
+
 // Auto-instrument: any hook that requires hook-utils gets timed automatically.
 // Hook name derived from the requiring script's filename.
 const _hookTimingStart = Date.now();
@@ -379,6 +570,7 @@ process.on('exit', () => {
 module.exports = {
   readStdinJson,
   parseToolInput,
+  sessionHasRealTranscript,
   enforceTimeout,
   sessionPath,
   cleanupStaleFiles,
@@ -391,4 +583,5 @@ module.exports = {
   resolvePlatformBin,
   deriveNextHandoffNumber,
   deriveSessionNumber,
+  stripHeredocBodies,
 };

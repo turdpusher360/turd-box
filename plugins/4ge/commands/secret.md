@@ -1,6 +1,6 @@
 ---
-description: "Capture a secret to .env without crossing model context"
-argument-hint: "<KEY=value>  or  <KEY> <value>  or  <token-with-recognized-prefix>"
+description: "Capture a secret to .env (or --file <path.env>) without crossing model context"
+argument-hint: "[--file <path.env>] <KEY=value>  or  <KEY> <value>  or  <token-with-recognized-prefix>"
 paths: ["**"]
 ---
 

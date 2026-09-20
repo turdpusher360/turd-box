@@ -1,3 +1,4 @@
+// @ts-check
 'use strict';
 
 /**
@@ -22,6 +23,7 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { performance } = require('node:perf_hooks');
+const { deriveWriter, recordWrite, shouldSuppressWrite, recordSuppressedWrite } = require('./write-attribution.cjs');
 
 // ---------------------------------------------------------------------------
 // validateManifest
@@ -81,6 +83,9 @@ function validateManifest(manifest) {
  * @param {object} osApi - The lib/os/index.cjs exports (lazy-getter API).
  * @param {object} [opts] - Options.
  * @param {string} [opts.stateDir] - Override for the state directory (for tests).
+ * @param {string} [opts.sessionId] - Real session id for write attribution (Rung B).
+ * @param {string} [opts.entry] - Write-attribution entry kind for attributable writes.
+ * @param {string} [opts.surface] - Write-attribution surface label.
  * @returns {object} Registry with discover, resolveDeps, boot, invoke, query, shutdown, getBootStatus.
  */
 function createCapabilityRegistry(osApi, opts = {}) {
@@ -89,6 +94,18 @@ function createCapabilityRegistry(osApi, opts = {}) {
   let bootOrder = [];
   let _booted = false;
   const _stateDir = opts.stateDir || path.join(process.cwd(), '_runs', 'os');
+
+  // Rung B (write attribution): the caller (os-boot.cjs) may pass the real
+  // session id + trigger kind so every boot-status.json / health.json write is
+  // attributable. Absent an explicit sessionId, deriveWriter falls back to
+  // session-meta.json (which os-boot syncs before boot()) — so attribution
+  // works even before the hook ceremony diff lands.
+  const _writerOpts = {
+    sessionId: opts.sessionId,
+    entry: opts.entry,
+    surface: opts.surface,
+    stateDir: _stateDir,
+  };
 
   // Cache resolved lazy getters once — shared across all OS context objects (review fix #2)
   let _resolvedServices = null;
@@ -309,10 +326,45 @@ function createCapabilityRegistry(osApi, opts = {}) {
   // _writeJson
   // ---------------------------------------------------------------------------
 
-  /** Helper: write JSON with mkdir -p */
+  /** Helper: write JSON atomically (same-dir tmp + rename) with mkdir -p.
+   *  boot-status.json and health.json are polled at ~1s cadence by the HUD and the
+   *  boot-coherence sentinel; an in-place writeFileSync lets a concurrent reader see a
+   *  torn, half-written file (rendered "red corrupt"). Writing a same-directory tmp file
+   *  then fs.renameSync makes the swap atomic — same-dir is REQUIRED for rename atomicity,
+   *  especially on drvfs. Matches the aisle.probe() self-patch pattern. (upstream) */
   function _writeJson(filePath, data) {
     fs.mkdirSync(path.dirname(filePath), { recursive: true });
-    fs.writeFileSync(filePath, JSON.stringify(data, null, 2) + '\n');
+    const tmp = `${filePath}.${process.pid}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(data, null, 2) + '\n');
+    fs.renameSync(tmp, filePath);
+  }
+
+  /**
+   * Rung A1 (upstream): persist boot-status.json + health.json through the downgrade-refusing
+   * gate. Reads the existing boot-status; if writing `bootStatus` would downgrade a strictly
+   * healthier boot from a DIFFERENT, still-recent session, HOLD both writes together and
+   * journal a bounded `suppressed_write` diagnostic instead (rung D's boot-coherence sentinel
+   * reads its protected-writer proof). Otherwise write both files and journal them. Fail-safe = write: a boot
+   * degrading its OWN session, a healthy boot, or a stale existing file all fall through to
+   * a normal write (see write-attribution.shouldSuppressWrite). Both singletons are held or
+   * written together so they never diverge.
+   */
+  function _persistBootStatus(bootStatus, healthData, writer, bootSummary, healthSummary) {
+    let existing = null;
+    try {
+      existing = JSON.parse(fs.readFileSync(path.join(_stateDir, 'boot-status.json'), 'utf8'));
+    } catch {
+      /* missing or unreadable — treat as no existing file (fail-safe = write) */
+    }
+    const gate = shouldSuppressWrite(existing, bootStatus, {});
+    if (gate.suppress) {
+      recordSuppressedWrite(_stateDir, 'boot-status.json', writer, bootStatus, gate.reason, existing);
+      return;
+    }
+    _writeJson(path.join(_stateDir, 'health.json'), healthData);
+    _writeJson(path.join(_stateDir, 'boot-status.json'), bootStatus);
+    recordWrite(_stateDir, 'health.json', writer, healthSummary);
+    recordWrite(_stateDir, 'boot-status.json', writer, bootSummary);
   }
 
   // ---------------------------------------------------------------------------
@@ -330,34 +382,39 @@ function createCapabilityRegistry(osApi, opts = {}) {
    * @returns {object} Boot status (spec Section 3.2 format)
    */
   function boot() {
+    // Rung B: derive one attribution descriptor per boot() call so the
+    // session_id/pid/entry are coherent across both state files and both
+    // journal lines. Replaces the old minted `session-${Date.now()}` id.
+    const writer = deriveWriter(_writerOpts);
+
     if (bootOrder.length === 0 && caps.size === 0) {
       const failedStatus = {
-        session_id: `session-${Date.now()}`,
+        session_id: writer.session_id,
         booted_at: new Date().toISOString(),
         capabilities: {},
         overall: 'failed',
         total_boot_ms: 0,
         reason: 'no capabilities discovered; expected Agentic OS capabilities',
+        written_by: writer,
       };
       fs.mkdirSync(_stateDir, { recursive: true });
-      _writeJson(path.join(_stateDir, 'boot-status.json'), failedStatus);
-      _writeJson(path.join(_stateDir, 'health.json'), {});
+      _persistBootStatus(failedStatus, {}, writer, 'failed', 'failed (no capabilities)');
       _booted = true;
       return failedStatus;
     }
 
     if (bootOrder.length < caps.size) {
       const failedStatus = {
-        session_id: `session-${Date.now()}`,
+        session_id: writer.session_id,
         booted_at: new Date().toISOString(),
         capabilities: {},
         overall: 'failed',
         total_boot_ms: 0,
         reason: 'capabilities discovered but dependency resolution did not produce a complete boot order',
+        written_by: writer,
       };
       fs.mkdirSync(_stateDir, { recursive: true });
-      _writeJson(path.join(_stateDir, 'boot-status.json'), failedStatus);
-      _writeJson(path.join(_stateDir, 'health.json'), {});
+      _persistBootStatus(failedStatus, {}, writer, 'failed', 'failed (incomplete boot order)');
       _booted = true;
       return failedStatus;
     }
@@ -423,7 +480,10 @@ function createCapabilityRegistry(osApi, opts = {}) {
     if (statuses.includes('failed')) overall = 'failed';
     else if (statuses.includes('degraded')) overall = 'degraded';
 
-    // Write health.json
+    // Build health.json — a pure flat cap->health map. Attribution for this file goes to
+    // the journal ONLY: HUD/wizard readers, the Anvil HealthSchema, and health-refresh.test.js
+    // all iterate/validate every top-level key as a capability, so an in-map `written_by`
+    // would break them.
     const healthData = {};
     for (const [name, cap] of caps) {
       try {
@@ -432,17 +492,25 @@ function createCapabilityRegistry(osApi, opts = {}) {
         healthData[name] = { ok: false, error: 'health check threw' };
       }
     }
-    _writeJson(path.join(_stateDir, 'health.json'), healthData);
 
-    // Write boot-status.json (spec Section 3.2)
+    // Build boot-status.json (spec Section 3.2). `written_by` is a schema-safe additive
+    // sibling: all readers use named keys (.capabilities/.overall/...) and the Anvil
+    // BootStatusSchema is .passthrough().
     const bootStatus = {
-      session_id: `session-${Date.now()}`,
+      session_id: writer.session_id,
       booted_at: new Date().toISOString(),
       capabilities: capResults,
       overall,
       total_boot_ms: totalMs,
+      written_by: writer,
     };
-    _writeJson(path.join(_stateDir, 'boot-status.json'), bootStatus);
+
+    // Persist both singletons through the rung A1 downgrade-refusing gate (health first,
+    // then boot-status — same order as before). A degraded/failed boot from THIS session
+    // always writes (same session_id); only a DIFFERENT session's degraded view over a
+    // strictly-healthier, still-recent file is held (and journaled as suppressed_write).
+    const okCount = Object.values(healthData).filter(h => h && h.ok).length;
+    _persistBootStatus(bootStatus, healthData, writer, overall, `${okCount}/${Object.keys(healthData).length} ok`);
 
     return bootStatus;
   }
