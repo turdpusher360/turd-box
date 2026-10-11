@@ -291,7 +291,7 @@ describe('tier-gate', () => {
     const STALE = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(); // 48h old
     const FRESH = new Date().toISOString();
     const FUTURE = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
-    const PERIOD_END_SECS = Math.floor((Date.now() + 30 * 24 * 60 * 60 * 1000) / 1000);
+    const PERIOD_END_MS = Date.now() + 30 * 24 * 60 * 60 * 1000; // epoch ms: the license worker's currentPeriodEnd unit
 
     function mockFetch(impl) {
       const fn = vi.fn(impl);
@@ -314,7 +314,7 @@ describe('tier-gate', () => {
       writeLicense({ tier: 'free', email: 'buyer@example.com', validatedAt: STALE, expiresAt: FUTURE });
       const fetchFn = mockFetch(async () =>
         entitlementsResponse([
-          { product: '4ge_pro', status: 'active', entitled: true, currentPeriodEnd: PERIOD_END_SECS },
+          { product: '4ge_pro', status: 'active', entitled: true, currentPeriodEnd: PERIOD_END_MS },
         ])
       );
       const tier = await tg.refresh(50);
@@ -324,7 +324,12 @@ describe('tier-gate', () => {
       const written = readWritten();
       expect(written.tier).toBe('pro');
       expect(new Date(written.validatedAt).getTime()).toBeGreaterThan(new Date(STALE).getTime());
-      expect(written.expiresAt).toBe(new Date(PERIOD_END_SECS * 1000).toISOString());
+      expect(written.expiresAt).toBe(new Date(PERIOD_END_MS).toISOString());
+      // Unit guard: currentPeriodEnd is epoch ms, so the stored expiry lands
+      // ~30 days out. A seconds/ms mix-up lands it millennia out (or in 1970).
+      const daysOut = (new Date(written.expiresAt).getTime() - Date.now()) / (24 * 60 * 60 * 1000);
+      expect(daysOut).toBeGreaterThan(29);
+      expect(daysOut).toBeLessThan(31);
       expect(tg.current()).toBe('pro'); // next synchronous read reflects the refresh
     });
 
@@ -332,8 +337,8 @@ describe('tier-gate', () => {
       writeLicense({ tier: 'free', email: 'buyer@example.com', validatedAt: STALE, expiresAt: FUTURE });
       mockFetch(async () =>
         entitlementsResponse([
-          { product: '4ge_pro', status: 'active', entitled: true, currentPeriodEnd: PERIOD_END_SECS },
-          { product: '4ge_team', status: 'active', entitled: true, currentPeriodEnd: PERIOD_END_SECS },
+          { product: '4ge_pro', status: 'active', entitled: true, currentPeriodEnd: PERIOD_END_MS },
+          { product: '4ge_team', status: 'active', entitled: true, currentPeriodEnd: PERIOD_END_MS },
         ])
       );
       expect(await tg.refresh(50)).toBe('team');
@@ -343,7 +348,7 @@ describe('tier-gate', () => {
       writeLicense({ tier: 'free', email: 'buyer@example.com', validatedAt: STALE, expiresAt: FUTURE });
       mockFetch(async () =>
         entitlementsResponse([
-          { product: 'dropstream_streamer', status: 'active', entitled: true, currentPeriodEnd: PERIOD_END_SECS },
+          { product: 'dropstream_streamer', status: 'active', entitled: true, currentPeriodEnd: PERIOD_END_MS },
           { product: 'blueprint_pack', status: 'active', entitled: true, currentPeriodEnd: null },
         ])
       );
@@ -476,7 +481,7 @@ describe('tier-gate', () => {
       writeLicense({ tier: 'pro', email: 'buyer@example.com', validatedAt: STALE, expiresAt: FUTURE, notEntitledSince: TWO_HOURS_AGO() });
       mockFetch(async () =>
         entitlementsResponse([
-          { product: '4ge_pro', status: 'active', entitled: true, currentPeriodEnd: PERIOD_END_SECS },
+          { product: '4ge_pro', status: 'active', entitled: true, currentPeriodEnd: PERIOD_END_MS },
         ])
       );
       expect(await tg.refresh(50)).toBe('pro');
@@ -526,6 +531,41 @@ describe('tier-gate', () => {
       expect(w.tier).toBe('pro');
       expect(w.expiresAt).toBeUndefined();                 // stale FUTURE expiry cleared, not preserved
       expect(new Date(w.validatedAt).getTime()).toBeGreaterThan(new Date(STALE).getTime());
+    });
+
+    it('an entitled response whose currentPeriodEnd a Date cannot hold is contract-invalid (no throw, no rewrite)', async () => {
+      writeLicense({ tier: 'pro', email: 'buyer@example.com', validatedAt: STALE, expiresAt: FUTURE });
+      mockFetch(async () =>
+        entitlementsResponse([
+          { product: '4ge_pro', status: 'active', entitled: true, currentPeriodEnd: 1e300 },
+        ])
+      );
+      await expect(tg.refresh(50)).resolves.toBe('pro');   // cached tier kept; refresh() never throws
+      const w = readWritten();
+      expect(w.validatedAt).toBe(STALE);                   // non-authoritative: not refreshed
+      expect(w.expiresAt).toBe(FUTURE);
+    });
+
+    it('a refreshed period end 3 days past keeps the tier inside the offline grace window', async () => {
+      writeLicense({ tier: 'pro', email: 'buyer@example.com', validatedAt: STALE, expiresAt: FUTURE });
+      mockFetch(async () =>
+        entitlementsResponse([
+          { product: '4ge_pro', status: 'active', entitled: true, currentPeriodEnd: Date.now() - 3 * 24 * 60 * 60 * 1000 },
+        ])
+      );
+      await tg.refresh(50);
+      expect(tg.current()).toBe('pro');                    // 3 days past, inside the 7-day default grace
+    });
+
+    it('a refreshed period end 8 days past resolves to free (the expiry path fires)', async () => {
+      writeLicense({ tier: 'pro', email: 'buyer@example.com', validatedAt: STALE, expiresAt: FUTURE });
+      mockFetch(async () =>
+        entitlementsResponse([
+          { product: '4ge_pro', status: 'active', entitled: true, currentPeriodEnd: Date.now() - 8 * 24 * 60 * 60 * 1000 },
+        ])
+      );
+      await tg.refresh(50);
+      expect(tg.current()).toBe('free');                   // past the grace window; a seconds/ms mix-up keeps it pro
     });
 
     it('degrades to the cached tier when global fetch is unavailable', async () => {
@@ -586,6 +626,28 @@ describe('tier-gate', () => {
       expect(tg._isValidSummary({ entitled: true, products: 'nope' })).toBe(false); // products not array
       expect(tg._isValidSummary({ entitled: true, products: [{ status: 'active' }] })).toBe(false); // product missing key + flag
       expect(tg._isValidSummary({ entitled: true, products: [{ product: '4ge_pro', entitled: true, currentPeriodEnd: 'soon' }] })).toBe(false); // bad period type
+    });
+
+    it('_isValidSummary rejects a currentPeriodEnd a Date cannot hold (epoch ms, |v| <= 8.64e15)', () => {
+      const withPeriodEnd = (v) => ({
+        entitled: true,
+        products: [{ product: '4ge_pro', status: 'active', entitled: true, currentPeriodEnd: v }],
+        status: 'active',
+      });
+      expect(tg._isValidSummary(withPeriodEnd(Infinity))).toBe(false);    // JSON.parse('1e400') yields Infinity
+      expect(tg._isValidSummary(withPeriodEnd(NaN))).toBe(false);
+      expect(tg._isValidSummary(withPeriodEnd(1e300))).toBe(false);
+      expect(tg._isValidSummary(withPeriodEnd(8.64e15 + 1))).toBe(false); // one past the Date range
+      expect(tg._isValidSummary(withPeriodEnd(8.64e15))).toBe(true);      // the Date range edge
+      expect(tg._isValidSummary(withPeriodEnd(-1e300))).toBe(false);
+      expect(tg._isValidSummary(withPeriodEnd(-(8.64e15 + 1)))).toBe(false); // one past the negative edge
+      expect(tg._isValidSummary(withPeriodEnd(-8.64e15))).toBe(true);        // the negative Date range edge
+      // An omitted period end is valid, like null.
+      expect(tg._isValidSummary({
+        entitled: true,
+        products: [{ product: '4ge_pro', status: 'active', entitled: true }],
+        status: 'active',
+      })).toBe(true);
     });
 
     it('_validateRemote returns null on a rejected fetch (never throws to the caller)', async () => {

@@ -110,10 +110,18 @@ function enforceTimeout(ms) {
 // Cache for deriveNextHandoffNumber keyed by _runs/ dir mtime.
 const _nextHandoffNumCache = new Map();
 
+// A shipped handoff name: HANDOFF-S<N>.md (optional letter suffix) or
+// HANDOFF-S<N>-<8 hex session id>.md (optional -R<k> round). Same rule as
+// lib/hook-utils.cjs.
+const SHIPPED_HANDOFF_RE = /^HANDOFF-S\d+[a-z]?(?:-[0-9a-f]{8}(?:-R\d+)?)?\.md$/i;
+
 /**
- * Derive the next durable handoff number from shipped handoff markers:
- * max(_runs/HANDOFF-S<N>*) + 1. Returns 1 when no handoffs exist (fresh
- * installs). Cached per _runs/ mtime.
+ * Derive the next durable handoff number from _runs/HANDOFF-S*.md names: a
+ * shipped handoff SN (SHIPPED_HANDOFF_RE) contributes N + 1, a pickup (name
+ * ends -PICKUP.md, any case) contributes N, and any other HANDOFF-S name (a
+ * mid-session wrap, notes or topic file) contributes nothing. Returns the max
+ * contribution, or 1 when no handoffs exist (fresh installs). Cached per
+ * _runs/ mtime.
  * (Additive: mirror of lib/hook-utils.cjs deriveNextHandoffNumber. The
  * returned value is a closeout candidate, not proof that the current
  * runtime session owns a durable S-number.)
@@ -134,20 +142,26 @@ function deriveNextHandoffNumber(repoRoot) {
   } catch { /* _runs missing — fall through */ }
 
   let maxShipped = 0;
+  let maxPickup = 0;
   try {
     for (const entry of fs.readdirSync(runsDir)) {
       const m = entry.match(/^HANDOFF-S(\d+)/);
       if (m) {
         const n = parseInt(m[1], 10);
-        if (Number.isFinite(n) && n > maxShipped) maxShipped = n;
+        if (!Number.isFinite(n)) continue;
+        if (/-PICKUP\.md$/i.test(entry)) {
+          if (n > maxPickup) maxPickup = n;
+        } else if (n > maxShipped && SHIPPED_HANDOFF_RE.test(entry)) {
+          maxShipped = n;
+        }
       }
     }
     try {
       const mtime = fs.statSync(runsDir).mtimeMs;
-      _nextHandoffNumCache.set(runsDir, { mtime, result: maxShipped + 1 });
+      _nextHandoffNumCache.set(runsDir, { mtime, result: Math.max(maxShipped + 1, maxPickup) });
     } catch { /* best-effort cache */ }
   } catch { /* no _runs dir */ }
-  return maxShipped + 1;
+  return Math.max(maxShipped + 1, maxPickup);
 }
 
 /**

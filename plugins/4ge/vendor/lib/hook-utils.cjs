@@ -281,15 +281,19 @@ const HOOK_TIMING_MAX_BYTES   = 1024 * 1024;
  * @param {string} filePath
  */
 function _trimHookTiming(filePath) {
+  const tmp = `${filePath}.${process.pid}.tmp`;
   try {
     const content = fs.readFileSync(filePath, 'utf8');
     const lines = content.split('\n').filter(l => l.length > 0);
     if (lines.length <= HOOK_TIMING_MAX_LINES) return; // nothing to trim
     const trimmed = lines.slice(lines.length - HOOK_TIMING_KEEP_LINES).join('\n') + '\n';
-    const tmp = `${filePath}.${process.pid}.tmp`;
     fs.writeFileSync(tmp, trimmed, 'utf8');
     fs.renameSync(tmp, filePath);
-  } catch { /* best-effort — never block the hook */ }
+  } catch {
+    // Best-effort: never block the hook. A failed write or rename must not
+    // strand the per-pid tmp file (36 orphans had piled up in _runs/os).
+    try { fs.unlinkSync(tmp); } catch { /* never created, or already gone */ }
+  }
 }
 
 /**
@@ -376,9 +380,18 @@ function resolvePlatformBin(bin) {
 // PostToolUse invocation.
 const _nextHandoffNumCache = new Map();
 
+// A shipped handoff name: HANDOFF-S<N>.md (optional letter suffix, S312b) or
+// HANDOFF-S<N>-<8 hex session id>.md (optional -R<k> round). Wrap, notes and
+// topic files written mid-session (HANDOFF-S<N>-og-wrap.md) do not match
+// (BL-413): they would move the HUD S-label past the session still open.
+const SHIPPED_HANDOFF_RE = /^HANDOFF-S\d+[a-z]?(?:-[0-9a-f]{8}(?:-R\d+)?)?\.md$/i;
+
 /**
  * Derive the next durable handoff number from _runs/HANDOFF-S*.md filenames.
- * Returns max(parsed S-numbers) + 1. Letter suffixes (S312b) ignored.
+ * A shipped handoff SN (SHIPPED_HANDOFF_RE) contributes N + 1; a pickup (name
+ * ends -PICKUP.md, any case) is named for the session that reads it, so pickup
+ * SN contributes N. Any other HANDOFF-S name contributes nothing. Returns the
+ * max contribution. Letter suffixes (S312b) ignored.
  * Falls back to 1 if no handoffs exist.
  *
  * Caches result keyed by _runs/ directory mtime — if the directory has not
@@ -410,22 +423,28 @@ function deriveNextHandoffNumber(repoRoot) {
 
   // Full scan
   let maxShipped = 0;
+  let maxPickup = 0;
   try {
     const entries = fs.readdirSync(runsDir);
     for (const entry of entries) {
       const m = entry.match(/^HANDOFF-S(\d+)/);
       if (m) {
         const n = parseInt(m[1], 10);
-        if (Number.isFinite(n) && n > maxShipped) maxShipped = n;
+        if (!Number.isFinite(n)) continue;
+        if (/-PICKUP\.md$/i.test(entry)) {
+          if (n > maxPickup) maxPickup = n;
+        } else if (n > maxShipped && SHIPPED_HANDOFF_RE.test(entry)) {
+          maxShipped = n;
+        }
       }
     }
     // Store result only if stat succeeded (we need the mtime key).
     try {
       const mtime = fs.statSync(runsDir).mtimeMs;
-      _nextHandoffNumCache.set(runsDir, { mtime, result: maxShipped + 1 });
+      _nextHandoffNumCache.set(runsDir, { mtime, result: Math.max(maxShipped + 1, maxPickup) });
     } catch { /* best-effort cache write */ }
   } catch { /* no _runs dir or read error */ }
-  return maxShipped + 1;
+  return Math.max(maxShipped + 1, maxPickup);
 }
 
 /**
@@ -454,6 +473,79 @@ const HEREDOC_SINK_DISQUALIFIER = /[|`]|\$\(|>\(|<\(|\\$/;
 // only fail in the dangerous direction.
 const HEREDOC_CAPTURE_CONTEXT = /[`]|\$\(|<\(|>\(/;
 
+// An enclosing brace group, subshell, function, loop, if or case applies its
+// output routing AFTER the terminator (`{ cat <<'EOF' … EOF\n} | bash`,
+// `while …\ndo\ncat <<'EOF' … done | sh`), where no header-line check can see
+// it (BL-390). Just as blunt: an opener anywhere earlier disqualifies, closed
+// or not, quoted or not (`${VAR}`, a `(` in an earlier body, the word "do" in
+// an earlier string). Over-blocking is the safe direction. `if`, `while` and
+// `until` cover a heredoc in a condition list (`if true; cat <<'EOF' … EOF\nthen
+// :; fi | bash`); `for` and `select` need no entry, because their body opens
+// with `do` or `{`. A keyword counts only when a blank, a shell metacharacter
+// or a backtick delimits it, as bash requires of a reserved word, so a path
+// word such as use-case.md or do-not-merge.md does not.
+const HEREDOC_ENCLOSING_CONTEXT = /[{(]|(?:^|[\s;&|()<>`])(?:if|while|until|do|then|else|elif|case)(?=$|[\s;&|()<>`])/;
+
+// An earlier heredoc operator may own this one: inside its body
+// (`bash <<OUTER | bash`, then `cat <<'EOF' … EOF`, then `OUTER`) the outer
+// consumer runs the inner heredoc, wherever its own output goes (BL-506). Just as
+// blunt: a finished earlier heredoc disqualifies too, so a second sequential
+// heredoc stays visible. Telling them apart means modelling bash's terminator
+// rules, including the backslash-newline join inside an unquoted-delimiter body.
+const HEREDOC_EARLIER_OPERATOR = /(?<!<)<<(?!<)/;
+
+// Blanks and the metacharacters after which bash starts a new token, the only
+// place a `#` opens a comment.
+const SHELL_TOKEN_BREAKS = new Set([' ', '\t', '\n', ';', '&', '|', '(', ')', '<', '>']);
+
+/**
+ * True when `text` ends inside a single- or double-quoted string, or holds an
+ * ANSI-C `$'…'` string, which this scan does not model. A `<<` inside a quoted
+ * script (`sh -c "true;cat <<'EOF' …" | sh`) is not a heredoc at this level: the
+ * script's own shell runs it, and its output goes wherever the outer command
+ * sends it (BL-506). A `#` opens a comment only at the start of a token, as in
+ * bash, so a quote inside a comment does not count and a quote after a mid-word
+ * `#` does. bash removes a backslash-newline, so the pair leaves the token state
+ * as it was. A comment that runs to the end of `text` also returns true: the `<<`
+ * is comment text there, and bash runs the "body" lines as commands
+ * (`echo hi # ok; cat <<'EOF'`). Callers rule out heredoc bodies first
+ * (HEREDOC_EARLIER_OPERATOR).
+ *
+ * @param {string} text - command text before the `<<` operator
+ */
+function endsInsideQuote(text) {
+  let quote = '';
+  let tokenStart = true;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (quote === "'") {
+      if (ch === "'") quote = '';
+      continue;
+    }
+    if (quote === '"') {
+      if (ch === '\\') i++;
+      else if (ch === '"') quote = '';
+      continue;
+    }
+    if (ch === '\\') {
+      if (text[i + 1] !== '\n') tokenStart = false;
+      i++;
+    } else if (ch === "'" || ch === '"') {
+      quote = ch;
+      tokenStart = false;
+    } else if (ch === '$' && text[i + 1] === "'") {
+      return true;
+    } else if (ch === '#' && tokenStart) {
+      const nl = text.indexOf('\n', i);
+      if (nl === -1) return true;
+      i = nl - 1;
+    } else {
+      tokenStart = SHELL_TOKEN_BREAKS.has(ch);
+    }
+  }
+  return quote !== '';
+}
+
 // The sink word is the first token after the last of these.
 const HEREDOC_SEGMENT_SEPARATORS = ['\n', ';', '&', '|', '(', '{', '`'];
 
@@ -468,6 +560,24 @@ const HEREDOC_ESCAPED_RE =
   /(?<!<)(<<(?!<)-?[ \t]*\\([A-Za-z_][A-Za-z0-9_]*)([^\n]*)\n)[\s\S]*?\n[ \t]*\2[ \t]*(?=\n|$|;)/g;
 
 /**
+ * True when the last segment of `text` (after the last separator) starts with an
+ * allowlisted data sink and carries no disqualifier.
+ *
+ * @param {string} text - command text before the `<<` operator
+ */
+function heredocSegmentIsSink(text) {
+  let segStart = -1;
+  for (const sep of HEREDOC_SEGMENT_SEPARATORS) {
+    const at = text.lastIndexOf(sep);
+    if (at > segStart) segStart = at;
+  }
+  const segment = text.slice(segStart + 1);
+  if (HEREDOC_SINK_DISQUALIFIER.test(segment)) return false;
+  const words = segment.trim().split(/\s+/).filter(Boolean);
+  return words.length > 0 && HEREDOC_DATA_SINKS.has(words[0]);
+}
+
+/**
  * True only when the command feeding this heredoc is an allowlisted data sink
  * and nothing on the segment can route the body to an unknown consumer.
  *
@@ -477,16 +587,19 @@ const HEREDOC_ESCAPED_RE =
  */
 function heredocSinkAllowed(src, opStart, headerRemainder) {
   if (HEREDOC_SINK_DISQUALIFIER.test(headerRemainder)) return false;
-  if (HEREDOC_CAPTURE_CONTEXT.test(src.slice(0, opStart))) return false;
-  let segStart = -1;
-  for (const sep of HEREDOC_SEGMENT_SEPARATORS) {
-    const at = src.lastIndexOf(sep, opStart - 1);
-    if (at > segStart) segStart = at;
-  }
-  const segment = src.slice(segStart + 1, opStart);
-  if (HEREDOC_SINK_DISQUALIFIER.test(segment)) return false;
-  const words = segment.trim().split(/\s+/).filter(Boolean);
-  return words.length > 0 && HEREDOC_DATA_SINKS.has(words[0]);
+  // bash joins a backslash-newline before it parses (`i\<newline>f` is `if`), so
+  // the context checks run on the joined text too. Joining can only add matches.
+  const before = src.slice(0, opStart);
+  const joined = before.replace(/\\\n/g, '');
+  if (HEREDOC_CAPTURE_CONTEXT.test(before) || HEREDOC_CAPTURE_CONTEXT.test(joined)) return false;
+  if (HEREDOC_ENCLOSING_CONTEXT.test(before) || HEREDOC_ENCLOSING_CONTEXT.test(joined)) return false;
+  if (HEREDOC_EARLIER_OPERATOR.test(before) || HEREDOC_EARLIER_OPERATOR.test(joined)) return false;
+  if (endsInsideQuote(before) || endsInsideQuote(joined)) return false;
+  // The sink must hold on BOTH texts. Raw alone misses a continuation from the
+  // previous line (`bash -s \` then `cat <<'EOF'` is `bash -s cat <<'EOF'`).
+  // Joined alone is no better: the naive join eats the newline after an escaped
+  // backslash (`cat \\` then `bash -s <<'EOF'` would read as `cat \bash -s`).
+  return heredocSegmentIsSink(before) && heredocSegmentIsSink(joined);
 }
 
 /**
@@ -518,11 +631,30 @@ function heredocSinkAllowed(src, opStart, headerRemainder) {
  * - The command feeding it is an allowlisted data sink (`cat`, `tee`). An
  *   interpreter — python3, node, `bash -s`, perl, psql, ssh — EXECUTES the body,
  *   and this repo's own `.claude/` apply doctrine is `python3 << 'PYEOF'`, so an
- *   unrecognized command word must fail closed.
+ *   unrecognized command word must fail closed. The sink word must hold on the
+ *   raw segment and again with backslash-newlines joined, so a continuation
+ *   from the previous line (`bash -s \` then `cat <<'EOF'`) cannot hide the
+ *   interpreter that really receives the body.
  * - No pipe or line continuation is in play on that segment, and no capture-or-
  *   execute context (`$(`, `<(`, `>(`, backtick) appears anywhere earlier in the
  *   command. `eval "$(cat <<'EOF' … )"` and `bash <(cat <<'EOF' … )` execute the
  *   body despite the sink being `cat` — verified in bash.
+ * - No brace group, subshell, function body, loop, if or case opens anywhere
+ *   earlier in the command: a `{` or `(`, or a whole-word `if`, `while`,
+ *   `until`, `do`, `then`, `else`, `elif` or `case`, delimited the way bash
+ *   delimits a reserved word and checked again with backslash-newlines joined.
+ *   Such a construct routes the body through redirections after the
+ *   terminator, as in `{ cat <<'EOF' … EOF\n} | bash` (BL-390).
+ * - No other heredoc operator appears anywhere earlier in the command, raw or
+ *   with backslash-newlines joined. A heredoc in another heredoc's body
+ *   (`bash <<OUTER | bash\ncat <<'EOF' … EOF\nOUTER`) goes to the outer
+ *   consumer, which runs it (BL-506).
+ * - The `<<` is not inside an open quote. In `sh -c "true;cat <<'EOF' … EOF\n" | sh`
+ *   it is script text, and the inner shell runs the body (BL-506). The quote
+ *   scan treats `#` as a comment only at the start of a token, as bash does.
+ *   A comment that runs into the `<<` fails closed (`echo hi # ok; cat <<'EOF'`
+ *   is all comment, so bash runs the "body"), and so does an ANSI-C `$'…'`
+ *   string anywhere earlier.
  * - The `<<` is a real heredoc operator, not a herestring or a bit-shift.
  * - The heredoc is TERMINATED.
  *
@@ -531,8 +663,9 @@ function heredocSinkAllowed(src, opStart, headerRemainder) {
  * its line. The helper therefore ends a body EARLIER than bash would and leaves
  * trailing text visible to the scanner — the over-blocking direction.
  *
- * Also left untouched, all fail-closed: CRLF-authored heredocs, second and later
- * heredocs sharing one command line, and any input past the size/count cap.
+ * Also left untouched, all fail-closed: CRLF-authored heredocs, every heredoc
+ * after the first in a command (a finished earlier one disqualifies too, so a
+ * second sequential heredoc stays visible), and any input past the size/count cap.
  */
 function stripHeredocBodies(command) {
   const src = String(command);

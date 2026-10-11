@@ -135,4 +135,85 @@ describe('github-client plumbing', () => {
     expect(review.body.event).toBe('COMMENT');
     expect(review.body.body).toContain('Report-only mode');
   });
+
+  // An errored pass must never read as a clean review or an approval.
+  it('comments instead of approving when a CLEAN report carries pass errors', () => {
+    const { result, review } = runClientWithReport({
+      verdict: 'CLEAN',
+      passes_run: 3,
+      stats: { total: 0, critical: 0, high: 0 },
+      findings: [],
+      pass_errors: [
+        { pass: 'P2', error: 'API call failed' },
+      ],
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe('');
+    expect(review.body.event).toBe('COMMENT');
+    expect(review.body.body).not.toContain('No issues found.');
+    expect(review.body.body).toContain('| P2: SECURITY | INCOMPLETE | 0 |');
+    expect(review.body.body).toContain('API call failed');
+  });
+
+  it('comments and says the review could not complete for an INCOMPLETE verdict', () => {
+    const { result, review } = runClientWithReport({
+      verdict: 'INCOMPLETE',
+      passes_run: 3,
+      stats: { total: 0, critical: 0, high: 0 },
+      findings: [],
+      pass_errors: [],
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe('');
+    expect(review.body.event).toBe('COMMENT');
+    expect(review.body.body).toContain('4ge DFE Review — INCOMPLETE');
+    expect(review.body.body).toContain('could not complete');
+    expect(review.body.body).not.toContain('No issues found.');
+  });
+
+  it('never approves an unrecognised verdict', () => {
+    const { result, review } = runClientWithReport({
+      verdict: 'WEIRD',
+      passes_run: 3,
+      stats: { total: 0, critical: 0, high: 0 },
+      findings: [],
+      pass_errors: [],
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe('');
+    expect(review.body.event).not.toBe('APPROVE');
+    expect(review.body.event).toBe('COMMENT');
+    expect(review.body.body).toContain('This is not a clean result.');
+  });
+
+  it('does not say "No issues found." for a CLEAN verdict that lists findings', () => {
+    const { result, review } = runClientWithReport({
+      verdict: 'CLEAN',
+      passes_run: 3,
+      stats: { total: 1, critical: 0, high: 0 },
+      findings: [
+        {
+          pass: 'P1',
+          severity: 'MEDIUM',
+          title: 'Medium finding',
+          file: 'src/app.js',
+          line: 3,
+          evidence: 'risky()',
+          reality: 'fixture',
+          fix: 'fix it',
+          confidence: 'TP',
+        },
+      ],
+      pass_errors: [],
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stderr).toBe('');
+    expect(review.body.event).toBe('COMMENT');
+    expect(review.body.body).not.toContain('No issues found.');
+    expect(review.body.body).toContain('1 findings — review before merging.');
+  });
 });

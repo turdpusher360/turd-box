@@ -19,8 +19,8 @@ Parse $ARGUMENTS:
 
 For `quick`: Run the three verification commands via Bash sequentially. Summarize results as a table with pass/fail per check and total error count.
 
-For `full`, `<domain>`, or interactive: Use the Agent tool to spawn `@master-auditor` with `mode: "auto"` and the appropriate scope description. The agent writes its report to `_runs/`.
+For `full`, `<domain>`, or interactive: Use the Agent tool to spawn `@master-auditor` with `model: "opus"` and the appropriate scope description. The agent writes its report to `_runs/`.
 
-Note for `full` mode: @master-auditor dispatches domain auditors in a star topology. Instruct it to spawn all domain auditors in a SINGLE Agent tool block (parallel fanout). Some runtimes default to sequential dispatch — explicit parallel instruction is required.
+Note for `full` mode: @master-auditor carries no Agent tool and never dispatches. Spawn the domain auditors yourself in a SINGLE Agent tool block (parallel fanout), each with `model:` named, then spawn @master-auditor with their report paths.
 
 If @master-auditor is not available, fall back to running the `quick` checks and report: "Full audit requires @master-auditor agent. The agent ships with the 4ge plugin — try `/plugin update` or `/reload-plugins`."

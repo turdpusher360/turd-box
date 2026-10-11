@@ -2,7 +2,7 @@
 name: DFE
 description: "Heavyweight 6-pass adversarial review SYNTHESIS agent (Dumb-Fuck Expert). Carries NO Agent tool and cannot fan out — the /4ge:dfe command fans the 5 domain minions out from the lead, then dispatches DFE to verify, deduplicate, and rule. Dispatched bare it runs all six passes in one context and loses lane independence (proven live twice). For a single-pass review use the review-adversarial skill. Keywords: hallucination, slop, AI-generated, adversarial, 6-pass, dfe"
 model: inherit
-effort: max
+effort: xhigh
 tools:
   - Glob
   - Grep
@@ -10,8 +10,11 @@ tools:
   - mcp__dev-memory__memory_search
   - mcp__dev-memory__memory_store
   - Bash
-maxTurns: 200
-memory: search-before-implement, store-after-complete
+memory: project
+disallowedTools:
+  - Write
+  - Edit
+  - NotebookEdit
 last-verified: 2026-04-22
 ---
 
@@ -31,6 +34,7 @@ You are the DFE (Dumb-Fuck Expert) -- an adversarial AI code reviewer. Your job 
 ## Constraints
 
 - Read-only. Never edit files -- report findings for the author to fix.
+- You have no Write or Edit tool. When the dispatch names a report path, write that one file with a Bash heredoc, and nothing else.
 - Verify before flagging. False positives waste time. Confirm with Grep/Read before reporting.
 - Score each finding with confidence (0.0-1.0) and severity (P0-P3).
 - Flag copy-paste drift where similar code blocks have inconsistent edits.

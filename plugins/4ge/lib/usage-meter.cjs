@@ -25,6 +25,14 @@
  *   (pre ~June 2026) lack the split; those fall back to the 5m rate.
  * - `costUSD` was present on 0 of ~5,000 sampled entries — cost is therefore
  *   ALWAYS computed from the pricing config and is an ESTIMATE.
+ * - `usage.iterations[]` (2026-09-29 sample, advisor session) holds one item
+ *   per model call inside a response: `type:"message"` for the session model,
+ *   `type:"advisor_message"` (+ its own `model`) for an advisor call. The
+ *   top-level usage equals the sum of the `message` iterations ONLY, so advisor
+ *   tokens are invisible there; and the top-level `cache_creation` split
+ *   reflects only the first iteration. extractEntries() therefore emits one
+ *   extra entry per advisor iteration and sums the split over the `message`
+ *   iterations.
  *
  * ## Privacy hard line
  * `extractEntry()` copies ONLY usage numbers, model, timestamps and ids out of
@@ -169,6 +177,52 @@ function safeTokenCount(v) {
   return typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : 0;
 }
 
+function isFiniteNumber(v) {
+  return typeof v === 'number' && Number.isFinite(v);
+}
+
+/**
+ * Read a `cache_creation` object into { cache5m, cache1h }. A missing tier of a
+ * present object is 0; an absent or non-object value is null/null (older
+ * schema — the pricer then falls back to the blended 5m rate).
+ */
+function readCacheSplit(cc) {
+  if (!cc || typeof cc !== 'object') return { cache5m: null, cache1h: null };
+  const has5m = isFiniteNumber(cc.ephemeral_5m_input_tokens);
+  const has1h = isFiniteNumber(cc.ephemeral_1h_input_tokens);
+  return {
+    cache5m: has5m ? Math.max(0, cc.ephemeral_5m_input_tokens) : null,
+    cache1h: has1h ? Math.max(0, cc.ephemeral_1h_input_tokens) : null,
+  };
+}
+
+/**
+ * 5m/1h cache-write split summed over the `type:"message"` iterations, or null
+ * when no message iteration carries cache-creation data (the caller then keeps
+ * the top-level split). An iteration with a blended count but no split counts
+ * at the 5m tier, the same fallback the pricer applies to a whole entry.
+ * Advisor iterations are excluded: they are priced as their own entries.
+ */
+function iterationCacheSplit(iterations) {
+  if (!Array.isArray(iterations)) return null;
+  let cache5m = 0;
+  let cache1h = 0;
+  let usable = false;
+  for (const it of iterations) {
+    if (!it || typeof it !== 'object' || it.type !== 'message') continue;
+    const split = readCacheSplit(it.cache_creation);
+    if (split.cache5m != null || split.cache1h != null) {
+      cache5m += split.cache5m || 0;
+      cache1h += split.cache1h || 0;
+      usable = true;
+    } else if (isFiniteNumber(it.cache_creation_input_tokens)) {
+      cache5m += safeTokenCount(it.cache_creation_input_tokens);
+      usable = true;
+    }
+  }
+  return usable ? { cache5m, cache1h } : null;
+}
+
 /**
  * Extract the billing-relevant fields from one parsed JSONL object, or return
  * null if the entry does not carry usage (non-assistant types, synthetic
@@ -192,11 +246,9 @@ function extractEntry(raw) {
   const ts = typeof raw.timestamp === 'string' ? Date.parse(raw.timestamp) : NaN;
   if (!Number.isFinite(ts)) return null;
 
-  const cc = u.cache_creation && typeof u.cache_creation === 'object' ? u.cache_creation : null;
-  const has5m = cc && typeof cc.ephemeral_5m_input_tokens === 'number'
-    && Number.isFinite(cc.ephemeral_5m_input_tokens);
-  const has1h = cc && typeof cc.ephemeral_1h_input_tokens === 'number'
-    && Number.isFinite(cc.ephemeral_1h_input_tokens);
+  // With iterations the top-level split covers only the first one, so the
+  // split is summed over the message iterations; without, it is the top-level.
+  const split = iterationCacheSplit(u.iterations) || readCacheSplit(u.cache_creation);
 
   return {
     ts,
@@ -209,9 +261,57 @@ function extractEntry(raw) {
     output: safeTokenCount(u.output_tokens),
     cacheCreate: safeTokenCount(u.cache_creation_input_tokens),
     cacheRead: safeTokenCount(u.cache_read_input_tokens),
-    cache5m: has5m ? Math.max(0, cc.ephemeral_5m_input_tokens) : null,
-    cache1h: has1h ? Math.max(0, cc.ephemeral_1h_input_tokens) : null,
+    cache5m: split.cache5m,
+    cache1h: split.cache1h,
   };
+}
+
+/**
+ * One entry for an `advisor_message` iteration. It inherits the parent's
+ * timestamp and ids and carries `advisor: true` plus its ordinal among the
+ * parent's advisor iterations, so loadEntries() can dedup it on its own key
+ * (see dedupKey) while the parent id repeats across streaming snapshots.
+ * PRIVACY: only usage numbers and the model id are copied from the iteration.
+ */
+function advisorEntry(main, it, index) {
+  const split = readCacheSplit(it.cache_creation);
+  return {
+    ts: main.ts,
+    model: typeof it.model === 'string' && MODEL_ID_RE.test(it.model) ? it.model : INVALID_MODEL,
+    messageId: main.messageId,
+    requestId: main.requestId,
+    sessionId: main.sessionId,
+    isSidechain: main.isSidechain,
+    input: safeTokenCount(it.input_tokens),
+    output: safeTokenCount(it.output_tokens),
+    cacheCreate: safeTokenCount(it.cache_creation_input_tokens),
+    cacheRead: safeTokenCount(it.cache_read_input_tokens),
+    cache5m: split.cache5m,
+    cache1h: split.cache1h,
+    advisor: true,
+    advisorIndex: index,
+  };
+}
+
+/**
+ * Every billable entry in one parsed JSONL object: the extractEntry() entry
+ * (top-level usage, unchanged) followed by one entry per advisor iteration,
+ * priced later at that iteration's own model. Returns [] where extractEntry()
+ * returns null. extractEntry() itself keeps its single-entry contract.
+ */
+function extractEntries(raw) {
+  const main = extractEntry(raw);
+  if (!main) return [];
+  const out = [main];
+  const iterations = raw.message.usage.iterations;
+  if (!Array.isArray(iterations)) return out;
+  let index = 0;
+  for (const it of iterations) {
+    if (it && typeof it === 'object' && it.type === 'advisor_message') {
+      out.push(advisorEntry(main, it, index++));
+    }
+  }
+  return out;
 }
 
 /**
@@ -255,8 +355,7 @@ function parseTranscriptFile(filePath) {
         parseErrors++; // malformed or truncated (partial last line) — skip
         return;
       }
-      const entry = extractEntry(raw);
-      if (entry) entries.push(entry);
+      for (const entry of extractEntries(raw)) entries.push(entry);
     });
     rl.on('close', () => settle(null));
   });
@@ -277,6 +376,17 @@ async function mapPool(items, limit, fn) {
   for (let i = 0; i < n; i++) workers.push(worker());
   await Promise.all(workers);
   return results;
+}
+
+/**
+ * Dedup key for an entry with a messageId. An advisor entry shares its parent's
+ * (messageId, requestId), so its ordinal joins the key: the same response seen
+ * twice collapses to one advisor entry, while two advisor calls inside one
+ * response stay two entries.
+ */
+function dedupKey(e) {
+  const base = `${e.messageId}\u0000${e.requestId || ''}`;
+  return e.advisor ? `${base}\u0000advisor${e.advisorIndex}` : base;
 }
 
 /**
@@ -334,7 +444,7 @@ async function loadEntries(opts) {
     if (res.fileError) fileReadErrors++;
     for (const e of res.entries) {
       if (e.messageId) {
-        const key = `${e.messageId}\u0000${e.requestId || ''}`;
+        const key = dedupKey(e);
         const prev = byKey.get(key);
         if (!prev || e.ts >= prev.ts) byKey.set(key, e);
       } else {
@@ -706,6 +816,7 @@ module.exports = {
   defaultProjectDirs,
   discoverTranscriptFiles,
   extractEntry,
+  extractEntries,
   parseTranscriptFile,
   loadEntries,
   loadPricing,

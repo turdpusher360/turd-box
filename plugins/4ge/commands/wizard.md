@@ -10,4 +10,4 @@ Parse $ARGUMENTS:
 
 Before producing any output, read `${CLAUDE_PLUGIN_ROOT}/skills/wizard-engine/references/output-format.md` for formatting rules.
 
-Invoke the wizard-engine skill with the parsed mode and flags. Do not output any intermediate text before the skill activates.
+Read `${CLAUDE_PLUGIN_ROOT}/skills/wizard-engine/SKILL.md` in full and follow it as the pipeline instructions, with the parsed mode and flags: in that file the `ARGUMENTS` placeholder means the mode followed by the flags. Reach the engine by this path only: the skill sets `disable-model-invocation: true`, so the Skill tool cannot start it. Its `references/` and `modes/` files sit beside it in `${CLAUDE_PLUGIN_ROOT}/skills/wizard-engine/`. Do not output any intermediate text before the first output the skill file prescribes.

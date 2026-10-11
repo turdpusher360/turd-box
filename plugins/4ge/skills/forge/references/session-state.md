@@ -54,6 +54,12 @@ Persisted to `${CLAUDE_PLUGIN_DATA}/forge/forge-state-{slug}.json` (falls back t
 }
 ```
 
+### Artifact keys
+
+- `spec_path` / `plan_path`: the lane's spec and plan, as repo-relative strings.
+- `spec_paths` / `plan_paths`: string arrays, used when a lane owns more than one spec or plan (for example a feature plus its lab). List every one there; the single keys may repeat the first.
+- A repo may add a guard that refuses to stage a spec or plan that no lane names in these keys, or whose lane carries neither its packet review (spec: `spec_dfe`; plan: `dfe` and `gambit`) nor a recorded operator waiver.
+
 ### Session State Values (quad-state)
 
 | State | Meaning | Set when |

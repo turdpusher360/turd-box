@@ -15,7 +15,7 @@ const fs = require('fs');
 const path = require('path');
 
 const PLUGIN = path.join('plugins', '4ge');
-const EXPECT = { agents: 17, commands: 39, skills: 41 };
+const EXPECT = { agents: 17, commands: 39, skills: 42 };
 
 function countFiles(dir, predicate) {
   if (!fs.existsSync(dir)) return 0;

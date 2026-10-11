@@ -54,6 +54,30 @@ describe('run-pass model validation', () => {
     expect(result.stderr).toContain('Invalid DFE_OPUS_MODEL');
     expect(result.stderr).not.toContain('ANTHROPIC_API_KEY');
   });
+
+  // Validation passing is the whole assertion: the run then proceeds toward the SDK with no
+  // API key, so the dead local base URL guarantees nothing here can reach the real API.
+  it('accepts claude-sonnet-5-5 as the Sonnet-tier model', () => {
+    const result = runWithEnv('P1', {
+      DFE_MODEL: 'claude-sonnet-5-5',
+      DFE_OPUS_MODEL: 'claude-opus-4-8',
+      ANTHROPIC_BASE_URL: 'http://127.0.0.1:9',
+    });
+
+    expect(result.stderr).not.toContain('Invalid DFE_MODEL');
+    expect(result.stdout).toContain('running on claude-sonnet-5-5');
+  });
+
+  it('accepts claude-opus-5-5 as the Opus-tier model', () => {
+    const result = runWithEnv('P2', {
+      DFE_MODEL: 'claude-sonnet-5',
+      DFE_OPUS_MODEL: 'claude-opus-5-5',
+      ANTHROPIC_BASE_URL: 'http://127.0.0.1:9',
+    });
+
+    expect(result.stderr).not.toContain('Invalid DFE_OPUS_MODEL');
+    expect(result.stdout).toContain('running on claude-opus-5-5');
+  });
 });
 
 describe('run-pass prompt boundary', () => {

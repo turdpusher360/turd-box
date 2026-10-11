@@ -99,8 +99,16 @@ function formatSentinelLine(opts) {
   }
   const redText = redParts.length > 0 ? ` · ${redParts.join(' · ')}` : '';
 
+  // BL-331: a doctrine-only check that failed is named at boot but stays informational: it
+  // never joins redParts, so it never makes the line red or gates anything. Status files
+  // written before rig-sentinel recorded doctrine_only_fail simply show nothing here.
+  const doctrineOnlyFail = Array.isArray(summary.doctrine_only_fail) ? summary.doctrine_only_fail : [];
+  const doctrineFailText = doctrineOnlyFail.length > 0
+    ? ` (${doctrineOnlyFail.length} FAIL, informational: ${doctrineOnlyFail.slice(0, 4).join(', ')}${doctrineOnlyFail.length > 4 ? ', …' : ''})`
+    : '';
+
   return {
-    line: `[sentinel] ${enforcedOk}/${enforcedTotal} ok${redText} · ${doctrineOnlyCount} doctrine-only · ran ${agoText}`,
+    line: `[sentinel] ${enforcedOk}/${enforcedTotal} ok${redText} · ${doctrineOnlyCount} doctrine-only${doctrineFailText} · ran ${agoText}`,
     red: redParts.length > 0,
   };
 }

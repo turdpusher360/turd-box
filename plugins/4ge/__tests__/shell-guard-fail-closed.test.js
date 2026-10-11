@@ -5,7 +5,7 @@
  * fail-OPENed (allowed the command) on parse error / stdin error / timeout —
  * an attacker who could make the hook error bypassed it entirely. They must
  * deny on uncertainty, matching pre-bash-guards.cjs. Note the two CLIs use
- * different protocols: Codex blocks via exit 2; Gemini blocks via a JSON
+ * different protocols: Codex blocks via PreToolUse deny JSON; Gemini uses a JSON
  * { decision: "deny" } payload on exit 0.
  */
 import { describe, it, expect } from 'vitest';
@@ -25,15 +25,22 @@ function run(hookPath, input) {
 const BENIGN = JSON.stringify({ tool_name: 'Bash', tool_input: { command: 'ls -la' } });
 const DANGER = JSON.stringify({ tool_name: 'Bash', tool_input: { command: 'chmod 777 /tmp/x' } });
 
-describe('Codex shell-guard fail-closed (exit 2 = block)', () => {
-  it('fails closed (exit 2) on malformed JSON', () => {
-    expect(run(codexGuard, 'not valid json').status).toBe(2);
+function expectCodexDenied(result) {
+  expect(result.status).toBe(0);
+  expect(JSON.parse(result.stdout).hookSpecificOutput).toMatchObject({
+    hookEventName: 'PreToolUse', permissionDecision: 'deny',
+  });
+}
+
+describe('Codex shell-guard fail-closed (explicit deny JSON)', () => {
+  it('fails closed on malformed JSON', () => {
+    expectCodexDenied(run(codexGuard, 'not valid json'));
   });
   it('allows a benign command (exit 0)', () => {
     expect(run(codexGuard, BENIGN).status).toBe(0);
   });
-  it('blocks a dangerous command (exit 2)', () => {
-    expect(run(codexGuard, DANGER).status).toBe(2);
+  it('blocks a dangerous command', () => {
+    expectCodexDenied(run(codexGuard, DANGER));
   });
 });
 

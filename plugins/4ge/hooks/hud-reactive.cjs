@@ -99,18 +99,23 @@ function isUnknownGitState(state) {
     || (state.branch == null && state.dirty == null && state.uncommittedFiles == null);
 }
 
+// Starts a detached git-state refresh; never runs git in this process. `git status`
+// on the drvfs checkout takes seconds, and this hook sits on every tool call. The
+// child writes _runs/os/git-state.json and the statusline picks it up from there.
+// Returns smart-order's spawn result ({ spawned, ... }) or null when nothing started.
 function refreshGitState(input, now = Date.now(), smartOrderOverride = null) {
   const tool = (input && input.tool_name) || '';
   if (!GIT_REFRESH_TOOLS.has(tool)) return null;
   try {
     const smartOrder = smartOrderOverride || require(path.join(_hudPluginRoot, 'lib', 'smart-order.cjs'));
-    if (!smartOrder || typeof smartOrder.readGitState !== 'function') return null;
+    if (!smartOrder || typeof smartOrder.readGitState !== 'function'
+      || typeof smartOrder.spawnDetachedRefresh !== 'function') return null;
     const cached = smartOrder.readGitState({ refresh: false });
     if (!isUnknownGitState(cached)) {
       const ts = cached && typeof cached.timestamp === 'string' ? Date.parse(cached.timestamp) : NaN;
       if (Number.isFinite(ts) && now - ts < GIT_REFRESH_THROTTLE_MS) return null;
     }
-    return smartOrder.readGitState({ refresh: true }) || null;
+    return smartOrder.spawnDetachedRefresh() || null;
   } catch {
     return null;
   }

@@ -51,7 +51,7 @@ jobs:
 | `findings_count` | Total findings across all passes |
 | `critical_count` | CRITICAL severity findings |
 | `high_count` | HIGH severity findings |
-| `verdict` | Overall verdict: CLEAN, RISK, or BLOCKED |
+| `verdict` | Overall verdict: CLEAN, RISK, BLOCKED, or INCOMPLETE (a pass did not complete; the action exits 2) |
 | `report_path` | Path to the consolidated JSON report artifact |
 
 ## The 6 Passes
@@ -68,7 +68,7 @@ jobs:
 Pass 6 (PROVENANCE) uses `opus_model` regardless of the `model` input.
 Passes 2 and 3 (SECURITY, LOGIC) also use Opus — adversarial reasoning needs the better model.
 
-Model IDs are validated before the action attempts an Anthropic API call. Current defaults follow Anthropic's model overview: `claude-sonnet-5` for Sonnet-tier passes and `claude-opus-4-8` for Opus-tier passes. The `claude-opus-4-7` Opus override is documented for pinned-stability; Anthropic pricing lists Opus 4.8 and Opus 4.7 at the same standard rate, with Sonnet priced lower.
+Model IDs are validated before the action attempts an Anthropic API call. Current defaults follow Anthropic's model overview: `claude-sonnet-5` for Sonnet-tier passes and `claude-opus-4-8` for Opus-tier passes. The `claude-opus-4-7` Opus override is documented for pinned-stability; Anthropic pricing lists Opus 4.8 and Opus 4.7 at the same standard rate, with Sonnet priced lower. `claude-sonnet-5-5` is also accepted for `model` and `claude-opus-5-5` for `opus_model`; the defaults above are unchanged.
 
 - Model overview: https://platform.claude.com/docs/en/about-claude/models/overview
 - Pricing: https://platform.claude.com/docs/en/about-claude/pricing
@@ -98,10 +98,10 @@ license tier — both values are available to every user of this Action.
 - uses: OWNER/4ge-dfe-action@v0
   with:
     api_key: ${{ secrets.ANTHROPIC_API_KEY }}
-    fail_on_severity: "NONE"  # Always exit 0 and post a COMMENT review
+    fail_on_severity: "NONE"  # Report only: findings never fail the run; post a COMMENT review
 ```
 
-Report-only mode sets the GitHub review event to COMMENT. Without report-only mode, `BLOCKED` pass failures and configured severity thresholds can request changes or fail the action.
+Report-only mode sets the GitHub review event to COMMENT. Without report-only mode, `BLOCKED` pass failures and configured severity thresholds can request changes or fail the action. A run where a pass failed or returned no usable result is never approved and exits 2, in report-only mode too; outside report-only mode its review still requests changes when the completed passes found blocking findings.
 
 ## Full Example with All Options
 

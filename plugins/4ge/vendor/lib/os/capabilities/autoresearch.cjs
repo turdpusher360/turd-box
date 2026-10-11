@@ -7,14 +7,11 @@ const path = require('node:path');
 module.exports = {
   manifest: {
     name: 'autoresearch',
-    version: '1.0.0',
-    description: 'Self-improving measurement loops (edit/run/measure/keep)',
+    version: '2.0.0',
+    description: 'Measurement-plane status: each domain\'s latest metric graded by the harness (read-only)',
     depends_on: [],
     actions: {
-      run:    { description: 'Run single domain iteration', args: ['domain'] },
-      sweep:  { description: 'Run all domains', args: [] },
-      status: { description: 'Show domain statuses', args: [] },
-      heal:   { description: 'Fix a failing domain', args: ['domain'] },
+      status: { description: 'Grade each domain\'s latest metric against its threshold', args: [] },
     },
     /** @returns {import('../kernel/contracts.cjs').HealthResult} */
     health() {
@@ -47,10 +44,17 @@ module.exports = {
         this._healthCache = result;
         return result;
       }
-      // Dry-load harness to catch syntax/require errors
+      // Compile-only syntax check, CJS-wrapped; the harness never runs here.
+      // The 4ge plugin vendors this capability and runs cheap probes in any
+      // repo it opens, so require()-ing a project's harness from a probe would
+      // execute that repo's code (BL-404). Require-time errors surface only
+      // when an explicit action loads the harness (_loadHarness).
       try {
-        delete require.cache[require.resolve(harnessPath)];
-        require(harnessPath);
+        require('node:vm').compileFunction(
+          fsMod.readFileSync(harnessPath, 'utf8'),
+          ['exports', 'require', 'module', '__filename', '__dirname'],
+          { filename: harnessPath }
+        );
       } catch (loadErr) {
         const result = { ok: false, reason: `harness load failed: ${loadErr.message}` };
         this._healthCache = result;
@@ -126,41 +130,12 @@ module.exports = {
   },
 
   actions: {
-    run(args, _os) {
-      const { domain } = args || {};
-      if (!domain) return { error: 'domain name required' };
-
-      // Emit research-queue event when a domain task is enqueued
-      const os = module.exports._os;
-      if (os && os.observability) {
-        os.observability.log('capability', 'research-queue', {
-          capability: 'autoresearch',
-          severity: 'info',
-          domain,
-          message: `Autoresearch task queued for domain: ${domain}`,
-        });
-      }
-
-      return {
-        advisory: true,
-        instruction: `Invoke the autoresearch skill with domain "${domain}".`,
-        domain,
-        skill: 'autoresearch',
-      };
-    },
-
-    sweep(_args, _os) {
-      return {
-        advisory: true,
-        instruction: 'Invoke the autoresearch skill with "sweep" argument.',
-        skill: 'autoresearch',
-        args: 'sweep',
-      };
-    },
-
     status(_args, _os) {
       const harness = this._loadHarness();
       if (!harness) return { error: 'autoresearch harness not found' };
+      if (typeof harness.resolveStatus !== 'function' || typeof harness.getBaselineV2 !== 'function') {
+        return { error: 'autoresearch harness does not export resolveStatus and getBaselineV2' };
+      }
 
       const domains = this._listDomains();
       const results = [];
@@ -169,42 +144,42 @@ module.exports = {
         try {
           const config = harness.loadConfig(domain);
           const experiments = harness.loadExperiments(domain);
-          const baseline = harness.getBaseline(experiments);
-          const threshold = config.threshold;
+          // The harness grades with config.metric.threshold and config.metric.direction,
+          // the same rule its --status and sweep use.
+          const status = harness.resolveStatus(config, experiments);
+          const baseline = harness.getBaselineV2(experiments, 'proxy');
+          const metric = config.metric || {};
+          // When the status was observed: the latest measurement row, failed or
+          // skipped ones included. Null for an older harness without the helper.
+          const latest = typeof harness.latestObservation === 'function'
+            ? harness.latestObservation(experiments, 'proxy')
+            : null;
 
           results.push({
             domain,
-            metric: baseline ? baseline.metric : null,
-            threshold,
-            atThreshold: baseline ? baseline.metric >= threshold : false,
+            status,
+            metric: baseline ? (baseline.metric ?? baseline.metric_after ?? null) : null,
+            threshold: metric.threshold ?? null,
+            direction: metric.direction ?? null,
             experiments: experiments.length,
+            observedAt: (latest && latest.timestamp) || null,
           });
         } catch (err) {
           results.push({ domain, error: err.message });
         }
       }
 
-      const atThreshold = results.filter(r => r.atThreshold).length;
-      const errored = results.filter(r => r.error).length;
+      /** @type {Record<string, number>} */
+      const byStatus = {};
+      for (const r of results) {
+        if (r.status) byStatus[r.status] = (byStatus[r.status] || 0) + 1;
+      }
       return {
         total: domains.length,
-        atThreshold,
-        belowThreshold: domains.length - atThreshold - errored,
-        errored,
+        atThreshold: byStatus.AT_THRESHOLD || 0,
+        errored: results.filter(r => r.error).length,
+        byStatus,
         domains: results,
-      };
-    },
-
-    heal(args, _os) {
-      const { domain } = args || {};
-      if (!domain) return { error: 'domain name required' };
-
-      return {
-        advisory: true,
-        instruction: `Invoke the autoresearch skill with "heal ${domain}" argument.`,
-        domain,
-        skill: 'autoresearch',
-        args: `heal ${domain}`,
       };
     },
   },

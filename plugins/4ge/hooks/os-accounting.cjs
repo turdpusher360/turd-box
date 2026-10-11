@@ -357,7 +357,7 @@ async function main() {
       meta.est_tokens_running_total = (meta.est_tokens_running_total || 0) + estDelta;
       meta.tool_count_running = (meta.tool_count_running || 0) + 1;
       if (durationMs >= 0) meta.total_tool_ms = (meta.total_tool_ms || 0) + durationMs;
-      const ctxWindow = meta.context_window || (/opus/i.test(meta.model || '') ? 1000000 : 200000);
+      const ctxWindow = meta.context_window || (/opus|fable|sonnet-5|^sonnet$/i.test(meta.model || '') ? 1000000 : 200000);
       meta.est_context_pct = Math.min(100, Math.round(
         (meta.est_tokens_running_total / ctxWindow) * 100
       ));

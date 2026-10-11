@@ -24,18 +24,24 @@
  * upstream adversarial battery proved an arg-injection surface on this rig; `spawnSync(bin, args)`
  * with an explicit argv array never touches a shell parser, so a malicious `pattern`/`file`/`args`
  * value in a corrupted register can, at worst, become a literal (harmless) argv token — it cannot
- * break out into `; rm -rf` style injection. This holds for EVERY check type below, including
+ * break out into `; rm -rf` style injection. A grep `pattern` also sits after `--`, so it cannot
+ * become a grep option (BL-412). This holds for EVERY check type below, including
  * `crontab-line`'s read (`crontab -l`, no interpolation) — the crontab-line WRITE (rearm) lives in
  * rig-sentinel.cjs, also argv-only.
  *
  * Check types (see the schema for full field docs):
  *   grep            — spawn the `grep` binary (`-E -q`) against a file; pass = pattern found.
- *   grep-absent     — same evaluator, inverted; a missing FILE also counts as "absent" (pass).
+ *                     Optional `flags` must come from GREP_FLAG_ALLOWLIST (both grep types, BL-412).
+ *   grep-absent     — same command, inverted; passes only on grep exit 1. A missing file, exit 2
+ *                     (bad regex, unreadable file) or a spawn error fails closed (BL-330).
  *   json-path       — read+parse a JSON file, resolve a dot path, optionally compare to `expect`.
- *   json-path-absent — pass = the dot path does NOT resolve (or the file itself is unreadable).
+ *   json-path-absent — pass = the file reads and parses and the dot path does NOT resolve in it.
+ *                     A missing file, a directory, an unreadable file or invalid JSON fails
+ *                     closed (BL-411).
  *   cmd             — spawn an arbitrary binary with an argv array; exit-code + optional stdout
  *                     assertions (`expectStdoutContains`, `expectStdoutNotContains`,
- *                     `expectStdoutEmpty`, `stdoutNumberAtMost`).
+ *                     `expectStdoutEmpty`, `stdoutNumberAtMost`). The optional
+ *                     report:"advisory-watch/v1" projects only bounded public advisory fields.
  *   heartbeat       — file mtime age in hours, pass if <= maxAgeHours.
  *   crontab-line    — pass if a regex matches somewhere in `crontab -l` output.
  *
@@ -91,26 +97,66 @@ function getAtPath(obj, dotPath) {
   return { found: true, value: cur };
 }
 
+/**
+ * The only `flags` a grep or grep-absent check may carry (BL-412). Each one changes how a line
+ * matches without inverting the result or changing what grep reads: no -v (inverts), no
+ * -e/-f/-r (more patterns, a pattern file, a tree), no matcher switch, no bare operand (a second
+ * file). register-loader.cjs rejects anything else at load; the runners refuse it again here,
+ * because evaluateCheck is also called on checks that never went through the loader.
+ */
+const GREP_FLAG_ALLOWLIST = Object.freeze(['-i', '-w', '-x']);
+
+/** null when `flags` is absent or allowed, else a reason string. */
+function grepFlagsProblem(flags) {
+  if (flags === undefined) return null;
+  if (!Array.isArray(flags)) return 'flags must be an array';
+  const bad = flags.filter((f) => typeof f !== 'string' || !GREP_FLAG_ALLOWLIST.includes(f));
+  if (bad.length === 0) return null;
+  return `flags not allowed: ${bad.map((f) => JSON.stringify(f)).join(', ')} (allowed: ${GREP_FLAG_ALLOWLIST.join(' ')})`;
+}
+
+/**
+ * One argv for both grep checks, so `grep` and `grep-absent` always run the same command.
+ * `--` ends option parsing: a pattern that starts with "-" ("-v", "--help") is matched as
+ * text, never read as an option that inverts the check or exits 0 without reading the file.
+ */
+function spawnGrep(check, resolved) {
+  const args = ['-E', '-q', ...(Array.isArray(check.flags) ? check.flags : []), '--', check.pattern, resolved];
+  return spawnSync('grep', args, { shell: false, timeout: check.timeoutMs || DEFAULT_TIMEOUT_MS });
+}
+
 function runGrep(check, repoRoot) {
+  const flagProblem = grepFlagsProblem(check.flags);
+  if (flagProblem) return { ok: false, detail: `grep: ${flagProblem}` };
   const resolved = resolvePath(check.file, repoRoot);
   if (!fs.existsSync(resolved)) {
     return { ok: false, detail: `grep: file not found: ${check.file}` };
   }
-  const args = ['-E', '-q', ...(Array.isArray(check.flags) ? check.flags : []), check.pattern, resolved];
-  const r = spawnSync('grep', args, { shell: false, timeout: check.timeoutMs || DEFAULT_TIMEOUT_MS });
+  const r = spawnGrep(check, resolved);
   if (r.error) return { ok: false, detail: `grep: spawn error: ${r.error.message}` };
   const found = r.status === 0;
-  return { ok: found, detail: `grep -E -q '${check.pattern}' ${check.file} -> ${found ? 'found' : 'not found'}` };
+  return { ok: found, detail: `grep -E -q -- '${check.pattern}' ${check.file} -> ${found ? 'found' : 'not found'}` };
 }
 
+/**
+ * Fails closed (BL-330). Only grep's exit 1 ("read the file, no line matched") proves the
+ * pattern absent. A missing file, a spawn error or timeout, exit 2 (bad regex, unreadable
+ * file, a directory) and a signal all fail, so a moved file or a broken pattern can never
+ * read as green.
+ */
 function runGrepAbsent(check, repoRoot) {
+  const flagProblem = grepFlagsProblem(check.flags);
+  if (flagProblem) return { ok: false, detail: `grep-absent: ${flagProblem}` };
   const resolved = resolvePath(check.file, repoRoot);
   if (!fs.existsSync(resolved)) {
-    // A missing file trivially has no match — pattern is absent by definition.
-    return { ok: true, detail: `grep-absent: file not found (trivially absent): ${check.file}` };
+    return { ok: false, detail: `grep-absent: file not found: ${check.file}` };
   }
-  const inner = runGrep(check, repoRoot);
-  return { ok: !inner.ok, detail: inner.detail.replace(/^grep:/, 'grep-absent:') };
+  const r = spawnGrep(check, resolved);
+  if (r.error) return { ok: false, detail: `grep-absent: spawn error: ${r.error.message}` };
+  const cmd = `grep -E -q -- '${check.pattern}' ${check.file}`;
+  if (r.status === 1) return { ok: true, detail: `${cmd} -> not found` };
+  if (r.status === 0) return { ok: false, detail: `${cmd} -> found` };
+  return { ok: false, detail: `grep-absent: ${cmd} -> grep error (status ${r.status}, signal ${r.signal})` };
 }
 
 function runJsonPath(check, repoRoot) {
@@ -136,9 +182,16 @@ function runJsonPathAbsent(check, repoRoot) {
   let data;
   try {
     data = readJsonFile(resolved);
-  } catch {
-    // Unreadable/missing file: the path is trivially absent from it.
-    return { ok: true, detail: `json-path-absent: ${check.path} absent (file unreadable/missing: ${check.file})` };
+  } catch (err) {
+    // Fails closed (BL-411): only a file that reads and parses can prove the path absent, so
+    // a moved, unreadable or corrupted file never reads as green. The JSON error text is left
+    // out on purpose: V8 quotes the bytes around the error, and the file may hold a secret.
+    const why = err && typeof err.code === 'string' ? err.code : 'invalid JSON';
+    return { ok: false, detail: `json-path-absent: cannot read/parse ${check.file} (${why})` };
+  }
+  // A root that is not an object holds no paths, so it proves nothing about the one checked.
+  if (data === null || typeof data !== 'object' || Array.isArray(data)) {
+    return { ok: false, detail: `json-path-absent: ${check.file} is not a JSON object` };
   }
   const { found } = getAtPath(data, check.path);
   return { ok: !found, detail: `json-path-absent: ${check.path} ${found ? 'PRESENT (violation)' : 'absent'} in ${check.file}` };
@@ -216,6 +269,13 @@ function runCmd(check, repoRoot) {
     const within = Number.isFinite(n) && n <= check.stdoutNumberAtMost;
     ok = ok && within;
     reasons.push(`stdoutNumber=${Number.isFinite(n) ? n : 'NaN'} atMost ${check.stdoutNumberAtMost} -> ${within}`);
+  }
+
+  // Only this explicit protocol is projected; never echo arbitrary stdout/stderr.
+  if (check.report === 'advisory-watch/v1') {
+    const report = require('./advisory-report.cjs').projectAdvisoryReport(stdout);
+    ok = ok && report.ok;
+    reasons.push(report.detail);
   }
 
   return { ok, detail: `cmd: ${check.bin} ${args.join(' ')} -> ${reasons.join(', ')}` };
@@ -332,4 +392,6 @@ module.exports = {
   computeMemorySlug,
   readCrontab,
   DEFAULT_TIMEOUT_MS,
+  GREP_FLAG_ALLOWLIST,
+  grepFlagsProblem,
 };

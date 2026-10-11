@@ -134,6 +134,7 @@ function scope(opts = {}) {
 
   let nameStatusRaw = '';
   let unifiedRaw = '';
+  const errors = [];
 
   try {
     nameStatusRaw = exec(`git diff --name-status ${diffTarget}`, {
@@ -143,6 +144,7 @@ function scope(opts = {}) {
     });
   } catch (err) {
     process.stderr.write(`[diff-scoper] name-status failed: ${err.message}\n`);
+    errors.push({ phase: 'name-status', message: err.message });
   }
 
   try {
@@ -153,6 +155,7 @@ function scope(opts = {}) {
     });
   } catch (err) {
     process.stderr.write(`[diff-scoper] unified diff failed: ${err.message}\n`);
+    errors.push({ phase: 'unified', message: err.message });
   }
 
   const fileEntries = parseNameStatus(nameStatusRaw);
@@ -176,7 +179,14 @@ function scope(opts = {}) {
     total_lines: files.reduce((sum, f) => sum + f.total_changed_lines, 0),
   };
 
-  return { ref: opts.base ? `${opts.base}...HEAD` : ref, files, new_deps: newDeps, summary };
+  return {
+    ref: opts.base ? `${opts.base}...HEAD` : ref,
+    complete: errors.length === 0,
+    errors,
+    files,
+    new_deps: newDeps,
+    summary,
+  };
 }
 
 // CLI entry point
@@ -189,6 +199,7 @@ if (require.main === module) {
   }
   const result = scope(opts);
   process.stdout.write(JSON.stringify(result, null, 2) + '\n');
+  if (!result.complete) process.exitCode = 1;
 }
 
 module.exports = { parseNameStatus, parseUnifiedDiff, extractNewDeps, scope };

@@ -44,6 +44,21 @@ function writeState(state) {
 // Hub is queried via HTTP on the dev-memory hub port. All calls are best-effort:
 // if the hub is down or slow (>500ms), we skip memory insights silently.
 // Cache TTL is 5 minutes. Cache is read synchronously (file I/O is local).
+//
+// Gate (operator ruling 2026-09-22): memory insights stay off until the query is
+// scoped to the session's own state. With companion.insights.memory unset or
+// not literally true, refreshMemoryCache() issues no hub request and getInsight()
+// skips the memory-* rules. Every other insight rule is unaffected.
+
+/** True only when companion.insights.memory is literally true. */
+function memoryInsightsEnabled(insightCfg) {
+  try {
+    const cfg = insightCfg || require('./companion-config.cjs').loadCompanionConfig().insights || {};
+    return cfg.memory === true;
+  } catch {
+    return false;
+  }
+}
 
 const MEMORY_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 const MEMORY_HUB_PORT = 8091;
@@ -86,34 +101,48 @@ function writeMemoryCache(results) {
  * Returns parsed results array or null on any error/timeout.
  * Uses Node's built-in http module — no fetch, no dependencies.
  *
+ * The hub is stateless Streamable HTTP MCP: it rejects a request without the
+ * JSON-RPC envelope (`jsonrpc`, `id`), takes tool arguments wrapped in
+ * `payload`, and answers as an SSE frame (`event: message` / `data: {...}`).
+ *
  * @param {string} query
  * @param {number} limit
+ * @param {{hostname?: string, port?: number, timeoutMs?: number}} [opts] - test seam
  * @returns {Promise<Array|null>}
  */
-function queryMemoryHub(query, limit) {
+function queryMemoryHub(query, limit, opts) {
+  const o = opts || {};
+  const timeoutMs = typeof o.timeoutMs === 'number' ? o.timeoutMs : MEMORY_HUB_TIMEOUT;
   return new Promise((resolve) => {
     let settled = false;
+    let belt = null;
     const settle = (val) => {
       if (settled) return;
       settled = true;
+      // An uncleared belt timer kept every statusline render alive ~450ms
+      // after its output was written.
+      if (belt) clearTimeout(belt);
       resolve(val);
     };
 
     const body = JSON.stringify({
+      jsonrpc: '2.0',
+      id: 1,
       method: 'tools/call',
       params: {
         name: 'memory_search',
-        arguments: { query, limit: limit || 5, threshold: 0.4 },
+        arguments: { payload: { query, limit: limit || 5, threshold: 0.4 } },
       },
     });
 
     const options = {
-      hostname: '127.0.0.1',
-      port: MEMORY_HUB_PORT,
+      hostname: o.hostname || '127.0.0.1',
+      port: typeof o.port === 'number' ? o.port : MEMORY_HUB_PORT,
       path: '/mcp',
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'Accept': 'application/json, text/event-stream',
         'Content-Length': Buffer.byteLength(body),
       },
     };
@@ -123,7 +152,9 @@ function queryMemoryHub(query, limit) {
       res.on('data', (chunk) => { data += chunk; });
       res.on('end', () => {
         try {
-          const parsed = JSON.parse(data);
+          // SSE frame: take the JSON from the `data:` line; plain JSON passes through.
+          const dataLine = data.match(/^data:\s*(.+)$/m);
+          const parsed = JSON.parse(dataLine ? dataLine[1] : data);
           // MCP response shape: { result: { content: [{ type: 'text', text: '...' }] } }
           // The text itself is JSON with { status, results }
           const content = parsed && parsed.result && parsed.result.content;
@@ -141,12 +172,14 @@ function queryMemoryHub(query, limit) {
     });
 
     req.on('error', () => settle(null));
-    req.setTimeout(MEMORY_HUB_TIMEOUT, () => { req.destroy(); settle(null); });
+    req.setTimeout(timeoutMs, () => { req.destroy(); settle(null); });
     req.write(body);
     req.end();
 
-    // Belt-and-suspenders timeout at JS level
-    setTimeout(() => settle(null), MEMORY_HUB_TIMEOUT + 50);
+    // Belt-and-suspenders timeout at JS level; unref'd so it never holds the
+    // process open on its own, and cleared by settle() on the normal path.
+    belt = setTimeout(() => { req.destroy(); settle(null); }, timeoutMs + 50);
+    if (belt && typeof belt.unref === 'function') belt.unref();
   });
 }
 
@@ -157,9 +190,13 @@ function queryMemoryHub(query, limit) {
  * The synchronous getInsight() reads from the already-cached file.
  *
  * @param {string} [cwd]
+ * @param {{hostname?: string, port?: number, timeoutMs?: number}} [hubOpts] - test seam
  */
-async function refreshMemoryCache(cwd) {
+async function refreshMemoryCache(cwd, hubOpts) {
   try {
+    // Memory gate: no hub query at all unless memory insights are opted in.
+    if (!memoryInsightsEnabled()) return;
+
     // Only refresh if cache is absent or expired
     const existing = readMemoryCache();
     if (existing !== null) return; // still fresh
@@ -170,7 +207,7 @@ async function refreshMemoryCache(cwd) {
     const projectSlug = path.basename(projectDir) || 'project';
     const query = `${projectSlug} session decisions constraints handoff`;
 
-    const results = await queryMemoryHub(query, 8);
+    const results = await queryMemoryHub(query, 8, hubOpts);
     if (results !== null) {
       writeMemoryCache(results);
     }
@@ -775,6 +812,7 @@ function getInsight(state) {
       ? insightCfg.rotationMs
       : 45000;
     const tone = insightCfg.tone || 'warm';
+    const memoryOn = memoryInsightsEnabled(insightCfg);
 
     const persisted = readState();
     const now = Date.now();
@@ -787,6 +825,7 @@ function getInsight(state) {
     // Collect eligible rules: condition passes + tone allows + not the last shown
     const eligible = RULES.filter((rule) => {
       if (rule.id === persisted.lastInsightId) return false;
+      if (rule.category === 'memory' && !memoryOn) return false; // memory gate
       if (!isEligibleByTone(rule, tone)) return false;
       try {
         return rule.condition(state);

@@ -2,6 +2,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
+import http from 'http';
+import { EventEmitter } from 'events';
+import { Readable } from 'stream';
 
 // ── Real temp-dir approach ──────────────────────────────────────────────────
 // vi.mock('fs') does NOT reliably intercept CJS require('fs') across module
@@ -969,21 +972,270 @@ describe('companion-insights', () => {
 
     it('refreshMemoryCache skips network call when cache is fresh', async () => {
       writeFreshCache([makeCacheEntry('fact', 'still valid')]);
+      optInMemory();
       const { refreshMemoryCache, readMemoryCache } = requireFresh();
       const before = readMemoryCache();
-      await refreshMemoryCache(tmpDir);
+      // A down-hub fake on the stub port: even a regression here can never
+      // reach the live hub, and the call count proves no request was sent.
+      const hub = startHubStub(null);
+      try {
+        await refreshMemoryCache(tmpDir, { port: hub.port, timeoutMs: 2000 });
+        expectHubCalls(hub, 0);
+      } finally {
+        await hub.close();
+      }
       const after = readMemoryCache();
       // fetchedAt should be unchanged — no re-fetch when fresh
       expect(after.fetchedAt).toBe(before.fetchedAt);
     });
 
+    /** Opt in to memory insights (default OFF, S693 gate) for this test. */
+    function optInMemory() {
+      writeConfig({ insights: { memory: true } });
+    }
+
+    // ── hub transport (in-process fake of http.request; no socket is opened) ──
+    // Every transport test opts in first: with the S693 gate closed (default)
+    // refreshMemoryCache sends nothing, and these assertions would pass vacuously.
+    // Each test passes STUB_PORT, never the hub's default port, and checks the
+    // fake's call count, so a request that bypassed the fake would fail the test
+    // instead of reaching the live hub.
+    const STUB_PORT = 47913;
+
+    /**
+     * Replace http.request for one test. `respond(res)` writes the reply with
+     * `res.writeHead(status, headers)` and `res.end(text)`; `respond` null is a
+     * hub that is down (the request emits ECONNREFUSED). Replies arrive on a
+     * later tick, as from a real socket, never inside `req.end()`.
+     */
+    function startHubStub(respond) {
+      const requests = [];
+      const spy = vi.spyOn(http, 'request').mockImplementation((options, onResponse) => {
+        const req = new EventEmitter();
+        let body = '';
+        req.setTimeout = () => req;
+        req.destroy = () => req;
+        req.write = (chunk) => { body += chunk; return true; };
+        req.end = () => {
+          const headers = Object.fromEntries(
+            Object.entries(options.headers || {}).map(([k, v]) => [k.toLowerCase(), String(v)]),
+          );
+          const { hostname, port, path: reqPath, method } = options;
+          requests.push({ hostname, port, path: reqPath, method, headers, body: JSON.parse(body) });
+          setImmediate(() => {
+            if (!respond) {
+              req.emit('error', Object.assign(new Error('connect ECONNREFUSED'), { code: 'ECONNREFUSED' }));
+              return;
+            }
+            const reply = { statusCode: 0, headers: {} };
+            respond({
+              writeHead(statusCode, replyHeaders) {
+                reply.statusCode = statusCode;
+                reply.headers = replyHeaders || {};
+              },
+              end(text) {
+                const res = Readable.from([Buffer.from(text)]);
+                res.statusCode = reply.statusCode;
+                res.headers = reply.headers;
+                onResponse(res);
+              },
+            });
+          });
+          return req;
+        };
+        return req;
+      });
+      return { port: STUB_PORT, requests, close: async () => spy.mockRestore() };
+    }
+
+    /** Exactly `n` requests, each through the fake to the stub port on loopback. */
+    function expectHubCalls(hub, n) {
+      expect(hub.requests).toHaveLength(n);
+      for (const r of hub.requests) {
+        expect(r.hostname).toBe('127.0.0.1');
+        expect(r.port).toBe(STUB_PORT);
+        expect(r.path).toBe('/mcp');
+        expect(r.method).toBe('POST');
+      }
+    }
+
+    function rpcReply(results) {
+      return JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        result: { content: [{ type: 'text', text: JSON.stringify({ status: 'success', results }) }] },
+      });
+    }
+
+    it('refreshMemoryCache sends a JSON-RPC envelope with payload-wrapped arguments', async () => {
+      const hub = startHubStub((res) => {
+        res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+        res.end(`event: message\ndata: ${rpcReply([])}\n\n`);
+      });
+      try {
+        optInMemory();
+        const { refreshMemoryCache } = requireFresh();
+        await refreshMemoryCache(tmpDir, { port: hub.port, timeoutMs: 2000 });
+        expectHubCalls(hub, 1);
+        const { body, headers } = hub.requests[0];
+        expect(body.jsonrpc).toBe('2.0');
+        expect(body.id).toBe(1);
+        expect(body.method).toBe('tools/call');
+        expect(body.params.name).toBe('memory_search');
+        expect(body.params.arguments.payload.limit).toBe(8);
+        expect(body.params.arguments.payload.query).toContain(path.basename(tmpDir));
+        expect(headers.accept).toContain('text/event-stream');
+      } finally {
+        await hub.close();
+      }
+    });
+
+    it('refreshMemoryCache parses an SSE reply and writes the cache', async () => {
+      const hub = startHubStub((res) => {
+        res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+        res.end(`event: message\ndata: ${rpcReply([makeCacheEntry('fact', 'sse fact')])}\n\n`);
+      });
+      try {
+        optInMemory();
+        const { refreshMemoryCache, readMemoryCache } = requireFresh();
+        await refreshMemoryCache(tmpDir, { port: hub.port, timeoutMs: 2000 });
+        expectHubCalls(hub, 1);
+        expect(readMemoryCache().results[0].memory.content).toBe('sse fact');
+      } finally {
+        await hub.close();
+      }
+    });
+
+    it('refreshMemoryCache also accepts a plain JSON reply', async () => {
+      const hub = startHubStub((res) => {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(rpcReply([makeCacheEntry('event', 'json event')]));
+      });
+      try {
+        optInMemory();
+        const { refreshMemoryCache, readMemoryCache } = requireFresh();
+        await refreshMemoryCache(tmpDir, { port: hub.port, timeoutMs: 2000 });
+        expectHubCalls(hub, 1);
+        expect(readMemoryCache().results[0].memory.content).toBe('json event');
+      } finally {
+        await hub.close();
+      }
+    });
+
+    it('refreshMemoryCache leaves the cache absent on a JSON-RPC error reply', async () => {
+      const hub = startHubStub((res) => {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ jsonrpc: '2.0', id: 'server-error', error: { code: -32602, message: 'Validation error' } }));
+      });
+      try {
+        optInMemory();
+        const { refreshMemoryCache, readMemoryCache } = requireFresh();
+        await refreshMemoryCache(tmpDir, { port: hub.port, timeoutMs: 2000 });
+        expectHubCalls(hub, 1);
+        expect(readMemoryCache()).toBeNull();
+      } finally {
+        await hub.close();
+      }
+    });
+
     it('refreshMemoryCache resolves without throwing when hub is down', async () => {
-      // Cache is absent — refreshMemoryCache will try to hit port 8091
-      // If hub is down, it should resolve without throwing and leave cache absent
-      const { refreshMemoryCache, readMemoryCache } = requireFresh();
-      // Use a port that is definitely not listening (high ephemeral range)
-      // We can't override the port constant directly, so just verify no throw
-      await expect(refreshMemoryCache(tmpDir)).resolves.toBeUndefined();
+      const hub = startHubStub(null);
+      try {
+        optInMemory();
+        const { refreshMemoryCache, readMemoryCache } = requireFresh();
+        await expect(refreshMemoryCache(tmpDir, { port: hub.port, timeoutMs: 2000 })).resolves.toBeUndefined();
+        expectHubCalls(hub, 1);
+        expect(readMemoryCache()).toBeNull();
+      } finally {
+        await hub.close();
+      }
+    });
+
+    it('clears its belt-and-suspenders timer once the reply lands', async () => {
+      // The uncleared belt timer held every statusline render open ~450ms
+      // after its output was written.
+      const hub = startHubStub((res) => {
+        res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+        res.end(`event: message\ndata: ${rpcReply([])}\n\n`);
+      });
+      const setSpy = vi.spyOn(globalThis, 'setTimeout');
+      const clearSpy = vi.spyOn(globalThis, 'clearTimeout');
+      try {
+        optInMemory();
+        const { refreshMemoryCache } = requireFresh();
+        await refreshMemoryCache(tmpDir, { port: hub.port, timeoutMs: 1234 });
+        expectHubCalls(hub, 1);
+        const beltIdx = setSpy.mock.calls.findIndex((call) => call[1] === 1234 + 50);
+        expect(beltIdx).toBeGreaterThanOrEqual(0);
+        const belt = setSpy.mock.results[beltIdx].value;
+        expect(clearSpy).toHaveBeenCalledWith(belt);
+      } finally {
+        await hub.close();
+      }
+    });
+
+    // ── S693 gate: memory insights default OFF, one opt-in key ───────────────
+    describe('memory insights gate (S693)', () => {
+      /** Keep a real ~/.4ge/config.json from deciding the default. */
+      function isolateHome() {
+        vi.stubEnv('HOME', tmpDir);
+        vi.stubEnv('USERPROFILE', tmpDir);
+      }
+
+      function sseHub(content) {
+        return startHubStub((res) => {
+          res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+          res.end(`event: message\ndata: ${rpcReply([makeCacheEntry('fact', content)])}\n\n`);
+        });
+      }
+
+      it('default config: refreshMemoryCache sends zero hub requests and writes no cache', async () => {
+        isolateHome();
+        const hub = sseHub('should never arrive');
+        try {
+          const { refreshMemoryCache, readMemoryCache } = requireFresh();
+          await refreshMemoryCache(tmpDir, { port: hub.port, timeoutMs: 2000 });
+          expectHubCalls(hub, 0);
+          expect(readMemoryCache()).toBeNull();
+        } finally {
+          await hub.close();
+        }
+      });
+
+      it('a non-boolean memory value does not opt in', async () => {
+        isolateHome();
+        writeConfig({ insights: { memory: 'true' } });
+        const hub = sseHub('should never arrive');
+        try {
+          const { refreshMemoryCache, readMemoryCache } = requireFresh();
+          await refreshMemoryCache(tmpDir, { port: hub.port, timeoutMs: 2000 });
+          expectHubCalls(hub, 0);
+          expect(readMemoryCache()).toBeNull();
+        } finally {
+          await hub.close();
+        }
+      });
+
+      it('opt-in: exactly one request, with the fixed transport envelope and headers', async () => {
+        isolateHome();
+        optInMemory();
+        const hub = sseHub('gate open fact');
+        try {
+          const { refreshMemoryCache, readMemoryCache } = requireFresh();
+          await refreshMemoryCache(tmpDir, { port: hub.port, timeoutMs: 2000 });
+          expectHubCalls(hub, 1);
+          const { body, headers } = hub.requests[0];
+          expect(body).toMatchObject({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'memory_search' } });
+          expect(body.params.arguments).toEqual({
+            payload: { query: expect.stringContaining(path.basename(tmpDir)), limit: 8, threshold: 0.4 },
+          });
+          expect(headers['content-type']).toBe('application/json');
+          expect(headers.accept).toBe('application/json, text/event-stream');
+          expect(readMemoryCache().results[0].memory.content).toBe('gate open fact');
+        } finally {
+          await hub.close();
+        }
+      });
     });
   });
 
@@ -1158,7 +1410,8 @@ describe('companion-insights', () => {
         makeEntry('fact', 'Relevant cached decision'),
         makeEntry('observation', 'Relevant cached constraint'),
       ]);
-      writeConfig({ insights: { enabled: true, tone: 'technical', rotationMs: 0 } });
+      // memory: true is the S693 opt-in; without it the memory rules are gated off.
+      writeConfig({ insights: { enabled: true, tone: 'technical', rotationMs: 0, memory: true } });
       seedOpenState();
       const { getInsight } = requireFresh();
       // Run several times across different minute seeds to catch a memory rule.
@@ -1183,6 +1436,38 @@ describe('companion-insights', () => {
         }));
       }
       expect(foundMemoryInsight).toBe(true);
+    });
+
+    it('default gate (S693): the same cache renders no memory bubble, while other insights still do', () => {
+      // Keep a real ~/.4ge/config.json from deciding the default.
+      vi.stubEnv('HOME', tmpDir);
+      vi.stubEnv('USERPROFILE', tmpDir);
+      writeFreshCache([
+        makeEntry('fact', 'Relevant cached decision'),
+        makeEntry('observation', 'Relevant cached constraint'),
+      ]);
+      // No memory key. tone=warm keeps the ambient fallback eligible, so the
+      // bubble still has something to say once the memory rules are gated off.
+      writeConfig({ insights: { enabled: true, tone: 'warm', rotationMs: 0 } });
+      seedOpenState();
+      const { getInsight } = requireFresh();
+      const seen = [];
+      for (let i = 0; i < 30; i++) {
+        seen.push(getInsight(makeState({
+          session: { toolCount: 5, contextPct: 15, duration: 5 },
+          git: { dirty: 0, branch: null, ahead: 0, lastCommitAge: 5, lastCommitMsg: '' },
+          forge: { active: false, phase: null, activeCommand: '' },
+        })));
+        const stateFile = path.join(tmpDir, '_runs', 'os', '.companion-insights.json');
+        fs.writeFileSync(stateFile, JSON.stringify({
+          lastInsightAt: Date.now() - 999999,
+          lastInsightId: '__reset__',
+          sessionStartAt: Date.now() - 60000,
+        }));
+      }
+      expect(seen).not.toContain('Relevant cached decision');
+      expect(seen).not.toContain('Relevant cached constraint');
+      expect(seen.some((text) => typeof text === 'string' && text.length > 0)).toBe(true);
     });
   });
 });

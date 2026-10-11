@@ -1,15 +1,15 @@
 #!/usr/bin/env node
 'use strict';
 
-const { colorize, stripAnsi } = require('./hud-palette.cjs');
-const { buildCanonicalState, countDegraded } = require('./hud-state.cjs');
+const { colorize, stripAnsi, displayWidth, fitAnsi } = require('./hud-palette.cjs');
+const { buildCanonicalState, countNotReady } = require('./hud-state.cjs');
 const { createCanvas, paintRows, allocateVerticalZones, render } = require('./hud-canvas.cjs');
 const { renderFaceZone, ZONE_META: FACE_META } = require('./hud-zone-face.cjs');
 const { renderHealthZone, ZONE_META: HEALTH_META, computeHealthScore } = require('./hud-zone-health.cjs');
 const { renderColoredOrb } = require('./hud-braille-orb.cjs');
 const path = require('node:path');
 const { isActive: isSessionActive, getFreezeTime } = require('../lib/hud-active-flag.cjs');
-const { renderContextZone, renderContextCompact, ZONE_META: CONTEXT_META } = require('./hud-zone-context.cjs');
+const { renderContextZone, ZONE_META: CONTEXT_META } = require('./hud-zone-context.cjs');
 const { renderForgeZone, ZONE_META: FORGE_META } = require('./hud-zone-forge.cjs');
 const { renderCapsZone, ZONE_META: CAPS_META } = require('./hud-zone-caps.cjs');
 const { renderBadgesZone, ZONE_META: BADGES_META } = require('./hud-zone-badges.cjs');
@@ -24,6 +24,7 @@ const { renderMoonphaseZone, ZONE_META: MOONPHASE_META, moonphaseVisible } = req
 const { renderWeasleyZone, ZONE_META: WEASLEY_META, weasleyVisible } = require('./hud-zone-weasley.cjs');
 const { renderBoardZone, ZONE_META: BOARD_META, boardVisible } = require('./hud-zone-board.cjs');
 const { loadHudData, mergeHarnessStdin, resolveSessionUptime, applySessionIsolation } = require('./hud-data-loader.cjs');
+const { countSessionToolUses } = require('./hud-tool-count.cjs');
 const { renderSubstrateZone } = require('./hud-zone-substrate.cjs');
 const { composeScene } = require('./scene-compositor.cjs');
 const {
@@ -52,7 +53,10 @@ function resolveProjectRoot({
 
 const ZONE_CATALOG = [
   { key: 'face', meta: FACE_META, render: renderFaceZone },
-  { key: 'context', meta: CONTEXT_META, render: renderContextZone, compact: renderContextCompact },
+  // No `compact` renderer: the statusline's one context readout is row 1's
+  // `◈ %`; a compact `ctx budget` feed row repeated it (operator report
+  // 2026-09-28). renderContextCompact stays exported from hud-zone-context.cjs.
+  { key: 'context', meta: CONTEXT_META, render: renderContextZone },
   {
     key: 'health',
     meta: HEALTH_META,
@@ -180,6 +184,69 @@ function clipStatusText(value, max = 96) {
   const text = value.replace(/\s+/g, ' ').trim();
   if (text.length <= max) return text;
   return text.slice(0, max - 3).trimEnd() + '...';
+}
+
+// Statusline degrade rule (C2.2 A2), following row 3, which gives ground from
+// the right: drop whole lowest-priority (rightmost) segments until the row fits
+// `cols`. The first segment is the row's anchor and always stays; if it alone
+// overflows, renderStatusLine's final fitAnsi pass truncates it with '…'.
+function fitSegments(prefix, segments, sep, cols) {
+  const kept = segments.slice();
+  while (kept.length > 1 && displayWidth(prefix + kept.join(sep)) > cols) kept.pop();
+  return prefix + kept.join(sep);
+}
+
+// Row 1's `◈` reads against the operator's manual compact line, not the 1M window:
+// DISABLE_AUTO_COMPACT=1 leaves compaction to the operator, who compacts at 320k and
+// is warned at 282k (operator rule, memory feedback_context-budget-353k; line moved
+// 353k -> 320k by operator ruling 2026-09-30T05:40:43Z; the same two numbers as
+// scripts/context-now.cjs:29-30). FORGE_HUD_CONTEXT_LINE and
+// FORGE_HUD_CONTEXT_WARN override them (whole tokens; anything else is ignored).
+const RIG_CONTEXT_LINE = 320000;
+const RIG_CONTEXT_WARN = 282000;
+
+function positiveIntOr(raw, fallback) {
+  const text = typeof raw === 'string' ? raw.trim() : '';
+  const n = /^\d+$/.test(text) ? Number(text) : 0;
+  return n > 0 ? n : fallback;
+}
+
+function resolveContextLine(env = process.env) {
+  const line = positiveIntOr(env.FORGE_HUD_CONTEXT_LINE, RIG_CONTEXT_LINE);
+  return { line, warn: Math.min(positiveIntOr(env.FORGE_HUD_CONTEXT_WARN, RIG_CONTEXT_WARN), line) };
+}
+
+// `300k/320k` with a palette role for its severity, or null when stdin gave no usable
+// token figure (the caller keeps the plain `N%`). Used tokens floor to the k, so the
+// label never reads at a threshold it has not reached; `~` marks a percent-derived
+// estimate. At or over the line it reads `325k/320k compact`: the word is the nudge
+// that survives NO_COLOR, where the palette roles are empty. `plain` is the same figure
+// without the word, for row 1's refit when the word would push `◈` off the row.
+// `session` is the raw session: the canonical state drops these fields.
+function contextLineReadout(session, env = process.env) {
+  const tokens = session && session.contextTokens;
+  if (typeof tokens !== 'number' || !Number.isFinite(tokens) || tokens < 0) return null;
+  const { line, warn } = resolveContextLine(env);
+  const windowSize = session.contextWindowSize;
+  // A window smaller than the line can never reach it, so the plain percent is the honest readout.
+  if (typeof windowSize === 'number' && windowSize > 0 && windowSize < line) return null;
+  const k = (n, round) => (n < 1000 ? String(n) : `${round(n / 1000)}k`);
+  const over = tokens >= line;
+  const plain = `${session.contextTokensApprox ? '~' : ''}${k(tokens, Math.floor)}/${k(line, Math.round)}`;
+  return {
+    text: over ? `${plain} compact` : plain,
+    plain,
+    role: over ? 'error' : tokens >= warn ? 'warn' : 'ok',
+  };
+}
+
+// Dirty marker after the branch: `+N` for a counted dirty tree, nothing for a clean
+// one, `+?` when the probe never answered (git-state.json keeps dirty:null when
+// `git status` outlasts its budget). Unknown must not read as clean.
+function dirtyMarker(git) {
+  if (!git || git.dirty === false) return '';
+  const files = Number(git.uncommittedFiles);
+  return git.dirty === true && files > 0 ? `+${files}` : '+?';
 }
 
 function renderAnomalyStatuslineRows(state, palette, maxRows, gutter = DEFAULT_FEED_GUTTER) {
@@ -331,12 +398,17 @@ function renderFull(rawState) {
 // When healthy, a model-specific face is shown (W5 T5.1); when degraded, expression system takes over.
 
 const MODEL_FACE = {
+  'claude-fable-5-1':    { expr: 'determined', color: 'accent' },  // Fable 5.1: operator target since CC 2.1.257
   'claude-fable-5':      { expr: 'determined', color: 'accent' },  // S398: Mythos-class flagship
+  'claude-mythos-5-1':   { expr: 'determined', color: 'accent' },  // S706: Mythos 5.1 follows the Fable treatment
+  'claude-opus-5-5':     { expr: 'determined', color: 'accent' },  // Opus 5.5: default Opus since CC 2.1.280
+  'claude-opus-5':       { expr: 'determined', color: 'accent' },
   'claude-opus-4-8':     { expr: 'determined', color: 'accent' },  // S398: explicit entry
   'claude-opus-4-7':     { expr: 'determined', color: 'accent' },  // S332: explicit entry
   'claude-opus-4-6':     { expr: 'determined', color: 'accent' },
   'claude-opus-4-6[1m]': { expr: 'determined', color: 'accent' },
   'claude-sonnet-4-6':   { expr: 'thinking',    color: 'accent' },
+  'claude-sonnet-5-5':   { expr: 'thinking',    color: 'accent' },  // Sonnet 5.5: default Sonnet on the Anthropic API since CC 2.1.284, 1M
   'claude-sonnet-5':     { expr: 'thinking',    color: 'accent' },  // Sonnet 5: adaptive thinking, 1M
   'claude-haiku-4-5':    { expr: 'sleepy',     color: 'muted' },
 };
@@ -348,6 +420,7 @@ function resolveModelFace(modelId) {
   if (MODEL_FACE[modelId]) return MODEL_FACE[modelId];
   // Prefix match
   if (modelId.startsWith('claude-fable'))  return MODEL_FACE['claude-fable-5'];
+  if (modelId.startsWith('claude-mythos')) return MODEL_FACE['claude-mythos-5-1'];
   if (modelId.startsWith('claude-opus'))   return MODEL_FACE['claude-opus-4-6'];
   if (modelId.startsWith('claude-sonnet')) return MODEL_FACE['claude-sonnet-4-6'];
   if (modelId.startsWith('claude-haiku'))  return MODEL_FACE['claude-haiku-4-5'];
@@ -357,18 +430,33 @@ function resolveModelFace(modelId) {
 // S398: the Fable flagship gets a rainbow model label — a STATIC ROYGBIV gradient
 // across each visible glyph. Declared in docs/reference/hud-vocabulary.md §10/§32.
 // Static (not animated) by design: idle renders stay byte-identical so the mobile
-// Termius freeze invariant (§5) holds. Spaces keep no hue. Fable-only — the cyan
-// trio (opus/sonnet/haiku) keep their solid spectrum colors.
+// Termius freeze invariant (§5) holds. Spaces keep no hue. The cyan trio
+// (opus/sonnet/haiku) keep their solid spectrum colors, except the S706 labels below.
 const FABLE_RAINBOW = [196, 208, 226, 46, 51, 27, 129];  // red→orange→yellow→green→cyan→blue→violet
-function rainbowize(text) {
+function rainbowize(text, steps = FABLE_RAINBOW) {
   let out = '';
   let i = 0;
   for (const ch of text) {
     if (ch === ' ') { out += ch; continue; }
-    out += `\x1b[38;5;${FABLE_RAINBOW[i % FABLE_RAINBOW.length]}m${ch}`;
+    out += `\x1b[38;5;${steps[i % steps.length]}m${ch}`;
     i++;
   }
   return out + '\x1b[0m';
+}
+
+// S706 (operator ask): Mythos follows the Fable rainbow on its family word, but its
+// version renders solid red; Opus 5.5 gets a gold-to-amber run across family word and
+// version. Both static, under the same freeze invariant. Other Opus versions stay 117.
+const MYTHOS_VERSION_RED = 196;
+const OPUS_55_GOLD = [220, 214, 178, 172];  // gold→amber
+function renderModelLabel(family, ver, solidColor) {
+  const text = `${family}${ver ? ` ${ver}` : ''}`;
+  if (family === 'fable') return rainbowize(text);
+  if (family === 'mythos') {
+    return ver ? `${rainbowize(family)} \x1b[38;5;${MYTHOS_VERSION_RED}m${ver}\x1b[0m` : rainbowize(family);
+  }
+  if (family === 'opus' && ver === '5.5') return rainbowize(text, OPUS_55_GOLD);
+  return `${solidColor}${text}\x1b[0m`;
 }
 
 const COMPACT_FACES = {
@@ -561,7 +649,7 @@ function renderStrip(rawState) {
 
   // Model (short label)
   const modelId = state.session.modelId || state.session.model || '';
-  const modelLabel = modelId.includes('fable') ? 'fable' : modelId.includes('opus') ? 'opus' : modelId.includes('sonnet') ? 'sonnet' : modelId.includes('haiku') ? 'haiku' : '';
+  const modelLabel = modelId.includes('fable') ? 'fable' : modelId.includes('mythos') ? 'mythos' : modelId.includes('opus') ? 'opus' : modelId.includes('sonnet') ? 'sonnet' : modelId.includes('haiku') ? 'haiku' : '';
   const modelStr = modelLabel ? colorize(palette, 'accent', modelLabel) : '';
 
   // Context %
@@ -574,21 +662,22 @@ function renderStrip(rawState) {
   const gradeColor = score >= 75 ? 'ok' : score >= 35 ? 'warn' : 'error';
   const gradeStr = colorize(palette, gradeColor, breathingBlock(score));
 
-  // Caps
+  // Caps. An unobserved capability (no boolean ok) is not ready; a shelved
+  // ok:false still is (hud-state countNotReady).
   const capTotal = Object.keys(caps).length;
-  const degradedCount = countDegraded(caps);
-  const capsStr = `${capTotal - degradedCount}/${capTotal}`;
+  const notReadyCount = countNotReady(caps);
+  const capsStr = `${capTotal - notReadyCount}/${capTotal}`;
 
   // Git — branch, dirty count, ahead/behind remote
   const git = state.git || {};
   const branch = git.branch || '';
-  const dirty = git.dirty ? (git.uncommittedFiles || 0) : 0;
+  const dirty = dirtyMarker(git);
   const ahead = Number(git.ahead) || 0;
   const behind = Number(git.behind) || 0;
   let gitStr = '';
   if (branch) {
     gitStr = colorize(palette, 'accent', branch);
-    if (dirty > 0) gitStr += colorize(palette, 'warn', `+${dirty}`);
+    if (dirty) gitStr += colorize(palette, 'warn', dirty);
     if (ahead > 0) gitStr += colorize(palette, 'accent', `\u2009\u2191${ahead}`);
     if (behind > 0) gitStr += colorize(palette, 'warn', `\u2009\u2193${behind}`);
   }
@@ -668,14 +757,14 @@ function renderCompact(rawState) {
   const score = computeHealthScore(caps);
   const pulse = breathingBlock(score);
   const event = (state.context && state.context.event) || '';
-  const degradedCount = countDegraded(caps);
+  const notReadyCount = countNotReady(caps);
 
   // Face inline. Prefer the live companion-state resolver for companion-owned
   // events, with legacy compact rules kept only for compact-only events until
   // the larger expression-engine deletion lane lands.
   const expr = resolveCompactExpressionName(rawState, state);
   const face = compactFaceForExpression(expr);
-  const faceColor = degradedCount > 0 ? 'warn' : 'accent';
+  const faceColor = notReadyCount > 0 ? 'warn' : 'accent';
 
   // Health bar (short)
   const barLen = 12;
@@ -742,7 +831,9 @@ function loadBootCoherence() {
 }
 
 function renderStatusLine(rawState, maxRows) {
-  const state = buildCanonicalState(rawState);
+  // The statusline render mode gets its own width cap (hud-state
+  // MAX_STATUSLINE_COLS); every row below is fitted to state.terminal.cols.
+  const state = buildCanonicalState(rawState, { renderMode: 'statusline' });
   // S595 per-instance isolation flags (set by applySessionIsolation on the
   // statusline CLI path; absent → legacy behavior, everything renders).
   const iso = (rawState && rawState.sessionIsolation) || null;
@@ -760,8 +851,8 @@ function renderStatusLine(rawState, maxRows) {
   const modelFace = resolveModelFace(session.modelId);
   const faceStr = resolveCompanionFace(rawState, palette, modelFace);
   const modelId = session.modelId || session.model || '';
-  const modelFamily = modelId.includes('fable') ? 'fable' : modelId.includes('opus') ? 'opus' : modelId.includes('sonnet') ? 'sonnet' : modelId.includes('haiku') ? 'haiku' : '';
-  // Per-model color (fable bypasses this — it renders via rainbowize below)
+  const modelFamily = modelId.includes('fable') ? 'fable' : modelId.includes('mythos') ? 'mythos' : modelId.includes('opus') ? 'opus' : modelId.includes('sonnet') ? 'sonnet' : modelId.includes('haiku') ? 'haiku' : '';
+  // Per-model color (fable, mythos and opus 5.5 bypass this — see renderModelLabel)
   const modelColors = { opus: '\x1b[38;5;117m', sonnet: '\x1b[38;5;75m', haiku: '\x1b[38;5;110m' };  // brightest, bright, medium
   const modelColor = modelColors[modelFamily] || '\x1b[38;5;252m';
   // Extract version: two-part (opus-4-6 → 4.6) or single-part (fable-5 → 5)
@@ -787,9 +878,9 @@ function renderStatusLine(rawState, maxRows) {
     repoName = require('node:path').basename(projectRoot);
   } catch { /* no repo label */ }
   const repoLabel = repoName ? `\x1b[38;5;108m${repoName}\x1b[0m` : '';
-  const modelText = `${modelFamily}${modelVer ? ` ${modelVer}` : ''}`;
-  // fable → rainbow (flagship signature); all others → their solid spectrum color
-  const modelRender = modelFamily === 'fable' ? rainbowize(modelText) : `${modelColor}${modelText}\x1b[0m`;
+  // fable → rainbow (flagship signature); mythos → rainbow + red version; opus 5.5 →
+  // gold run; all others → their solid spectrum color
+  const modelRender = renderModelLabel(modelFamily, modelVer, modelColor);
   const idCore = `${modelRender}${sessionLabel ? ` \x1b[38;5;237m\u00B7\x1b[0m ${sessionLabel}` : ''}`;
   const modelLabel = repoLabel ? `${repoLabel} \x1b[38;5;237m\u00B7\x1b[0m ${idCore}` : idCore;
   const ctxPct = session.contextPct || 0;
@@ -829,7 +920,7 @@ function renderStatusLine(rawState, maxRows) {
 
   // Shared data
   const capTotal = Object.keys(caps).length;
-  const degradedCount = countDegraded(caps);
+  const notReadyCount = countNotReady(caps);
   const rl = (session.rateLimits && typeof session.rateLimits === 'object') ? session.rateLimits : null;
   const toolCount = session.toolCount || 0;
   const cost = session.cost || 0;
@@ -862,11 +953,18 @@ function renderStatusLine(rawState, maxRows) {
     return String(n);
   }
 
-  // Human-equivalent hours
-  const linesChanged = (session.linesAdded || 0) + (session.linesRemoved || 0);
-  const humanHours = linesChanged > 0
-    ? Math.max(1, Math.round(linesChanged / 30))
-    : (toolCount > 0 ? Math.max(1, Math.round(toolCount * 5 / 60)) : 0);
+  // Human-equivalent hours, estimator E2 (og 2026-09-30, operator "Σ stays,
+  // improve its estimate"; spec _runs/2026-09-30/og/ctx320/result.md Part 2):
+  // 2 min per top-level tool call plus 2 min per changed line in a non-scratch
+  // file, at most 60 lines per call, both from this session's transcript
+  // (hud-tool-count.cjs). The line total rides on the raw session because
+  // buildCanonicalState keeps only known fields. Stdin's line counter no longer
+  // feeds Σ (it counts _runs/ reports and scratch); with no transcript count
+  // the line term is 0. Any work still shows at least ~1h, as before.
+  const rawLines = rawState && rawState.session && rawState.session.deliverableLines;
+  const deliverableLines = (typeof rawLines === 'number' && rawLines > 0) ? rawLines : 0;
+  const workMinutes = 2 * toolCount + 2 * deliverableLines;
+  const humanHours = workMinutes > 0 ? Math.max(1, Math.round(workMinutes / 60)) : 0;
 
   // Rate limit color
   function rlColor(pct) {
@@ -890,7 +988,7 @@ function renderStatusLine(rawState, maxRows) {
   const SEP2 = `  ${dot}  `;  // standard separator: space-dot-space
 
   const branch = git.branch || '';
-  const dirty = git.dirty ? (git.uncommittedFiles || 0) : 0;
+  const dirty = dirtyMarker(git);
   const ahead = Number(git.ahead) || 0;
   const behind = Number(git.behind) || 0;
   const lastCommitSubj = (Array.isArray(git.recentCommits) && git.recentCommits[0] && git.recentCommits[0].subject) || '';
@@ -915,9 +1013,14 @@ function renderStatusLine(rawState, maxRows) {
   // Caps ratio reads shared boot/health state \u2014 a foreign-owned boot never
   // renders its capability count on this session's statusline (S595).
   if (!iso || iso.bootOwn !== false) {
-    r1.push(`${LO}${capTotal - degradedCount}/${capTotal}${RST}`);
+    r1.push(`${LO}${capTotal - notReadyCount}/${capTotal}${RST}`);
   }
-  r1.push(`\x1b[1m\x1b[38;5;75m\u25C8${RST} \x1b[38;5;75m${ctxPct}%${RST}`);
+  // Normal keeps the sky blue; warn and alert take the palette roles. No token
+  // figure on stdin keeps the plain percent, byte for byte.
+  const ctxReadout = contextLineReadout(rawState && rawState.session);
+  const ctxColor = ctxReadout && ctxReadout.role !== 'ok' ? (palette[ctxReadout.role] || '') : '\x1b[38;5;75m';
+  const ctxSegment = (text) => `\x1b[1m${ctxColor}\u25C8${RST} ${ctxColor}${text}${RST}`;
+  const ctxIndex = r1.push(ctxSegment(ctxReadout ? ctxReadout.text : `${ctxPct}%`)) - 1;
   if (rl && typeof rl.fiveHour === 'number') {
     const c5 = rlColor(rl.fiveHour);
     let l5 = `${c5}5h:${Math.round(rl.fiveHour)}%${RST}`;
@@ -932,11 +1035,17 @@ function renderStatusLine(rawState, maxRows) {
   }
   if (session.thinkingEnabled === false) r1.push(`${DM}think:off${RST}`);
 
-  const row1 = r1.join(SEP2);
+  let row1 = fitSegments('', r1, SEP2, termCols);
+  // `◈` never drops for the nudge (og ruling 2026-09-30, GATE 1): if the fit lost the
+  // readout, refit once with the plain figure, same color, without the word.
+  if (ctxReadout && ctxReadout.plain !== ctxReadout.text && !row1.includes(r1[ctxIndex])) {
+    r1[ctxIndex] = ctxSegment(ctxReadout.plain);
+    row1 = fitSegments('', r1, SEP2, termCols);
+  }
 
   // Row 2: orb · branch · Σ human · ↑commits · wallclock · ⚒tools · 7d% ↻timer
   const r2 = [];
-  if (branch) { let g = HI + branch + RST; if (dirty > 0) g += WN + '+' + dirty + RST; r2.push(g); }
+  if (branch) { let g = HI + branch + RST; if (dirty) g += WN + dirty + RST; r2.push(g); }
   if (humanHours > 0) r2.push(`\x1b[1m\x1b[38;5;63m\u03A3${RST} \x1b[38;5;63m~${humanHours}h${RST}`);
   if (ahead > 0) r2.push(`\x1b[1m\x1b[38;5;111m\u2191${RST} \x1b[38;5;111m${ahead}${RST}`);
   if (behind > 0) r2.push(`\x1b[1m\x1b[38;5;167m\u2193${RST} \x1b[38;5;167m${behind}${RST}`);
@@ -950,7 +1059,7 @@ function renderStatusLine(rawState, maxRows) {
     r2.push(l7);
   }
   if (forge.active) r2.push(`${HI}forge:${forge.phase || '?'}${RST}`);
-  const row2 = `${orbPad0}${r2.join(SEP2)}`;
+  const row2 = fitSegments(orbPad0, r2, SEP2, termCols);
 
   // Row 3: orb · $cost · tokens · commit subject
   // Human hours moved to row 2 second slot; commit subject gets the breathing room.
@@ -958,14 +1067,14 @@ function renderStatusLine(rawState, maxRows) {
   if (cost > 0) r3.push(`\x1b[1m\x1b[38;5;39m$${RST} \x1b[38;5;39m${cost.toFixed(2)}${RST}`);
   if (totalTokens > 0) r3.push(`\x1b[38;5;67m${fmtTok(totalTokens)}${RST}`);
   if (lastCommitSubj) {
-    const usedCols = stripAnsi(orbPad1 + r3.join(SEP2)).length + (r3.length > 0 ? 5 : 0);
+    const usedCols = displayWidth(orbPad1 + r3.join(SEP2)) + (r3.length > 0 ? 5 : 0);
     const remaining = Math.max(0, termCols - usedCols - 2);
     if (remaining >= 12) {
-      const trunc = lastCommitSubj.length > remaining ? lastCommitSubj.slice(0, remaining - 1) + '\u2026' : lastCommitSubj;
+      const trunc = fitAnsi(lastCommitSubj, remaining);
       r3.push(`\x1b[38;5;241m${trunc}${RST}`);
     }
   }
-  const row3 = `${orbPad1}${r3.join(SEP2)}`;
+  const row3 = fitSegments(orbPad1, r3, SEP2, termCols);
 
   // Companion message check. When active, REPLACE the data rows with a speech
   // bubble extending right of the companion (face + orb). Single source of voice:
@@ -1018,11 +1127,10 @@ function renderStatusLine(rawState, maxRows) {
     // Em dash prefix — literary dialogue convention ("— Yes," he said).
     const dashCols = 2; // "— "
     const headerLeft = `${faceStr}${facePad}`;
-    const headerLeftCols = stripAnsi(headerLeft).length;
+    const headerLeftCols = displayWidth(headerLeft);
     // Spaces: ramp→text (1) + text→ramp (1)
     const remaining = Math.max(0, termCols - headerLeftCols - dashCols - rampCols * 2 - 2);
-    let text = msg.text;
-    if (text.length > remaining) text = text.slice(0, remaining - 1) + '\u2026';
+    const text = fitAnsi(msg.text, remaining);
     rows = [
       `${headerLeft}${TIER}\u2014${RST} ${rampIn} ${ITAL}${TIER}${text}${RST} ${rampOut}`,
       orbPad0,
@@ -1108,11 +1216,14 @@ function renderStatusLine(rawState, maxRows) {
     }
   } catch { /* boot-pulse unavailable — render compact */ }
 
+  // Every content row (header, speech, boot-coherence, anomaly, board, reactive,
+  // compact, boot-pulse) is fitted to the terminal width in one pass; a row that
+  // already fits is returned unchanged (C2.2 A2).
   // Trailing blank padding: claude-hud parity. CC's statusLine renderer treats
   // "content + N trailing blanks" as a self-contained pin region; without padding
   // the cursor lands on the last content row and mobile terminals (Termius) auto-
   // scroll content below the viewport, burying response text.
-  return rows.slice(0, ceiling).join('\n') + '\n\n\n\n';
+  return rows.slice(0, ceiling).map((row) => fitAnsi(row, termCols)).join('\n') + '\n\n\n\n';
 }
 
 // --- Substrate Mode Renderer ---
@@ -1248,6 +1359,25 @@ if (require.main === module) {
           rawState.session.uptime = sess.uptimeMs;
           if (sess.sessionToolCount !== null) rawState.session.toolCount = sess.sessionToolCount;
         }
+      }
+
+      // Statusline `⊥`: this session's tool_use blocks, counted incrementally
+      // from its own transcript (stdin transcript_path). It replaces the
+      // session-meta counter above, whose owner is whichever session booted
+      // last (operator report 2026-09-28). An unknown count renders nothing:
+      // never another session's figure, never a stand-in 0. The same pass
+      // totals the calls' deliverable lines for Σ (estimator E2).
+      if (mode === 'statusline' && stdinData) {
+        let counted;
+        try {
+          counted = countSessionToolUses({
+            transcriptPath: stdinData.transcript_path,
+            sessionId: stdinData.session_id,
+            stateDir: require('node:path').join(effectiveRoot, '_runs', 'os'),
+          });
+        } catch { counted = null; }
+        rawState.session.toolCount = counted ? counted.count : 0;
+        rawState.session.deliverableLines = counted ? counted.lines : 0;
       }
 
       if (zoneArg) {

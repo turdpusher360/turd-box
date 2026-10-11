@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -14,15 +14,39 @@ const MOCK_DEGRADED = path.resolve(__dirname, '../mocks/degraded.json');
 const MOCK_PHONE = path.resolve(__dirname, '../mocks/phone-minimal.json');
 const { stripAnsi } = _require(path.resolve(__dirname, '../hud-palette.cjs'));
 
+// Full mode runs the live probes (aisle, docker, `git status`/`git log`) against the
+// project root: hud-data-loader.cjs:713-720 and :829, gated at hud-engine.cjs:1250.
+// On a WSL drvfs checkout that costs 6.3-8.9 s solo (S705) and ran past the 10 s child
+// limit under the runner. These mock-driven runs use an empty temp root instead:
+// no lib/os/health-refresh.cjs to resolve, no git repo to probe, and no live
+// _runs/os to overwrite. No test here asserts the live-probe path.
+let engineRoot;
+let engineEnv;
+
 function runEngine(mockFile, mode = 'full', extraArgs = '') {
   const input = fs.readFileSync(mockFile, 'utf8');
   return execSync(
     `node "${ENGINE_PATH}" --mode=${mode} ${extraArgs}`,
-    { input, encoding: 'utf8', timeout: 10000 }
+    { input, encoding: 'utf8', timeout: 10000, cwd: engineRoot, env: engineEnv }
   );
 }
 
 describe('hud-engine CLI (integration)', () => {
+  beforeAll(() => {
+    engineRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'hud-engine-cli-root-'));
+    const home = path.join(engineRoot, 'home');
+    fs.mkdirSync(home, { recursive: true });
+    engineEnv = { ...process.env };
+    for (const key of ['COLUMNS', 'LINES', 'FORGE_OS_STATE_DIR']) delete engineEnv[key];
+    engineEnv.CLAUDE_PROJECT_DIR = engineRoot;
+    engineEnv.HOME = home;
+    engineEnv.COMPANION_STATE_PATH = path.join(engineRoot, '_runs', 'os', '.companion-state.json');
+  });
+
+  afterAll(() => {
+    fs.rmSync(engineRoot, { recursive: true, force: true });
+  });
+
   it('produces output in full mode with healthy state', { timeout: 15000 }, () => {
     const output = runEngine(MOCK_HEALTHY, 'full');
     expect(output.length).toBeGreaterThan(0);
@@ -132,6 +156,17 @@ describe('hud-engine module exports', () => {
     expect(output).not.toContain('\n');
   });
 
+  it('renderStrip marks an unobserved dirty state +? and leaves real counts and clean as before', () => {
+    const mod = requireFresh();
+    const base = JSON.parse(fs.readFileSync(MOCK_HEALTHY, 'utf8'));
+    const strip = (git) => stripAnsi(mod.renderStrip({ ...base, git: { branch: 'main', ahead: 0, behind: 0, ...git } }));
+    expect(strip({ dirty: null, uncommittedFiles: null })).toContain('main+?');
+    expect(strip({ dirty: true, uncommittedFiles: 5 })).toContain('main+5');
+    const clean = strip({ dirty: false, uncommittedFiles: 0 });
+    expect(clean).toContain('main');
+    expect(clean).not.toMatch(/main\+/);
+  });
+
   it('exports resolveCompanionFace', () => {
     const mod = requireFresh();
     expect(typeof mod.resolveCompanionFace).toBe('function');
@@ -205,7 +240,9 @@ describe('hud-engine module exports', () => {
     const rate = mod.ZONE_CATALOG.find((entry) => entry.key === 'rate');
     const health = mod.ZONE_CATALOG.find((entry) => entry.key === 'health');
 
-    expect(typeof context.compact).toBe('function');
+    // No compact context row: row 1's percentage is the statusline's one
+    // context readout (operator report 2026-09-28).
+    expect(context.compact).toBeUndefined();
     expect(typeof rate.compact).toBe('function');
     expect(health.compact).toBeUndefined();
   });
@@ -237,12 +274,14 @@ describe('hud-engine module exports', () => {
       const oneSpare = stripAnsi(mod.renderStatusLine(state, 4));
       const expanded = stripAnsi(mod.renderStatusLine(state, 5));
 
-      expect(clipped).not.toContain('ctx budget');
+      // The context budget row no longer renders at any budget; the rate
+      // compact row takes the first spare row.
+      for (const out of [clipped, oneSpare, expanded]) {
+        expect(out).not.toContain('ctx budget');
+        expect(out).not.toContain('672k left');
+      }
       expect(clipped).not.toContain('rate trend');
-      expect(oneSpare).toContain('ctx budget');
-      expect(oneSpare).toContain('672k left');
-      expect(oneSpare).not.toContain('rate trend');
-      expect(expanded).toContain('ctx budget');
+      expect(oneSpare).toContain('rate trend');
       expect(expanded).toContain('rate trend');
     } finally {
       if (previousStatePath === undefined) delete process.env.COMPANION_STATE_PATH;
@@ -344,7 +383,8 @@ describe('hud-engine module exports', () => {
       expect(mod.renderCompactStatuslineRows(state, palette, 3)).toEqual(['  third']);
     } finally {
       for (let i = 0; i < entries.length; i += 1) {
-        entries[i].compact = originals[i];
+        if (originals[i] === undefined) delete entries[i].compact;
+        else entries[i].compact = originals[i];
       }
     }
   });
@@ -646,7 +686,10 @@ describe('hud-engine CLI statusline mode (integration)', () => {
     expect(output.length).toBeGreaterThan(0);
   });
 
-  it('respects --max-rows flag in statusline mode', { timeout: 15000 }, () => {
+  // Two sequential children, each killed at 10 s: a 15 s budget could not hold them
+  // (S705: 8.6 s observed under load, 1.0-2.2 s otherwise). 25 s is 2 x 10 s plus
+  // margin, still under the 30 s global ceiling (vitest.config.ts:59).
+  it('respects --max-rows flag in statusline mode', { timeout: 25000 }, () => {
     // FIX(D2): statusline is the only mode that honors --max-rows.
     // full mode ignores the flag (row budget is driven by state.terminal.rows, not the CLI flag).
     // Using a static harness input (not MOCK_HEALTHY disk read) prevents disk-state races

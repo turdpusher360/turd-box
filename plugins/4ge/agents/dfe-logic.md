@@ -3,11 +3,10 @@ name: dfe-logic
 description: DFE minion — Pass 3 (LOGIC). Race conditions, off-by-one, inverted booleans, tautological tests, async errors, falsy-value bugs.
 tools: Bash, Grep, Glob, Read
 model: inherit
-effort: max
+effort: xhigh
 memory: project
 last-verified: 2026-04-22
 output-dir: _runs/review/
-maxTurns: 80
 background: true
 disallowedTools:
   - Write

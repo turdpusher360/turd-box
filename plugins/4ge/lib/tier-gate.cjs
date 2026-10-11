@@ -31,7 +31,7 @@ const DESCRIPTIONS = {
   outhouse:    'Outhouse is the repository maintenance wizard — cleans orphans, resolves conflicts, and reports technical debt.',
   wizard:      'Wizard launches guided configuration suites for complex 4ge setup tasks.',
   maintain:    'Maintain redirects to /outhouse — the repository maintenance wizard.',
-  autoresearch: 'Autoresearch runs self-improving measurement loops that surface gaps and track domain knowledge over time.',
+  autoresearch: 'Autoresearch reports the measurement plane: read-only domain status and scans graded against each measure\'s threshold.',
   evolve:      'Evolve analyzes usage telemetry and suggests config improvements.',
   export:      'Export packages session work as a business-ready deliverable: brief, deck, or handoff document.',
   respawn:     'Respawn extracts the decision chain and prepares a fresh Claude instance with full context.',
@@ -84,8 +84,8 @@ function _endpoint() {
 }
 
 // Map a license-worker entitlement summary to a 4ge tier + the subscription's
-// period end. Precedence: an entitled 4ge_team beats an entitled 4ge_pro; any
-// non-4ge product (dropstream_streamer, blueprint_pack) is ignored.
+// period end (epoch ms). Precedence: an entitled 4ge_team beats an entitled
+// 4ge_pro; any non-4ge product (dropstream_streamer, blueprint_pack) is ignored.
 function _entitlementFromSummary(summary) {
   const out = { tier: 'free', currentPeriodEnd: null };
   const products = summary && Array.isArray(summary.products) ? summary.products : [];
@@ -107,6 +107,7 @@ function _entitlementFromSummary(summary) {
 //     products: [{ product: string, status: string,
 //                  entitled: boolean, currentPeriodEnd: number|null }],
 //     status: string|null }
+// currentPeriodEnd is epoch ms (null for one-time products).
 // A parseable-but-contract-invalid HTTP 200 (an error body, a wrong-shape
 // object, products missing or not an array, a product lacking its key/flag)
 // must NOT be read as an authoritative not-entitled verdict — it is treated
@@ -121,9 +122,12 @@ function _isValidSummary(s) {
     if (!p || typeof p !== 'object' || Array.isArray(p)) return false;
     if (typeof p.product !== 'string') return false;
     if (typeof p.entitled !== 'boolean') return false;
+    // currentPeriodEnd is epoch ms: finite and inside the Date range
+    // (|v| <= 8.64e15), else refresh()'s toISOString() would throw.
     if (!(p.currentPeriodEnd === null
           || p.currentPeriodEnd === undefined
-          || typeof p.currentPeriodEnd === 'number')) return false;
+          || (Number.isFinite(p.currentPeriodEnd)
+              && Math.abs(p.currentPeriodEnd) <= 8.64e15))) return false;
   }
   return true;
 }
@@ -297,8 +301,8 @@ function info() {
  *    contract-invalid 200): never downgrade, never refresh validatedAt; clear a
  *    pending revocation strike (the "consecutive" chain is broken).
  *  - authoritative + entitled: set tier + validatedAt, clear any strike, and set
- *    expiry DELIBERATELY from currentPeriodEnd — a null period end clears a stale
- *    stored expiry rather than silently preserving it.
+ *    expiry DELIBERATELY from currentPeriodEnd (epoch ms) — a null period end
+ *    clears a stale stored expiry rather than silently preserving it.
  *  - authoritative + not-entitled: TWO-STRIKE revocation. The first such
  *    response records a strike (no downgrade); a downgrade to free happens only
  *    on the second consecutive authoritative not-entitled response landing >=24h
@@ -340,13 +344,14 @@ async function refresh(timeoutMs = REMOTE_TIMEOUT_MS) {
   }
 
   // Authoritative + entitled — trust it. Clear any strike, refresh validatedAt,
-  // and set expiry DELIBERATELY: a numeric currentPeriodEnd becomes the expiry;
-  // a null one CLEARS any stale stored expiry (never silently preserved).
+  // and set expiry DELIBERATELY: a numeric currentPeriodEnd (epoch ms) becomes
+  // the expiry; a null one CLEARS any stale stored expiry (never silently
+  // preserved).
   if (ent.tier !== 'free') {
     const updated = { ...license, tier: ent.tier, validatedAt: new Date(now).toISOString() };
     delete updated.notEntitledSince;
     if (typeof ent.currentPeriodEnd === 'number') {
-      updated.expiresAt = new Date(ent.currentPeriodEnd * 1000).toISOString();
+      updated.expiresAt = new Date(ent.currentPeriodEnd).toISOString();
     } else {
       delete updated.expiresAt;
     }

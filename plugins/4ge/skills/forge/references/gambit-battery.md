@@ -4,7 +4,7 @@ The house breadth/coverage/traceability audit — the historical PAIR to DFE (cr
 
 ## Routing
 
-- Agent: `opus-audit` (write-to-disk audit agent), `mode: "bypassPermissions"`.
+- Agent: `opus-audit` (write-to-disk audit agent).
 - Model: Opus default (judgment). Sonnet is acceptable ONLY for pure-breadth enumeration sweeps (per agent-selection: "coverage/gambit audits" are Sonnet-class when volume dominates judgment) — packet gates default Opus.
 - Authority frame (always include): operator locks are RATIFIED — GAMBIT audits coverage, not direction.
 

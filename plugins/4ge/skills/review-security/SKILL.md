@@ -14,6 +14,8 @@ output_file: _runs/{task-name}.md
 
 Dispatch on `opus-review`.
 
+This in-session pass is a pre-check, not the gating review. The gating security review runs headless as `claude-opus-5-5` at `--effort xhigh` with read-only tools (AGENTS.md › Model Routing; launch shape in `docs/headless-cli-delegation.md`). On a provider-safeguard refusal it goes to the read-only Codex fallback that AGENTS.md › Model Routing names.
+
 ## Workflow
 
 1. `memory_search` for prior context (2-4 word query)

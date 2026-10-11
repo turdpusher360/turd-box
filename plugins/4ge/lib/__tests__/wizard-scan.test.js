@@ -370,7 +370,6 @@ describe('wizard-scan orchestrator', () => {
       // Degrade several categories with real autoresearch findings
       writeExperiment(tmpRoot, 'dep-vulnerability', 3);  // deps raw=11 (high_vuln -9)
       writeExperiment(tmpRoot, 'hook-exit-contract', 2); // hooks raw=14 (bad_exit -6)
-      writeExperiment(tmpRoot, 'agent-staleness', 0);    // agents raw=10 (stale_verified score_invert(0)=5 -> -10)
       writeExperiment(tmpRoot, 'todo-density', 50);      // dead_code raw=12 (todo_density -8 max)
 
       const result = scan(tmpRoot, baseConfig, thresholdDefaults, scanOpts(tmpRoot));

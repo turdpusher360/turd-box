@@ -16,7 +16,7 @@
  */
 
 const config = require('../../aisle/core/config.cjs');
-const { boot } = require('../../aisle/core/boot.cjs');
+const { boot, getState } = require('../../aisle/core/boot.cjs');
 const healthMonitor = require('../../aisle/core/health-monitor.cjs');
 const scannerRegistry = require('../../aisle/core/scanner-registry.cjs');
 
@@ -160,17 +160,29 @@ module.exports = {
         serverLive = false;
       }
 
+      // Resolve the boot state before anything overwrites the cache. In-process,
+      // init() (or an earlier probe) cached a `state`. health-refresh runs every
+      // probe in a fresh process where init() never ran, so there the cache is the
+      // 'not initialized' default: read the boot marker AISLE writes for
+      // subprocesses instead (boot.cjs getState).
+      const cached = this._healthCache;
+      const bootState = cached && typeof cached.state === 'string'
+        ? cached.state
+        : getState(aisleDir);
+
       let result;
       if (serverLive) {
         result = { ok: true, state: 'operational', server: 'live' };
-      } else if (this._healthCache && this._healthCache.state === 'operational') {
+      } else if (bootState === 'operational' || bootState === 'server-down') {
         // Boot said operational but server is not running — stale cache
         result = { ok: false, reason: 'server not running', state: 'server-down' };
       } else {
-        // Honor whatever init() cached (may be 'fail-closed', 'degraded', etc.)
-        result = exists
-          ? { ok: true, state: 'operational' }
-          : { ok: false, reason: 'aisle state dir missing' };
+        // Honor whatever init() cached ('fail-closed', 'degraded', 'setup-required',
+        // ...). Only a live server upgrades it to operational. The reason matches
+        // init()'s wording and stays fixed per state, so repeat probes don't churn
+        // boot-status.json. fail-closed is the shelved posture (ADR-SEC-001).
+        result = { ok: false, reason: `boot state: ${bootState}`, state: bootState };
+        if (bootState === 'fail-closed') result.shelved = true;
       }
 
       this._healthCache = result;
@@ -190,10 +202,10 @@ module.exports = {
             const aisleEntry = nextBootStatus.capabilities.aisle;
             const newStatus = result.ok ? 'ready' : 'degraded';
             const newReason = result.ok ? undefined : result.reason;
-            // Propagate shelved flag from _healthCache (init-time) so HUD
-            // can recognize fail-closed as intentional posture.
-            const cachedShelved = this._healthCache && this._healthCache.shelved === true;
-            const newShelved = cachedShelved && !result.ok;
+            // Propagate the shelved flag so HUD can recognize fail-closed as
+            // intentional posture. Read it from this probe's result: the cache was
+            // already overwritten above, so the init-time flag is no longer there.
+            const newShelved = result.shelved === true && !result.ok;
             // upstream: normalize `shelved` to a strict boolean on BOTH sides. On a healthy
             // on-disk entry `shelved` is absent (undefined) while newShelved is a strict
             // boolean, so a bare `!==` read `undefined !== false` as "changed" on EVERY

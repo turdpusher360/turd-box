@@ -13,8 +13,8 @@
  *
  * Boot mode has ZERO dependency on hook-utils.cjs — it runs before boot
  * has a chance to restore hook-utils, so it uses only node builtins and
- * the core module at ${CLAUDE_PLUGIN_ROOT}/../../lib/os/capabilities/file-integrity.cjs
- * OR falls back to inline implementation if core is unavailable.
+ * the plugin's vendored core module (lib/os/capabilities/file-integrity.cjs,
+ * resolved by os-guard.cjs). With no core module, both modes exit 0.
  *
  * Always exits 0 — never crashes, never blocks Claude Code.
  *
@@ -30,8 +30,16 @@ const crypto = require('node:crypto');
 // Fallback to __dirname (same result when invoked directly from plugin dir).
 const PLUGIN_ROOT = process.env.CLAUDE_PLUGIN_DATA || process.env.CLAUDE_PLUGIN_ROOT || path.resolve(__dirname, '..');
 
-// Resolve core module via cwd (works from both cache and local install)
-const CORE_PATH = path.resolve(process.cwd(), 'lib', 'os', 'capabilities', 'file-integrity.cjs');
+// Run the plugin's own core module, never the project's (BL-404), and only in
+// projects that carry lib/os/capabilities/file-integrity.cjs, where this hook
+// has always been active. null = skip both modes.
+// Guarded: during an upgrade sync-to-data.cjs copies hooks one file at a time,
+// so this file can briefly sit beside an older os-guard.cjs. Then skip.
+let resolveOsModuleIfProjectHas = () => null;
+try {
+  resolveOsModuleIfProjectHas = require('./os-guard.cjs').resolveOsModuleIfProjectHas || resolveOsModuleIfProjectHas;
+} catch { /* os-guard unavailable: skip */ }
+const CORE_PATH = resolveOsModuleIfProjectHas(process.cwd(), 'capabilities', 'file-integrity.cjs');
 
 // Plugin-local hook-utils (same dir as this file)
 const HOOK_UTILS_PATH = path.resolve(PLUGIN_ROOT, 'hooks', 'hook-utils.cjs');
@@ -43,6 +51,7 @@ const HOOK_UTILS_PATH = path.resolve(PLUGIN_ROOT, 'hooks', 'hook-utils.cjs');
 
 if (process.argv[2] === 'boot') {
   try {
+    if (!CORE_PATH) process.exit(0);
     const core = require(CORE_PATH);
     core.boot();
   } catch {
@@ -71,6 +80,7 @@ if (process.argv[2] === 'boot') {
 
     let core;
     try {
+      if (!CORE_PATH) process.exit(0);
       core = require(CORE_PATH);
     } catch {
       // Core module missing — degrade gracefully

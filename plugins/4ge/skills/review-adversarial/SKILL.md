@@ -33,4 +33,4 @@ Dispatch on `opus-review`.
 ## Handoff
 
 - Implementation fixes: dispatch fix-* skill on sonnet-execute
-- Full DFE 6-pass: use /dfe command (DFE orchestrator agent)
+- Full DFE 6-pass: `/4ge:dfe` (the lead fans out five minions, then DFE synthesizes)

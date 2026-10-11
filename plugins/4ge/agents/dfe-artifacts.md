@@ -3,11 +3,10 @@ name: dfe-artifacts
 description: DFE minion — Pass 6 (ARTIFACTS). Dead exports, orphaned variables, copy-paste drift, excessive complexity, TODO/FIXME without tickets.
 tools: Bash, Grep, Glob, Read
 model: inherit
-effort: high
+effort: xhigh
 memory: project
 last-verified: 2026-04-22
 output-dir: _runs/review/
-maxTurns: 80
 background: true
 disallowedTools:
   - Write

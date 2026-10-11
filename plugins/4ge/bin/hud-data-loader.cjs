@@ -14,6 +14,11 @@ function readJsonSafe(filePath) {
   }
 }
 
+function readEnvDimension(name) {
+  const parsed = Number.parseInt(process.env[name] || '', 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+}
+
 function timestampMs(value) {
   if (typeof value === 'number') return value;
   if (typeof value === 'string') {
@@ -111,6 +116,7 @@ function readFreshForgeSession(filePath) {
 
 const REACTIVE_EVENT_TTL_MS = reactiveTtlMap();
 const DEFAULT_REACTIVE_EVENT_TTL_MS = 30000;
+const TRANSCRIPT_FRESHNESS_MS = 30000;
 const ANOMALY_TTL_MS = 10 * 60 * 1000;
 const VRAM_CACHE_TTL_MS = 10 * 60 * 1000;
 const REAPER_LOG_TTL_MS = 2 * 60 * 60 * 1000;
@@ -514,33 +520,46 @@ function loadSessionMemory(cwd, forgeSession) {
  */
 function buildCapabilities(bootStatus, health) {
   const caps = {};
-  if (bootStatus && bootStatus.capabilities) {
+  if (bootStatus && bootStatus.capabilities && typeof bootStatus.capabilities === 'object') {
     for (const [name, info] of Object.entries(bootStatus.capabilities)) {
+      const validInfo = !!info && typeof info === 'object';
       caps[name] = {
-        status: info.status || 'unknown',
-        init_ms: info.init_ms || 0,
-        ok: info.status === 'ready',
+        status: validInfo ? (info.status || 'unknown') : 'unknown',
+        init_ms: validInfo ? (info.init_ms || 0) : 0,
       };
-      if (info.reason) caps[name].reason = info.reason;
-      if (info.shelved === true) caps[name].shelved = true;
+      if (validInfo) {
+        caps[name].ok = info.status === 'ready';
+        if (info.reason) caps[name].reason = info.reason;
+        if (info.shelved === true) caps[name].shelved = true;
+      }
     }
   }
   if (health && typeof health === 'object') {
     for (const [name, h] of Object.entries(health)) {
+      const healthEntry = h && typeof h === 'object' ? h : null;
+      const hasDefinedOk = healthEntry !== null && healthEntry.ok !== undefined;
+      const malformedOk = hasDefinedOk && typeof healthEntry.ok !== 'boolean';
+      // A defined non-boolean is malformed live evidence, not an absent
+      // observation. Fail it closed so it cannot inherit boot-ready state or
+      // retain a boot-time shelved exemption from actionable-degradation readers.
+      const liveOk = hasDefinedOk
+        ? (malformedOk ? false : healthEntry.ok)
+        : undefined;
       if (!caps[name]) {
-        caps[name] = { status: h && h.ok ? 'ready' : 'degraded', init_ms: 0 };
+        caps[name] = { status: liveOk === true ? 'ready' : 'degraded', init_ms: 0 };
       } else {
         caps[name] = { ...caps[name] };
       }
-      if (h && typeof h === 'object') {
-        if (h.ok !== undefined) {
-          caps[name].ok = !!h.ok;
+      if (healthEntry) {
+        if (hasDefinedOk) {
+          caps[name].ok = liveOk;
           // Keep status aligned with live probe result -- boot-status caches
           // init-time state and can go stale when probe recovers (e.g., aisle
           // state dir created mid-session). Prefer current probe truth.
-          caps[name].status = h.ok ? 'ready' : 'degraded';
+          caps[name].status = liveOk ? 'ready' : 'degraded';
+          if (malformedOk) delete caps[name].shelved;
         }
-        if (h.reason) caps[name].reason = h.reason;
+        if (healthEntry.reason) caps[name].reason = healthEntry.reason;
       }
     }
   }
@@ -666,12 +685,30 @@ function resolveSessionUptime({ stateDir, sessionId, now = Date.now(), toolCount
   return { uptimeMs, sessionToolCount };
 }
 
-function deriveOverall(caps) {
-  const statuses = Object.values(caps).map(c => c.status);
+function deriveOverall(caps, bootStatus = {}) {
+  const entries = (caps && typeof caps === 'object') ? Object.values(caps) : [];
+  const statuses = entries.map(c => (c && typeof c === 'object') ? c.status : undefined);
   if (statuses.includes('failed')) return 'failed';
   if (statuses.includes('degraded')) return 'degraded';
+  if (statuses.length === 0 && bootStatus && bootStatus.overall === 'failed') return 'failed';
   if (statuses.length === 0) return 'unknown';
-  return 'ready';
+  return statuses.every(status => status === 'ready') ? 'ready' : 'unknown';
+}
+
+// An explicit failed boot that registered no capabilities (os-boot's
+// capability-failure status). A separate flag because the next cheap health
+// refresh fills the capability map and deriveOverall then reads it as ready;
+// the face and health zones key `health failed` on this (HUD r5 review P2-1).
+function deriveBootFailed(bootStatus) {
+  if (!bootStatus || typeof bootStatus !== 'object' || bootStatus.overall !== 'failed') return false;
+  const bootCaps = bootStatus.capabilities;
+  return !(bootCaps && typeof bootCaps === 'object' && Object.keys(bootCaps).length > 0);
+}
+
+function isFreshTranscriptPath(filePath) {
+  let mtime = 0;
+  try { mtime = fs.statSync(filePath).mtimeMs; } catch { /* ignore */ }
+  return mtime > 0 && (Date.now() - mtime) < TRANSCRIPT_FRESHNESS_MS;
 }
 
 function loadHudData(opts = {}) {
@@ -682,19 +719,32 @@ function loadHudData(opts = {}) {
 
   if (runExpensiveProbes) {
     try {
-      const { refreshAll } = require(path.resolve(cwd, 'lib/os/health-refresh.cjs'));
-      const capDir = path.resolve(cwd, 'lib/os/capabilities');
+      // Probe the plugin's own OS tree, never the project's lib/os (BL-404):
+      // refreshAll require()s every capability module in capDir. Only where
+      // the project carries lib/os/health-refresh.cjs, as before.
+      const { resolveOsModule, resolveOsModuleIfProjectHas } = require('../hooks/os-guard.cjs');
+      const refreshPath = resolveOsModuleIfProjectHas(cwd, 'health-refresh.cjs');
+      if (!refreshPath) throw new Error('plugin OS tree unavailable');
+      const { refreshAll } = require(refreshPath);
+      const capDir = resolveOsModule('capabilities');
       // Attribute this on-demand /4ge HUD refresh so the boot-writers journal records
       // entry:'cli' instead of 'unknown'.
       refreshAll(capDir, stateDir, { entry: 'cli' });
     } catch { /* best-effort */ }
   }
 
-  // Refresh companion memory cache (best-effort, async, non-blocking)
-  try {
-    const { refreshMemoryCache } = require('./companion-insights.cjs');
-    refreshMemoryCache(cwd).catch(() => {});
-  } catch { /* companion-insights unavailable */ }
+  // Refresh companion memory cache (best-effort, async, non-blocking).
+  // Skipped under Vitest: the cache path resolves from CLAUDE_PROJECT_DIR, which
+  // hook-spawned test runs inherit, so every loadHudData test would query the
+  // live hub and overwrite the real session's cache (the live cache last held a
+  // test-fixture entry from 2026-06-09). companion-insights tests drive the
+  // refresh directly through its hub-options seam.
+  if (!process.env.VITEST) {
+    try {
+      const { refreshMemoryCache } = require('./companion-insights.cjs');
+      refreshMemoryCache(cwd).catch(() => {});
+    } catch { /* companion-insights unavailable */ }
+  }
 
   const health = readJsonSafe(path.join(stateDir, 'health.json')) || {};
   const bootStatus = readJsonSafe(path.join(stateDir, 'boot-status.json')) || {};
@@ -711,20 +761,21 @@ function loadHudData(opts = {}) {
   const sessionMemory = loadSessionMemory(cwd, forgeSession);
 
   const capabilities = buildCapabilities(bootStatus, health);
-  const overallHealth = deriveOverall(capabilities);
+  const overallHealth = deriveOverall(capabilities, bootStatus);
   const uptime = computeUptime(bootStatus);
 
   // Optional transcript enrichment (AD-6). Gated on freshness.
   let transcript = null;
   try {
-    const { loadTranscriptActivity } = require('./hud-transcript-source.cjs');
+    const { findTranscriptPath, loadTranscriptActivity } = require('./hud-transcript-source.cjs');
     const sessionId = meta.session_id || (bootStatus && bootStatus.session_id) || '';
     if (sessionId) {
-      const result = loadTranscriptActivity({ cwd, sessionId });
-      if (result && result.transcriptPath) {
-        let mtime = 0;
-        try { mtime = fs.statSync(result.transcriptPath).mtimeMs; } catch { /* ignore */ }
-        if (mtime > 0 && (Date.now() - mtime) < 30000) {
+      const transcriptPath = findTranscriptPath(cwd, sessionId);
+      if (transcriptPath && isFreshTranscriptPath(transcriptPath)) {
+        const result = loadTranscriptActivity({ cwd, sessionId, transcriptPath });
+        // Keep the final eligibility check: a transcript can cross the cutoff
+        // while a large file is being read and parsed.
+        if (result && result.transcriptPath && isFreshTranscriptPath(result.transcriptPath)) {
           transcript = result;
         }
       }
@@ -733,9 +784,11 @@ function loadHudData(opts = {}) {
 
   const raw = {
     projectRoot: cwd,
+    // stdout is a pipe under the statusLine slot, so .columns is undefined there;
+    // CC (>=2.1.153) exports COLUMNS/LINES to statusline commands instead.
     terminal: {
-      cols: process.stdout.columns || 80,
-      rows: process.stdout.rows || 24,
+      cols: process.stdout.columns || readEnvDimension('COLUMNS') || 80,
+      rows: process.stdout.rows || readEnvDimension('LINES') || 24,
     },
     session: {
       id: meta.session_id || (bootStatus && bootStatus.session_id) || '',
@@ -751,6 +804,7 @@ function loadHudData(opts = {}) {
     },
     os: {
       overallHealth,
+      bootFailed: deriveBootFailed(bootStatus),
       bootTime: (bootStatus && bootStatus.total_boot_ms) || 0,
       capabilities,
       vram,
@@ -803,6 +857,36 @@ function loadHudData(opts = {}) {
   return raw;
 }
 
+function finiteNonNegative(value) {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null;
+}
+
+/**
+ * Used context tokens from a stdin `context_window`, or null when it carries none.
+ * `current_usage` input + cache creation + cache read is the resident context
+ * (the sum scripts/context-now.cjs measures). Without it, `used_percentage` x
+ * window size is a rounded estimate (`approx`). `total_input_tokens` is left out:
+ * it is not proven to be the resident context.
+ * @param {object} cw - stdin context_window
+ * @param {number|null} windowSize
+ * @returns {{ tokens: number, approx: boolean }|null}
+ */
+function deriveContextTokens(cw, windowSize) {
+  const usage = cw.current_usage;
+  if (usage && typeof usage === 'object') {
+    const parts = [usage.input_tokens, usage.cache_creation_input_tokens, usage.cache_read_input_tokens]
+      .map(finiteNonNegative);
+    if (parts.some((n) => n !== null)) {
+      return { tokens: parts.reduce((sum, n) => sum + (n || 0), 0), approx: false };
+    }
+  }
+  const pct = finiteNonNegative(cw.used_percentage);
+  if (pct !== null && windowSize !== null && windowSize > 0) {
+    return { tokens: Math.round(pct * windowSize / 100), approx: true };
+  }
+  return null;
+}
+
 /**
  * Merge live harness stdin data into a canonical engine state.
  * Harness values are authoritative — they override disk-derived estimates.
@@ -839,16 +923,43 @@ function mergeHarnessStdin(state, harness) {
     if (typeof cw.total_output_tokens === 'number') {
       state.session.outputTokens = cw.total_output_tokens;
     }
-    if (typeof cw.total_tokens === 'number') {
+    // CC sends `context_window_size`; `total_tokens` is the pre-2.1.280 name
+    // this loader was written against, kept so older payloads still label.
+    const windowSize = typeof cw.context_window_size === 'number' ? cw.context_window_size
+      : typeof cw.total_tokens === 'number' ? cw.total_tokens
+      : null;
+    if (windowSize !== null && windowSize > 0) {
       // Express as "of 1M", "of 200K", etc.
-      const total = cw.total_tokens;
       const label =
-        total >= 900000
-          ? `of ${Math.round(total / 1000000)}M`
-          : total >= 1000
-          ? `of ${Math.round(total / 1000)}K`
-          : `of ${total}`;
+        windowSize >= 900000
+          ? `of ${Math.round(windowSize / 1000000)}M`
+          : windowSize >= 1000
+          ? `of ${Math.round(windowSize / 1000)}K`
+          : `of ${windowSize}`;
       state.session.contextLabel = label;
+      state.session.contextWindowSize = windowSize;
+    }
+    // Row 1's `◈` reads against the rig's manual compact line (hud-engine), so the
+    // used-token figure is kept beside the percent; the input/cache token fields
+    // stay unmapped (see below).
+    const derivedContext = deriveContextTokens(cw, windowSize);
+    if (derivedContext) {
+      state.session.contextTokens = derivedContext.tokens;
+      state.session.contextTokensApprox = derivedContext.approx;
+    }
+    // The current-context split (`current_usage`, `total_input_tokens`) is not
+    // mapped into the input/cache token fields: row 3 of the statusline shows
+    // the last response's output tokens only, and the context size is read once,
+    // as row 1's `◈ %` (operator report 2026-09-28; HUD-STANDARDS 1.6.3).
+    // `total_input_tokens` still drives `remainingTokens` below.
+    if (typeof cw.remaining_tokens === 'number') {
+      state.session.remainingTokens = cw.remaining_tokens;
+    } else if (windowSize !== null && windowSize > 0) {
+      if (typeof cw.total_input_tokens === 'number') {
+        state.session.remainingTokens = Math.max(0, windowSize - cw.total_input_tokens);
+      } else if (typeof cw.remaining_percentage === 'number') {
+        state.session.remainingTokens = Math.max(0, Math.round(windowSize * cw.remaining_percentage / 100));
+      }
     }
   }
 
@@ -899,8 +1010,15 @@ function mergeHarnessStdin(state, harness) {
 
   // Harness metadata
   if (typeof harness.version === 'string') state.session.harnessVersion = harness.version;
+  // CC sends `output_style: {name}` and an optional `vim: {mode}` (the 2.1.280
+  // schema marks `vim?` optional, so its presence means vim mode is on); the
+  // bare string/boolean forms are the older shapes.
   if (typeof harness.output_style === 'string') state.session.outputStyle = harness.output_style;
+  else if (harness.output_style && typeof harness.output_style.name === 'string') {
+    state.session.outputStyle = harness.output_style.name;
+  }
   if (typeof harness.vim === 'boolean') state.session.vimMode = harness.vim;
+  else if (harness.vim && typeof harness.vim.mode === 'string') state.session.vimMode = true;
 
   // Model breakdown
   if (harness.model) {
@@ -927,10 +1045,7 @@ function mergeHarnessStdin(state, harness) {
     }
   }
 
-  // Context window — remaining tokens + 200K degradation flag
-  if (harness.context_window && typeof harness.context_window.remaining_tokens === 'number') {
-    state.session.remainingTokens = harness.context_window.remaining_tokens;
-  }
+  // 200K degradation flag (remaining tokens are derived in the context block above)
   if (harness.exceeds_200k_tokens === true) {
     state.session.exceeds200k = true;
   }

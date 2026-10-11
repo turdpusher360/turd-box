@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import path from 'path';
 import fs from 'fs';
 import os from 'os';
+import childProcess from 'child_process';
 
 // Isolate companion-state writes: companion-state.cjs resolves STATE_PATH from
 // COMPANION_STATE_PATH || a __dirname-relative REAL _runs/os/.companion-state.json,
@@ -752,77 +753,110 @@ describe('signalCompanion and COMPANION_EVENT_MAP', () => {
 });
 
 // ── Wave 4: live git refresh writer ─────────────────────────────────────────
+// GATE 1(b): the hook starts a detached refresh (smart-order spawnDetachedRefresh)
+// and never runs git itself; the child writes the cache the statusline reads.
 describe('Wave 4: live git refresh writer', () => {
-  it('refreshes git state for write-class tools when the cache is stale', () => {
+  it('starts a detached refresh for write-class tools when the cache is stale', () => {
     const { refreshGitState } = requireFresh();
     const calls = [];
     const smartOrder = {
       readGitState: (opts = {}) => {
         calls.push(opts);
-        if (opts.refresh) return { branch: 'main', dirty: true, timestamp: new Date().toISOString() };
         return { branch: 'main', dirty: false, uncommittedFiles: 0, timestamp: new Date(Date.now() - 60_000).toISOString() };
       },
+      spawnDetachedRefresh: vi.fn(() => ({ spawned: true, pid: 4242 })),
     };
 
     const result = refreshGitState({ tool_name: 'Write' }, Date.now(), smartOrder);
 
-    expect(result).toMatchObject({ branch: 'main', dirty: true });
-    expect(calls).toEqual([{ refresh: false }, { refresh: true }]);
+    expect(result).toEqual({ spawned: true, pid: 4242 });
+    expect(smartOrder.spawnDetachedRefresh).toHaveBeenCalledTimes(1);
+    // Only the cache read; never the inline { refresh: true } probe.
+    expect(calls).toEqual([{ refresh: false }]);
   });
 
   it('does not refresh git state for read-only tools', () => {
     const { refreshGitState } = requireFresh();
-    const smartOrder = { readGitState: vi.fn() };
+    const smartOrder = { readGitState: vi.fn(), spawnDetachedRefresh: vi.fn() };
 
     expect(refreshGitState({ tool_name: 'Read' }, Date.now(), smartOrder)).toBeNull();
     expect(refreshGitState({ tool_name: 'Grep' }, Date.now(), smartOrder)).toBeNull();
     expect(refreshGitState({ tool_name: 'Glob' }, Date.now(), smartOrder)).toBeNull();
     expect(smartOrder.readGitState).not.toHaveBeenCalled();
+    expect(smartOrder.spawnDetachedRefresh).not.toHaveBeenCalled();
   });
 
   it('does not refresh when the cached git state is still inside throttle', () => {
     const { refreshGitState } = requireFresh();
     const now = Date.now();
-    const calls = [];
     const smartOrder = {
-      readGitState: (opts = {}) => {
-        calls.push(opts);
-        return { branch: 'main', dirty: false, uncommittedFiles: 0, timestamp: new Date(now - 2_000).toISOString() };
-      },
+      readGitState: () => ({ branch: 'main', dirty: false, uncommittedFiles: 0, timestamp: new Date(now - 2_000).toISOString() }),
+      spawnDetachedRefresh: vi.fn(),
     };
 
     expect(refreshGitState({ tool_name: 'Bash' }, now, smartOrder)).toBeNull();
-    expect(calls).toEqual([{ refresh: false }]);
+    expect(smartOrder.spawnDetachedRefresh).not.toHaveBeenCalled();
   });
 
   it('refreshes when cached git state is unknown even if its timestamp is recent', () => {
     const { refreshGitState } = requireFresh();
-    const calls = [];
     const smartOrder = {
-      readGitState: (opts = {}) => {
-        calls.push(opts);
-        if (opts.refresh) return { branch: 'main', dirty: false, timestamp: new Date().toISOString() };
-        return { branch: null, dirty: null, uncommittedFiles: null, recentCommits: [], timestamp: new Date().toISOString() };
-      },
+      readGitState: () => ({ branch: null, dirty: null, uncommittedFiles: null, recentCommits: [], timestamp: new Date().toISOString() }),
+      spawnDetachedRefresh: vi.fn(() => ({ spawned: true, pid: 4242 })),
     };
 
-    const result = refreshGitState({ tool_name: 'Edit' }, Date.now(), smartOrder);
-
-    expect(result).toMatchObject({ branch: 'main', dirty: false });
-    expect(calls).toEqual([{ refresh: false }, { refresh: true }]);
+    expect(refreshGitState({ tool_name: 'Edit' }, Date.now(), smartOrder)).toEqual({ spawned: true, pid: 4242 });
+    expect(smartOrder.spawnDetachedRefresh).toHaveBeenCalledTimes(1);
   });
 
-  it('fails open when git refresh throws', () => {
+  it('fails open when starting the refresh throws', () => {
     const { refreshGitState } = requireFresh();
     const smartOrder = {
-      readGitState: (opts = {}) => {
-        if (opts.refresh) throw new Error('git timeout');
-        return { branch: 'main', dirty: false, uncommittedFiles: 0, timestamp: new Date(Date.now() - 60_000).toISOString() };
-      },
+      readGitState: () => ({ branch: 'main', dirty: false, uncommittedFiles: 0, timestamp: new Date(Date.now() - 60_000).toISOString() }),
+      spawnDetachedRefresh: () => { throw new Error('EAGAIN'); },
     };
 
     expect(() => refreshGitState({ tool_name: 'Write' }, Date.now(), smartOrder)).not.toThrow();
     expect(refreshGitState({ tool_name: 'Write' }, Date.now(), smartOrder)).toBeNull();
+  });
+
+  it('does nothing against a smart-order without the detached refresh (no inline fallback)', () => {
+    const { refreshGitState } = requireFresh();
+    const smartOrder = { readGitState: vi.fn(() => ({ branch: null, dirty: null, uncommittedFiles: null })) };
+
+    expect(refreshGitState({ tool_name: 'Bash' }, Date.now(), smartOrder)).toBeNull();
+    expect(smartOrder.readGitState).not.toHaveBeenCalled();
+  });
+
+  it('runs no git inline on the hook path: the real smart-order only spawns a detached child', () => {
+    const smartOrderPath = path.resolve(__dirname, '../../lib/smart-order.cjs');
+    const stateDir = path.join(tmpDir, 'os');
+    fs.mkdirSync(stateDir, { recursive: true });
+    fs.writeFileSync(path.join(stateDir, 'git-state.json'), JSON.stringify({
+      branch: 'main', dirty: false, uncommittedFiles: 0, timestamp: new Date(Date.now() - 60_000).toISOString(),
+    }));
+    vi.stubEnv('CLAUDE_PLUGIN_DATA', '');
+    vi.stubEnv('CLAUDE_PLUGIN_ROOT', '');
+    vi.stubEnv('FORGE_OS_STATE_DIR', stateDir);
+    // smart-order destructures execFileSync at load, so spy before a fresh require.
+    delete require.cache[smartOrderPath];
+    const execSpy = vi.spyOn(childProcess, 'execFileSync');
+    const spawnSpy = vi.spyOn(childProcess, 'spawn').mockImplementation(() => ({ pid: process.pid, unref() {}, on() {} }));
+
+    try {
+      const { refreshGitState } = requireFresh();
+      const result = refreshGitState({ tool_name: 'Bash' });
+
+      expect(result).toEqual({ spawned: true, pid: process.pid });
+      expect(execSpy).not.toHaveBeenCalled();
+      expect(spawnSpy).toHaveBeenCalledTimes(1);
+      const [cmd, args, opts] = spawnSpy.mock.calls[0];
+      expect(cmd).toBe(process.execPath);
+      expect(args.slice(0, 2)).toEqual([smartOrderPath, '--refresh']);
+      expect(opts).toMatchObject({ detached: true, stdio: 'ignore' });
+    } finally {
+      delete require.cache[smartOrderPath];
+    }
   });
 });
 

@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import fs from 'node:fs';
+import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -45,6 +46,22 @@ describe('MODEL_FACE map', () => {
     const { MODEL_FACE } = requireFresh();
     expect(MODEL_FACE['claude-sonnet-5'].expr).toBe('thinking');
     expect(MODEL_FACE['claude-sonnet-5'].color).toBe('accent');
+  });
+
+  it('carries an explicit claude-sonnet-5-5 row, not only the prefix fallback', () => {
+    const { MODEL_FACE, resolveModelFace } = requireFresh();
+    expect(Object.prototype.hasOwnProperty.call(MODEL_FACE, 'claude-sonnet-5-5')).toBe(true);
+    expect(MODEL_FACE['claude-sonnet-5-5'].expr).toBe('thinking');
+    expect(MODEL_FACE['claude-sonnet-5-5'].color).toBe('accent');
+    // The exact row wins over the claude-sonnet-* prefix branch.
+    expect(resolveModelFace('claude-sonnet-5-5')).toBe(MODEL_FACE['claude-sonnet-5-5']);
+  });
+
+  it('keeps the companion-face MODEL_FACE copy in sync for Sonnet 5.5 (hud-vocabulary entry 10)', () => {
+    const { MODEL_FACE } = requireFresh();
+    const companion = _require(path.resolve(__dirname, '../companion-face.cjs'));
+    expect(companion.MODEL_FACE['claude-sonnet-5-5']).toEqual(MODEL_FACE['claude-sonnet-5-5']);
+    expect(companion.resolveModelFace('claude-sonnet-5-5')).toBe(companion.MODEL_FACE['claude-sonnet-5-5']);
   });
 
   it('maps claude-haiku-4-5 to sleepy with muted color', () => {
@@ -188,5 +205,99 @@ describe('renderStrip model-specific faces', () => {
     const output = renderStrip(state);
     expect(typeof output).toBe('string');
     expect(output.length).toBeGreaterThan(0);
+  });
+});
+
+// Statusline model label (renderStatusLine row 1). The Fable and solid-family
+// literals were pinned from the renderer as it stood before the Mythos and
+// Opus 5.5 labels (S706), so any refactor of the label path must keep them
+// byte-identical. The Mythos and Opus 5.5 literals are the operator's S706 picks.
+// A literal here changes only on an operator-picked restyle.
+describe('renderStatusLine model label', () => {
+  const MOCK_HEALTHY = path.resolve(__dirname, '../mocks/healthy.json');
+  const INSIGHTS_PATH = path.resolve(__dirname, '../companion-insights.cjs');
+  const c = (n, s) => `\x1b[38;5;${n}m${s}`;
+  const RST = '\x1b[0m';
+  let tmpDir;
+  let originalInsights;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'hud-model-label-'));
+    // A companion message or a rotation-gated ambient insight replaces row 1
+    // with a speech bubble, so silence both to keep the model label in view.
+    process.env.COMPANION_STATE_PATH = path.join(tmpDir, '.companion-state.json');
+    originalInsights = _require.cache[INSIGHTS_PATH];
+    _require.cache[INSIGHTS_PATH] = { exports: { getInsight: () => null } };
+  });
+
+  afterEach(() => {
+    if (originalInsights) _require.cache[INSIGHTS_PATH] = originalInsights;
+    else delete _require.cache[INSIGHTS_PATH];
+    process.env.COMPANION_STATE_PATH = TEST_COMPANION_PATH;
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  function renderFor(modelId) {
+    const { renderStatusLine } = requireFresh();
+    const state = JSON.parse(fs.readFileSync(MOCK_HEALTHY, 'utf8'));
+    state.projectRoot = tmpDir;
+    state.terminal = { cols: 160, rows: 24 };
+    state.session.modelId = modelId;
+    return renderStatusLine(state, 8);
+  }
+
+  it('keeps Fable 5.1 as the whole-label static ROYGBIV rainbow', () => {
+    expect(renderFor('claude-fable-5-1')).toContain(
+      `${c(196, 'f')}${c(208, 'a')}${c(226, 'b')}${c(46, 'l')}${c(51, 'e')} ${c(27, '5')}${c(129, '.')}${c(196, '1')}${RST}`,
+    );
+  });
+
+  it('keeps Fable 5 (single-part version) on the same rainbow', () => {
+    expect(renderFor('claude-fable-5')).toContain(
+      `${c(196, 'f')}${c(208, 'a')}${c(226, 'b')}${c(46, 'l')}${c(51, 'e')} ${c(27, '5')}${RST}`,
+    );
+  });
+
+  it('keeps the solid spectrum colors for the other families and Opus versions', () => {
+    expect(renderFor('claude-opus-4-8')).toContain(`${c(117, 'opus 4.8')}${RST}`);
+    expect(renderFor('claude-opus-5')).toContain(`${c(117, 'opus 5')}${RST}`);
+    expect(renderFor('claude-sonnet-5-5')).toContain(`${c(75, 'sonnet 5.5')}${RST}`);
+    expect(renderFor('claude-haiku-4-5')).toContain(`${c(110, 'haiku 4.5')}${RST}`);
+  });
+
+  it('keeps an unknown model id on the neutral fallback color', () => {
+    expect(renderFor('gpt-4')).toContain(`${c(252, ' 4')}${RST}`);
+  });
+
+  it('renders Mythos 5.1 with the Fable rainbow on the family word and a red version', () => {
+    expect(renderFor('claude-mythos-5-1')).toContain(
+      `${c(196, 'm')}${c(208, 'y')}${c(226, 't')}${c(46, 'h')}${c(51, 'o')}${c(27, 's')}${RST} ${c(196, '5.1')}${RST}`,
+    );
+  });
+
+  it('gives any other claude-mythos-* version the same red version', () => {
+    expect(renderFor('claude-mythos-5')).toContain(`${c(27, 's')}${RST} ${c(196, '5')}${RST}`);
+  });
+
+  it('renders Opus 5.5 as a static gold-to-amber run, with or without the [1m] suffix', () => {
+    const gold = `${c(220, 'o')}${c(214, 'p')}${c(178, 'u')}${c(172, 's')} ${c(220, '5')}${c(214, '.')}${c(178, '5')}${RST}`;
+    expect(renderFor('claude-opus-5-5')).toContain(gold);
+    expect(renderFor('claude-opus-5-5[1m]')).toContain(gold);
+    expect(renderFor('claude-opus-5-5')).not.toContain(c(117, 'opus'));
+  });
+});
+
+describe('Mythos face rows (hud-vocabulary entry 10)', () => {
+  it('gives Mythos 5.1 the Fable face and resolves other Mythos ids to it', () => {
+    const { MODEL_FACE, resolveModelFace } = requireFresh();
+    expect(MODEL_FACE['claude-mythos-5-1']).toEqual(MODEL_FACE['claude-fable-5-1']);
+    expect(resolveModelFace('claude-mythos-6')).toBe(MODEL_FACE['claude-mythos-5-1']);
+  });
+
+  it('keeps the companion-face MODEL_FACE copy in sync for Mythos', () => {
+    const { MODEL_FACE } = requireFresh();
+    const companion = _require(path.resolve(__dirname, '../companion-face.cjs'));
+    expect(companion.MODEL_FACE['claude-mythos-5-1']).toEqual(MODEL_FACE['claude-mythos-5-1']);
+    expect(companion.resolveModelFace('claude-mythos-6')).toBe(companion.MODEL_FACE['claude-mythos-5-1']);
   });
 });

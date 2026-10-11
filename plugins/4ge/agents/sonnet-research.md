@@ -3,7 +3,7 @@ name: sonnet-research
 description: Web research and documentation agent. Writes reports to _runs/.
 tools: Bash, Grep, Glob, Read, Write, WebSearch, WebFetch, mcp__dev-memory__memory_search, mcp__dev-memory__memory_store
 model: inherit
-effort: high
+effort: xhigh
 memory: project
 last-verified: 2026-04-17
 ---

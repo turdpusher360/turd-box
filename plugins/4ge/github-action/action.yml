@@ -44,7 +44,7 @@ inputs:
     description: |
       Minimum severity that causes a non-zero exit code.
       Options: HIGH, CRITICAL, NONE
-      NONE = always exit 0 (report only, never block)
+      NONE = report only: findings never fail the run (a run where a pass failed or returned no usable result still exits 2)
       Any other value fails the run immediately (fail-closed).
     required: false
     default: "HIGH"
@@ -62,7 +62,7 @@ outputs:
   high_count:
     description: "Number of HIGH severity findings"
   verdict:
-    description: "Overall verdict: CLEAN, RISK, or BLOCKED"
+    description: "Overall verdict: CLEAN, RISK, BLOCKED, or INCOMPLETE (a pass did not complete; the action exits 2)"
   report_path:
     description: "Path to the full JSON report artifact"
 

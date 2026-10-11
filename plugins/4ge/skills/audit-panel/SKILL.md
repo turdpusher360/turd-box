@@ -48,8 +48,8 @@ The tier determines how many reviewers dispatch and at what model level. More an
 |------|-------------------|-------------|
 | `low` | 1x focused reviewer | Quick sanity check |
 | `medium` | 1x judgment reviewer + 1x implementation nitpicker | Standard review |
-| `high` | 1x judgment reviewer + 1x implementation nitpicker + DFE 6-pass | Thorough review |
-| `max` | 1x judgment reviewer + 1x implementation nitpicker + DFE 6-pass + 1x domain expert | Full panel |
+| `high` | 1x judgment reviewer + 1x implementation nitpicker + DFE adversarial (one context) | Thorough review |
+| `max` | 1x judgment reviewer + 1x implementation nitpicker + DFE adversarial (one context) + 1x domain expert | Full panel |
 
 For `max` tier, select the domain expert based on `TARGET_FILES`:
 - Files in `claude-commander/` → `fix-commander` skill on `@sonnet-execute`
@@ -78,8 +78,8 @@ Focus on architectural correctness, cross-cutting concerns, design decisions tha
 **Implementation nitpicker** (`@sonnet-execute` with review-code skill, background):
 Focus on code quality, naming, edge cases, error handling, test coverage gaps. Check every function for: null/undefined paths, off-by-one, missing error handling, inconsistent naming, dead code introduced. Volume over judgment — flag everything, let the convergence step filter.
 
-**DFE** (`@DFE`, background):
-Standard 6-pass adversarial: existence (do imports resolve?), security (injection, secrets, OWASP), logic (race conditions, off-by-one, inverted booleans), runtime (missing await, env mismatch), trust (type assertions hiding), artifacts (dead exports, copy-paste drift). DFE minions return findings inline; the adversarial DFE writes the consolidated report to `_runs/s{NNN}-dfe-adversarial.md` when the `/dfe` command runs.
+**DFE single-lens adversarial** (`@DFE`, background; one context, not lane-independent):
+Adversarial pass in one context (for a lane-independent 6-pass, run `/4ge:dfe` instead): existence (do imports resolve?), security (injection, secrets, OWASP), logic (race conditions, off-by-one, inverted booleans), runtime (missing await, env mismatch), trust (type assertions hiding), artifacts (dead exports, copy-paste drift). The adversarial DFE writes the consolidated report to `_runs/s{NNN}-dfe-adversarial.md` when the `/dfe` command runs.
 
 **Domain expert** (max tier only, `@sonnet-execute` with domain skill, background):
 Deep domain knowledge check. "Would this code survive a week in production?" Focus on the specific framework/system conventions that general reviewers miss.

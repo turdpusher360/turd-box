@@ -196,7 +196,17 @@ function boot() {
       return { restored: 0, files: [], skipped: 0, degraded: true, reason: `git-diff-failed:${reason}` };
     }
 
-    if (diffResult.status !== 0 || !diffResult.stdout || !diffResult.stdout.trim()) {
+    // A nonzero exit (no HEAD, not a repo, bad ref) means the diff never ran
+    // either: unknown, not clean. `git diff` without --exit-code exits 0 even
+    // when protected files differ, so 0 is the only "it ran" status.
+    if (diffResult.status !== 0) {
+      process.stderr.write(
+        `${PREFIX} WARNING: integrity check could not run (git diff exited ${diffResult.status}); status UNKNOWN, not clean\n`
+      );
+      return { restored: 0, files: [], skipped: 0, degraded: true, reason: `git-diff-exit:${diffResult.status}` };
+    }
+
+    if (!diffResult.stdout || !diffResult.stdout.trim()) {
       return { restored: 0, files: [], skipped: 0 };
     }
 
@@ -216,9 +226,32 @@ function boot() {
       skipped: staleFiles.length,
       reason: 'dirty-protected-files',
     };
-  } catch {
-    return { restored: 0, files: [], skipped: 0 };
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    process.stderr.write(
+      `${PREFIX} WARNING: integrity check could not run (${message}); status UNKNOWN, not clean\n`
+    );
+    return { restored: 0, files: [], skipped: 0, degraded: true, reason: `git-diff-threw:${message}` };
   }
+}
+
+/**
+ * Health fields for a boot() result. `degraded` means the check did not run
+ * (timeout, spawn failure, nonzero git exit, throw): its state is unknown, which
+ * is never reported as healthy. Dirty protected files are a completed check.
+ *
+ * @param {ReturnType<typeof boot>} bootResult
+ * @returns {{ ok: boolean, reason?: string, check_state: 'clean'|'dirty'|'unknown' }}
+ */
+function checkHealth(bootResult) {
+  if (bootResult.degraded) {
+    return {
+      ok: false,
+      reason: `integrity check did not run: ${bootResult.reason || 'unknown'}`,
+      check_state: 'unknown',
+    };
+  }
+  return { ok: true, check_state: bootResult.skipped > 0 ? 'dirty' : 'clean' };
 }
 
 // ---------------------------------------------------------------------------
@@ -532,6 +565,7 @@ module.exports = {
    *   reverts_repaired?: number,
    *   dirty_protected_files?: number,
    *   session_id?: string,
+   *   check_state?: 'clean'|'dirty'|'unknown',
    * }}
    */
   _healthCache: { ok: false, reason: 'not initialized' },
@@ -550,8 +584,35 @@ module.exports = {
         } catch { /* ignore */ }
       }
       const tracked = sessionId ? getTrackedFiles(sessionId) : [];
+
+      // The probe cannot re-run the git check (up to 8s; probes are cheap), so it
+      // carries the last check's verdict instead of reporting ok:true over it.
+      // In-process, init() or sync() cached `check_state`. health-refresh probes in
+      // a fresh process where neither ran: there the registry's boot-status entry
+      // is the persisted init verdict (this probe never rewrites it). No boot
+      // record means nothing to carry.
+      let checkOk = true;
+      let checkReason;
+      const cached = this._healthCache;
+      if (cached && typeof cached.check_state === 'string') {
+        checkOk = cached.check_state !== 'unknown';
+        checkReason = cached.reason;
+      } else {
+        try {
+          const bootStatus = JSON.parse(
+            fs.readFileSync(path.join(process.cwd(), '_runs', 'os', 'boot-status.json'), 'utf8')
+          );
+          const entry = bootStatus && bootStatus.capabilities && bootStatus.capabilities['file-integrity'];
+          if (entry && typeof entry.status === 'string' && entry.status !== 'ready') {
+            checkOk = false;
+            checkReason = entry.reason || `boot status: ${entry.status}`;
+          }
+        } catch { /* no boot record — nothing to carry */ }
+      }
+
       const result = {
-        ok: true,
+        ok: checkOk,
+        ...(checkOk ? {} : { reason: checkReason || 'integrity check did not run' }),
         tracked_files: tracked.length,
         session_id: sessionId || 'unknown',
       };
@@ -613,8 +674,18 @@ module.exports = {
         }
       } catch { /* non-critical — never crash init */ }
 
+      const check = checkHealth(bootResult);
+      if (!check.ok) {
+        obs.log('capability', 'integrity-unknown', {
+          capability: 'file-integrity',
+          severity: 'warn',
+          message: `Boot integrity check did not run (${bootResult.reason}); status unknown, not clean`,
+          reason: bootResult.reason,
+        });
+      }
+
       this._healthCache = {
-        ok: true,
+        ...check,
         tracked_files: 0,
         last_check_ms: null,
         reverts_repaired: 0,
@@ -646,6 +717,23 @@ module.exports = {
   actions: {
     sync() {
       const result = boot();
+      const check = checkHealth(result);
+
+      // Fold this check into the cache so status() reports the latest verdict.
+      const next = { ...this._healthCache, ...check };
+      if (check.ok) {
+        delete next.reason;
+        next.dirty_protected_files = result.skipped || 0;
+      }
+      this._healthCache = next;
+
+      if (!check.ok) {
+        return {
+          ok: false,
+          reason: check.reason,
+          message: `Protected-file check did not run (${result.reason}); status unknown, not clean`,
+        };
+      }
       return {
         ok: true,
         message: `Checked protected files; restored ${result.restored} file(s), left ${result.skipped || 0} dirty file(s) untouched`,

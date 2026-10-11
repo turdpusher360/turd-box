@@ -94,6 +94,135 @@ function readExperiments(projectRoot, domain) {
   return entries;
 }
 
+/** Staleness window of .claude/hooks/check-agent-staleness.cjs, in days. */
+const AGENT_STALE_DAYS = 14;
+/** Bytes read from each agent file. The hook reads whole files; agent files run to ~10 KiB. */
+const AGENT_READ_CAP = 64 * 1024;
+
+/**
+ * Read the first AGENT_READ_CAP bytes of a regular file as UTF-8. Returns null for
+ * anything else (a directory, FIFO or device named *.md, or a read error), so no
+ * entry in a scanned repo can block the scan.
+ * @param {string} filePath
+ * @returns {string|null}
+ */
+function readAgentHead(filePath) {
+  let fd;
+  try {
+    if (!fs.statSync(filePath).isFile()) return null;
+    // O_NONBLOCK and the fstat recheck cover a swap to a FIFO between stat and open.
+    fd = fs.openSync(filePath, fs.constants.O_RDONLY | (fs.constants.O_NONBLOCK || 0));
+    if (!fs.fstatSync(fd).isFile()) return null;
+    const buf = Buffer.alloc(AGENT_READ_CAP);
+    let n = 0;
+    while (n < AGENT_READ_CAP) {
+      const got = fs.readSync(fd, buf, n, AGENT_READ_CAP - n, n);
+      if (got === 0) break;
+      n += got;
+    }
+    return buf.toString('utf8', 0, n);
+  } catch (_) {
+    return null;
+  } finally {
+    if (fd !== undefined) {
+      try { fs.closeSync(fd); } catch (_) { /* already closed */ }
+    }
+  }
+}
+
+/**
+ * agent-staleness has no autoresearch measure: its signal is the enforced
+ * agent-staleness constraint-register check, .claude/hooks/check-agent-staleness.cjs.
+ * The wizard scans repos it does not own, so it never runs or loads that hook. It
+ * reads .claude/agents/*.md itself with the hook's rules: a line starting
+ * `last-verified: YYYY-MM-DD` anywhere in the file, stale when more than 14 whole
+ * days old, missing when there is no such line. It returns the share of agents
+ * neither stale nor missing (0-100, for the map's score_invert type). The parity
+ * test in __tests__/wizard-scan-autoresearch.test.js runs the real hook on the same
+ * fixture to catch drift between the two.
+ *
+ * Only regular files are read, and only their first 64 KiB, so a FIFO, directory
+ * or oversized file named *.md counts as missing instead of stalling the scan.
+ *
+ * Returns null (unmeasured) when the hook file is absent, as in a repo without
+ * this rig's .claude/ tree (its presence marks a repo that follows the
+ * last-verified convention; it is checked for, never run), or when .claude/agents
+ * is absent, unreadable or holds no .md files.
+ * @param {string} projectRoot
+ * @param {Object} [opts]
+ * @param {number} [opts.now] - current time in epoch ms (default Date.now()), for tests
+ * @returns {number|null}
+ */
+function readAgentStaleness(projectRoot, opts = {}) {
+  if (!fs.existsSync(path.join(projectRoot, '.claude', 'hooks', 'check-agent-staleness.cjs'))) return null;
+  const agentsDir = path.join(projectRoot, '.claude', 'agents');
+  let files;
+  try {
+    files = fs.readdirSync(agentsDir).filter(f => f.endsWith('.md'));
+  } catch (_) {
+    return null;
+  }
+  const total = files.length;
+  if (total === 0) return null;
+
+  const now = opts.now !== undefined ? Number(opts.now) : Date.now();
+  let notFresh = 0;
+  for (const file of files) {
+    const content = readAgentHead(path.join(agentsDir, file));
+    const match = content === null ? null : content.match(/^last-verified:\s*(\d{4}-\d{2}-\d{2})/m);
+    if (!match) {
+      notFresh++; // missing last-verified
+      continue;
+    }
+    // The hook's own expression. An impossible date such as 2026-13-45 parses to
+    // Invalid Date, gives NaN here and so counts as fresh, exactly as in the hook.
+    const daysOld = Math.floor((now - new Date(match[1])) / (1000 * 60 * 60 * 24));
+    if (daysOld > AGENT_STALE_DAYS) notFresh++;
+  }
+  return Math.round((100 * Math.max(0, total - notFresh)) / total);
+}
+
+/**
+ * Domains read from a constraint-register check at scan time instead of from
+ * experiments.jsonl. A domain-map entry opts in with "source": "register:<id>".
+ */
+const REGISTER_SOURCES = {
+  'register:agent-staleness': readAgentStaleness,
+};
+
+/**
+ * Record one domain's current metric as a signal or as findings.
+ * @param {string} projectRoot
+ * @param {string} domain
+ * @param {Object} domainConfig - { category, thresholdId, type }
+ * @param {number} metric
+ * @param {boolean} isFresh
+ * @param {Object} findings - mutated
+ * @param {Array} signals - mutated
+ */
+function recordMetric(projectRoot, domain, domainConfig, metric, isFresh, findings, signals) {
+  const { category, thresholdId, type } = domainConfig;
+
+  if (type === 'signal_only') {
+    // Load domain config for metric label
+    const config = loadDomainConfig(projectRoot, domain);
+    const label = (config && config.metric && config.metric.name) ? config.metric.name : domain;
+    signals.push({ domain, metric, label, fresh: isFresh });
+    return;
+  }
+
+  const count = translateMetric(type, metric);
+  if (count === null) return;
+
+  if (thresholdId === null) return; // no threshold to record against
+
+  // Merge into findings[category][thresholdId]
+  if (!findings[category]) {
+    findings[category] = {};
+  }
+  findings[category][thresholdId] = (findings[category][thresholdId] || 0) + count;
+}
+
 /**
  * Scan autoresearch experiment data for all domains in the domain map.
  *
@@ -114,6 +243,14 @@ function scanAutoresearch(projectRoot, domainMap, opts = {}) {
   const stale = [];
 
   for (const [domain, domainConfig] of Object.entries(domainMap)) {
+    if (domainConfig.source) {
+      const read = REGISTER_SOURCES[domainConfig.source];
+      const metric = read ? read(projectRoot) : null;
+      if (metric === null) continue; // unmeasured — skip, as for a domain with no data
+      recordMetric(projectRoot, domain, domainConfig, metric, true, findings, signals);
+      continue;
+    }
+
     const entries = readExperiments(projectRoot, domain);
     if (entries === null) continue; // file missing — skip
 
@@ -149,29 +286,10 @@ function scanAutoresearch(projectRoot, domainMap, opts = {}) {
     }
 
     const isFresh = ageInDays <= staleDays;
-    const { category, thresholdId, type } = domainConfig;
-
-    if (type === 'signal_only') {
-      // Load domain config for metric label
-      const config = loadDomainConfig(projectRoot, domain);
-      const label = (config && config.metric && config.metric.name) ? config.metric.name : domain;
-      signals.push({ domain, metric, label, fresh: isFresh });
-      continue;
-    }
-
-    const count = translateMetric(type, metric);
-    if (count === null) continue;
-
-    if (thresholdId === null) continue; // no threshold to record against
-
-    // Merge into findings[category][thresholdId]
-    if (!findings[category]) {
-      findings[category] = {};
-    }
-    findings[category][thresholdId] = (findings[category][thresholdId] || 0) + count;
+    recordMetric(projectRoot, domain, domainConfig, metric, isFresh, findings, signals);
   }
 
   return { findings, signals, stale };
 }
 
-module.exports = { scanAutoresearch };
+module.exports = { scanAutoresearch, readAgentStaleness };

@@ -2,7 +2,7 @@
 name: design-suite
 description: "Contextual design assistance — auto-detects design mode and assembles appropriate toolkit"
 paths: ["plugins/4ge/**", "lib/**", ".4ge/**"]
-effort: high
+effort: xhigh
 disable-model-invocation: true
 ---
 

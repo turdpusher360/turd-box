@@ -15,6 +15,12 @@
 const fs = require('node:fs');
 const path = require('node:path');
 const { readStdinJson, parseToolInput } = require('./hook-utils.cjs');
+// Guarded: during an upgrade sync-to-data.cjs copies hooks one file at a time,
+// so this file can briefly sit beside an older os-guard.cjs. Then skip rotation.
+let resolveOsModuleIfProjectHas = () => null;
+try {
+  resolveOsModuleIfProjectHas = require('./os-guard.cjs').resolveOsModuleIfProjectHas || resolveOsModuleIfProjectHas;
+} catch { /* os-guard unavailable: plain append below */ }
 
 const SESSION_FILE = '.forge-session.json';
 
@@ -23,7 +29,11 @@ const DRIFT_THRESHOLD = 3;
 // Lazy-load rotation utility — falls back to plain appendFileSync if unavailable
 function safeAppendJsonl(filePath, entry) {
   try {
-    const { appendJsonl } = require(path.join(process.cwd(), 'lib', 'os', 'jsonl-rotate.cjs'));
+    // Plugin's own jsonl-rotate, never the project's (BL-404); only where the
+    // project carries lib/os/jsonl-rotate.cjs, as before.
+    const rotatePath = resolveOsModuleIfProjectHas(process.cwd(), 'jsonl-rotate.cjs');
+    if (!rotatePath) throw new Error('plugin OS tree unavailable');
+    const { appendJsonl } = require(rotatePath);
     appendJsonl(filePath, entry);
   } catch {
     try { fs.appendFileSync(filePath, JSON.stringify(entry) + '\n'); } catch { /* best effort */ }

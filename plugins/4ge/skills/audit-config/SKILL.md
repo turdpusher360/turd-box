@@ -30,6 +30,10 @@ Dispatch on `opus-audit` for config audit work. Write report to disk FIRST, then
 - Verify MCP server configs (.mcp.json) match running services
 - Memory protocol compliance: search-before-build, store-after-learn
 - Rules files: path-scoping correctness, no contradictions
+- Measure each wired hook against the repository's under-100ms budget and identify cold-path versus steady-state evidence
+- Require structured, correlated, secret-redacted diagnostics for configuration and boot failures; an emitted log line alone does not prove failure propagation
+- Treat configuration/schema changes as staged compatibility work: validate old/new readers, migration order, rollback, and stale-cache behavior before removal
+- Keep source, installed plugin/cache, merged config, process/runtime, and fresh-session activation evidence separate
 
 ## Handoff
 

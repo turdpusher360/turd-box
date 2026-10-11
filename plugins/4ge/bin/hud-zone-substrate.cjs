@@ -292,12 +292,15 @@ function renderSubstrateZone(state) {
   // on Termius. Plain Fraktur is clean.
   const capEntries = [];
   for (const [name, cap] of Object.entries(caps)) {
-    const ok = cap && cap.ok !== false;
+    // Green only on an observed ok === true; no boolean ok is unobserved and
+    // takes the warn marker. ok === false stays red (shelved included).
+    const ok = !!cap && cap.ok === true;
+    const unknown = !cap || typeof cap.ok !== 'boolean';
     // S527: capability name is ingested from state.os.capabilities — sanitize
     // before it flows into toFraktur() output.
     const shortName = sanitizeForOutput(name).slice(0, 8);
     const frakName = toFraktur(shortName);
-    const emoji = capEmoji(ok, false);
+    const emoji = capEmoji(ok, unknown);
     capEntries.push(emoji + ' ' + frakName);
   }
 

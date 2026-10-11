@@ -1,6 +1,7 @@
 'use strict';
 
 const { colorize } = require('./hud-palette.cjs');
+const { classifyCapabilityHealth } = require('./hud-state.cjs');
 
 const BRAILLE_FILLS = [
   '\u2800', '\u2801', '\u2803', '\u2807', '\u280F', '\u281F', '\u28FF',
@@ -18,6 +19,33 @@ function computeHealthScore(caps) {
   if (entries.length === 0) return 0;
   const ready = entries.filter(c => c && c.ok).length;
   return Math.round((ready / entries.length) * 100);
+}
+
+function formatIncompleteHealth(classification) {
+  if (classification.total === 0 || classification.unknown.length === classification.total) {
+    return 'health unknown';
+  }
+  const parts = [];
+  if (classification.ready.length > 0) parts.push(`${classification.ready.length} ready`);
+  if (classification.failed.length > 0) parts.push(`${classification.failed.length} degraded`);
+  if (classification.unknown.length > 0) parts.push(`${classification.unknown.length} unknown`);
+  return parts.join(' \u00B7 ');
+}
+
+// `health failed` state (HUD r5 review P2-1): the loader's bootFailed flag,
+// which survives the next cheap health refresh, or an explicit failed overall
+// with no capabilities (a state built without the loader's flag).
+function isHealthFailed(state, classification) {
+  const os = state && state.os;
+  if (!os) return false;
+  return os.bootFailed === true || (classification.total === 0 && os.overallHealth === 'failed');
+}
+
+// With no probe observed ready it stays `health failed`; once cheap probes
+// report ready, name both facts instead of reading healthy.
+function formatFailedHealth(classification) {
+  const n = classification.ready.length;
+  return n > 0 ? `boot failed \u00B7 ${n} probe${n === 1 ? '' : 's'} ok` : 'health failed';
 }
 
 function gradeForScore(score) {
@@ -66,6 +94,16 @@ function renderSubBlockBar(ms, barCells, maxMs, palette) {
 function renderHealthZone(state, palette, opts) {
   const detailed = !!(opts && opts.detailed);
   const caps = (state.os && state.os.capabilities) || {};
+  const classification = classifyCapabilityHealth(caps);
+  if (isHealthFailed(state, classification)) {
+    return [`  ${colorize(palette, 'error', formatFailedHealth(classification))}`];
+  }
+  // Nothing reported, or a capability without a boolean observation: a score
+  // would turn missing evidence into a failed grade. Render the observation gap.
+  if (classification.total === 0 || classification.unknown.length > 0) {
+    const label = formatIncompleteHealth(classification);
+    return [`  ${colorize(palette, 'warn', label)}`];
+  }
   const rows = (state.terminal && state.terminal.rows) || 24;
   const cols = (state.terminal && state.terminal.cols) || 79;
   const score = computeHealthScore(caps);
@@ -127,5 +165,5 @@ const ZONE_META = { key: 'health', priority: 8, minRows: 1, idealRows: 8 };
 module.exports = {
   computeHealthScore, gradeForScore, renderHealthBar,
   renderBrailleGauge, renderSubBlockBar, capMarker,
-  renderHealthZone, ZONE_META,
+  formatIncompleteHealth, isHealthFailed, formatFailedHealth, renderHealthZone, ZONE_META,
 };

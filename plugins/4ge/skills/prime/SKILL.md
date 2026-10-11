@@ -151,6 +151,8 @@ Delegating a render and accepting the output without running it is not delegatio
 
 ```
 Agent({
+  subagent_type: "sonnet-execute",
+  model: "opus",
   prompt: "Implement session-guard.cjs — detects concurrent CC instances
     by reading _runs/.active-session.json. If another PID is alive and
     marker age < 4h, warn and snapshot .claude/ state.

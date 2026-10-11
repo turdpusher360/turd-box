@@ -14,12 +14,17 @@ const { colorize } = require('./hud-palette.cjs');
 
 // Model-specific resting face (W5 T5.1): healthy idle shows the model's signature look.
 const MODEL_FACE = {
+  'claude-fable-5-1':    { expr: 'determined', color: 'accent' },  // Fable 5.1: operator target since CC 2.1.257
   'claude-fable-5':      { expr: 'determined', color: 'accent' },  // Mythos-class flagship
+  'claude-mythos-5-1':   { expr: 'determined', color: 'accent' },  // Mythos 5.1 follows the Fable treatment
+  'claude-opus-5-5':     { expr: 'determined', color: 'accent' },  // Opus 5.5: default Opus since CC 2.1.280
+  'claude-opus-5':       { expr: 'determined', color: 'accent' },
   'claude-opus-4-8':     { expr: 'determined', color: 'accent' },
   'claude-opus-4-7':     { expr: 'determined', color: 'accent' },
   'claude-opus-4-6':     { expr: 'determined', color: 'accent' },
   'claude-opus-4-6[1m]': { expr: 'determined', color: 'accent' },
   'claude-sonnet-4-6':   { expr: 'thinking',    color: 'accent' },
+  'claude-sonnet-5-5':   { expr: 'thinking',    color: 'accent' },  // Sonnet 5.5: default Sonnet on the Anthropic API since CC 2.1.284, 1M
   'claude-sonnet-5':     { expr: 'thinking',    color: 'accent' },  // Sonnet 5: adaptive thinking, 1M
   'claude-haiku-4-5':    { expr: 'sleepy',     color: 'muted' },
 };
@@ -29,6 +34,7 @@ function resolveModelFace(modelId) {
   if (!modelId) return null;
   if (MODEL_FACE[modelId]) return MODEL_FACE[modelId];
   if (modelId.startsWith('claude-fable'))  return MODEL_FACE['claude-fable-5'];
+  if (modelId.startsWith('claude-mythos')) return MODEL_FACE['claude-mythos-5-1'];
   if (modelId.startsWith('claude-opus'))   return MODEL_FACE['claude-opus-4-6'];
   if (modelId.startsWith('claude-sonnet')) return MODEL_FACE['claude-sonnet-4-6'];
   if (modelId.startsWith('claude-haiku'))  return MODEL_FACE['claude-haiku-4-5'];

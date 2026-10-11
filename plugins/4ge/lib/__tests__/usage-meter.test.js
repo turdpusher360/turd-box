@@ -439,6 +439,20 @@ describe('loadPricing', () => {
       expect(typeof m.basis, `${name}.basis`).toBe('string');
     }
   });
+
+  it('shipped config prices Sonnet 5.5 and Sonnet 5 on their own rows, never the claude-sonnet catch-all (relationships only)', () => {
+    const shipped = meter.loadPricing({ env: {} });
+    const catchAll = shipped.models['claude-sonnet'];
+    expect(catchAll).toBeTruthy();
+    for (const id of ['claude-sonnet-5-5', 'claude-sonnet-5']) {
+      expect(shipped.models[id], `${id} has an explicit row`).toBeTruthy();
+      expect(meter.resolveModelPricing(shipped, id), id).toBe(shipped.models[id]);
+      expect(meter.resolveModelPricing(shipped, id), id).not.toBe(catchAll);
+    }
+    // Suffixed ids follow the longest prefix: the 5.5 row, never the shorter claude-sonnet-5 row.
+    expect(meter.resolveModelPricing(shipped, 'claude-sonnet-5-5[1m]')).toBe(shipped.models['claude-sonnet-5-5']);
+    expect(meter.resolveModelPricing(shipped, 'claude-sonnet-5-5-20260928')).toBe(shipped.models['claude-sonnet-5-5']);
+  });
 });
 
 describe('entryCostUSD', () => {

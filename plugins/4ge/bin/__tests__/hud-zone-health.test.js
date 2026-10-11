@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const _require = createRequire(import.meta.url);
 const MODULE_PATH = path.resolve(__dirname, '../hud-zone-health.cjs');
+const { buildCapabilities } = _require(path.resolve(__dirname, '../hud-data-loader.cjs'));
 
 function requireFresh() {
   for (const key of Object.keys(_require.cache)) {
@@ -138,6 +139,159 @@ describe('renderHealthZone', () => {
     expect(all).toContain('\u25CF');
     const hasBraille = [...all].some(ch => { const cp = ch.codePointAt(0); return cp >= 0x2800 && cp <= 0x28FF; });
     expect(hasBraille).toBe(true);
+  });
+
+  // An empty capability map (no health.json or boot-status.json; the loader
+  // calls it 'unknown') still scores 0, but that is not a failed grade. The zone
+  // must say "health unknown", never a red "Health: 0 F".
+  function expectHealthUnknown(terminal) {
+    const { renderHealthZone } = requireFresh();
+    const { stripAnsi } = _require(path.resolve(__dirname, '../hud-palette.cjs'));
+    const palette = {
+      ok: '\x1b[32m', warn: '\x1b[33m', error: '\x1b[31m',
+      accent: '\x1b[36m', muted: '\x1b[90m', text: '\x1b[37m',
+      bg: '\x1b[40m', reset: '\x1b[0m',
+    };
+    const state = { terminal, os: { overallHealth: 'unknown', bootTime: 0, capabilities: {} } };
+    for (const lines of [renderHealthZone(state, palette), renderHealthZone(state, palette, { detailed: true })]) {
+      const raw = lines.join('\n');
+      const text = stripAnsi(raw);
+      expect(text).toContain('health unknown');
+      expect(raw).toContain(`${palette.warn}health unknown`);
+      expect(text).not.toContain('Health:');
+      expect(text).not.toMatch(/\b0\s+F\b/);
+      expect(raw).not.toContain(palette.error);
+    }
+  }
+
+  it('renders an empty capability map as health unknown at a wide width', () => {
+    expectHealthUnknown({ cols: 120, rows: 40 });
+  });
+
+  it('renders an empty capability map as health unknown at a narrow width', () => {
+    expectHealthUnknown({ cols: 48, rows: 8 });
+  });
+
+  function expectHealthFailed(terminal) {
+    const { renderHealthZone } = requireFresh();
+    const { stripAnsi } = _require(path.resolve(__dirname, '../hud-palette.cjs'));
+    const palette = {
+      ok: '\x1b[32m', warn: '\x1b[33m', error: '\x1b[31m',
+      accent: '\x1b[36m', muted: '\x1b[90m', text: '\x1b[37m',
+      bg: '\x1b[40m', reset: '\x1b[0m',
+    };
+    const state = { terminal, os: { overallHealth: 'failed', bootTime: 0, capabilities: {} } };
+    for (const lines of [renderHealthZone(state, palette), renderHealthZone(state, palette, { detailed: true })]) {
+      const raw = lines.join('\n');
+      const text = stripAnsi(raw);
+      expect(text).toContain('health failed');
+      expect(raw).toContain(`${palette.error}health failed`);
+      expect(text).not.toContain('health unknown');
+      expect(text).not.toContain('Health:');
+      expect(text).not.toMatch(/\b0\s+F\b/);
+    }
+  }
+
+  it('renders an empty failed boot as health failed at a wide width', () => {
+    expectHealthFailed({ cols: 120, rows: 40 });
+  });
+
+  it('renders an empty failed boot as health failed at a narrow width', () => {
+    expectHealthFailed({ cols: 48, rows: 8 });
+  });
+
+  it('renders a capability without boolean ok as health unknown', () => {
+    const { renderHealthZone } = requireFresh();
+    const { stripAnsi } = _require(path.resolve(__dirname, '../hud-palette.cjs'));
+    const palette = {
+      ok: '\x1b[32m', warn: '\x1b[33m', error: '\x1b[31m',
+      accent: '\x1b[36m', muted: '\x1b[90m', text: '\x1b[37m',
+      bg: '\x1b[40m', reset: '\x1b[0m',
+    };
+    const raw = renderHealthZone({
+      terminal: { cols: 120, rows: 40 },
+      os: { overallHealth: 'degraded', capabilities: { memory: { status: 'degraded' } } },
+    }, palette).join('\n');
+    const text = stripAnsi(raw);
+    expect(text).toContain('health unknown');
+    expect(raw).toContain(`${palette.warn}health unknown`);
+    expect(text).not.toContain('Health:');
+    expect(text).not.toMatch(/\b0\s+F\b/);
+  });
+
+  it.each([
+    ['wide', { cols: 120, rows: 40 }],
+    ['narrow', { cols: 48, rows: 8 }],
+  ])('renders a null capability as warning-role health unknown at a %s width', (_label, terminal) => {
+    const { renderHealthZone } = requireFresh();
+    const { stripAnsi } = _require(path.resolve(__dirname, '../hud-palette.cjs'));
+    const palette = {
+      ok: '\x1b[32m', warn: '\x1b[33m', error: '\x1b[31m',
+      accent: '\x1b[36m', muted: '\x1b[90m', text: '\x1b[37m',
+      bg: '\x1b[40m', reset: '\x1b[0m',
+    };
+    let raw;
+
+    expect(() => {
+      raw = renderHealthZone({
+        terminal,
+        os: { overallHealth: 'unknown', bootTime: 0, capabilities: { probe: null } },
+      }, palette).join('\n');
+    }).not.toThrow();
+
+    const text = stripAnsi(raw);
+    expect(text).toContain('health unknown');
+    expect(raw).toContain(`${palette.warn}health unknown`);
+    expect(text).not.toContain('Health:');
+  });
+
+  it.each([
+    ['wide', { cols: 120, rows: 40 }],
+    ['narrow', { cols: 48, rows: 8 }],
+  ])('never renders a non-boolean live ok value healthy at a %s width', (_label, terminal) => {
+    const { renderHealthZone } = requireFresh();
+    const { stripAnsi } = _require(path.resolve(__dirname, '../hud-palette.cjs'));
+    const palette = {
+      ok: '\x1b[32m', warn: '\x1b[33m', error: '\x1b[31m',
+      accent: '\x1b[36m', muted: '\x1b[90m', text: '\x1b[37m',
+      bg: '\x1b[40m', reset: '\x1b[0m',
+    };
+    const capabilities = buildCapabilities({}, { probe: { ok: 'false' } });
+    let raw;
+
+    expect(() => {
+      raw = renderHealthZone({
+        terminal,
+        os: { overallHealth: 'degraded', bootTime: 0, capabilities },
+      }, palette).join('\n');
+    }).not.toThrow();
+
+    const text = stripAnsi(raw);
+    expect(text).toMatch(/Health:\s+0\s+F\b/);
+    expect(text).not.toMatch(/Health:\s+100\s+A\b/);
+    expect(raw).toContain(palette.error);
+  });
+
+  it('renders mixed ready and unknown observations as a warning count', () => {
+    const { renderHealthZone } = requireFresh();
+    const { stripAnsi } = _require(path.resolve(__dirname, '../hud-palette.cjs'));
+    const palette = {
+      ok: '\x1b[32m', warn: '\x1b[33m', error: '\x1b[31m',
+      accent: '\x1b[36m', muted: '\x1b[90m', text: '\x1b[37m',
+      bg: '\x1b[40m', reset: '\x1b[0m',
+    };
+    const raw = renderHealthZone({
+      terminal: { cols: 120, rows: 40 },
+      os: {
+        overallHealth: 'degraded',
+        capabilities: { git: { ok: true }, memory: { status: 'degraded' } },
+      },
+    }, palette).join('\n');
+    const text = stripAnsi(raw);
+    expect(text).toContain('1 ready · 1 unknown');
+    expect(raw).toContain(`${palette.warn}1 ready · 1 unknown`);
+    expect(text).not.toContain('Health:');
+    expect(text).not.toMatch(/\b50\s+[A-F]\b/);
   });
 });
 

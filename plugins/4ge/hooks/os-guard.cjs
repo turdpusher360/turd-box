@@ -13,11 +13,16 @@
  * PID boot-sentinel remains the second line of defense for same-harness
  * double-boot.
  *
- * Resolution layers for the OS module tree (used by plugin os-boot):
- *   1. <cwd>/lib/os                       — project-managed source of truth
- *   2. <CLAUDE_PLUGIN_DATA>/vendor/lib/os — synced vendored copy (stable dir)
- *   3. <CLAUDE_PLUGIN_ROOT>/vendor/lib/os — installed plugin cache
- *   4. <__dirname>/../vendor/lib/os       — source-tree fallback
+ * Resolution layers for the OS module tree (used by every plugin hook that
+ * loads an OS module):
+ *   1. <CLAUDE_PLUGIN_DATA>/vendor/lib/os — synced vendored copy (stable dir)
+ *   2. <CLAUDE_PLUGIN_ROOT>/vendor/lib/os — installed plugin cache
+ *   3. <__dirname>/../vendor/lib/os       — source-tree fallback
+ *
+ * The project directory is never a layer (BL-404): the plugin ships publicly,
+ * so loading <cwd>/lib/os would run any opened repo's code at SessionStart and
+ * on tool calls. A project that manages its own OS wires its own hooks, and
+ * isProjectManaged() makes the plugin's os-boot/os-accounting defer to them.
  */
 'use strict';
 
@@ -63,21 +68,23 @@ function isProjectManaged(cwd, hookName) {
  * Resolve the root of the OS module tree (the directory that CONTAINS
  * lib/os, lib/aisle, scripts/pin-hooks.cjs with source geometry).
  *
- * Returns { root, source } where source is 'project' | 'plugin-data' |
- * 'plugin-root' | 'plugin-dirname', or null when no OS tree exists.
+ * Returns { root, source } where source is 'plugin-data' | 'plugin-root' |
+ * 'plugin-dirname', or null when the plugin carries no OS tree.
  *
- * @param {string} cwd - project root
+ * @param {string} [_cwd] - ignored; kept so existing callers stay valid
  * @returns {{root: string, source: string} | null}
  */
-function resolveOsRoot(cwd) {
-  const projectRoot = cwd || process.cwd();
+function resolveOsRoot(_cwd) {
+  // The runtime sets both as absolute paths. A relative value would resolve
+  // against the project cwd, so it is ignored.
+  const dataDir = process.env.CLAUDE_PLUGIN_DATA;
+  const rootDir = process.env.CLAUDE_PLUGIN_ROOT;
   const candidates = [
-    { root: projectRoot, source: 'project' },
-    process.env.CLAUDE_PLUGIN_DATA
-      ? { root: path.join(process.env.CLAUDE_PLUGIN_DATA, 'vendor'), source: 'plugin-data' }
+    dataDir && path.isAbsolute(dataDir)
+      ? { root: path.join(dataDir, 'vendor'), source: 'plugin-data' }
       : null,
-    process.env.CLAUDE_PLUGIN_ROOT
-      ? { root: path.join(process.env.CLAUDE_PLUGIN_ROOT, 'vendor'), source: 'plugin-root' }
+    rootDir && path.isAbsolute(rootDir)
+      ? { root: path.join(rootDir, 'vendor'), source: 'plugin-root' }
       : null,
     { root: path.join(__dirname, '..', 'vendor'), source: 'plugin-dirname' },
   ].filter(Boolean);
@@ -88,4 +95,32 @@ function resolveOsRoot(cwd) {
   return null;
 }
 
-module.exports = { isProjectManaged, resolveOsRoot };
+/**
+ * Absolute path of a module inside the plugin's OS tree, e.g.
+ * resolveOsModule('services', 'ipc.cjs'), or null when the plugin carries no
+ * OS tree. Callers treat null as "feature unavailable" and skip it.
+ *
+ * @param {...string} segments - path under lib/os
+ * @returns {string | null}
+ */
+function resolveOsModule(...segments) {
+  const osRoot = resolveOsRoot();
+  return osRoot ? path.join(osRoot.root, 'lib', 'os', ...segments) : null;
+}
+
+/**
+ * resolveOsModule(), gated on the project carrying the same module at
+ * <cwd>/lib/os/<segments>. The project file is only stat()ed, never loaded:
+ * it keeps hooks that used to load <cwd>/lib/os inert in projects without an
+ * OS tree, while the code that runs is always the plugin's copy (BL-404).
+ *
+ * @param {string} cwd - project root
+ * @param {...string} segments - path under lib/os
+ * @returns {string | null}
+ */
+function resolveOsModuleIfProjectHas(cwd, ...segments) {
+  if (!fs.existsSync(path.join(cwd || process.cwd(), 'lib', 'os', ...segments))) return null;
+  return resolveOsModule(...segments);
+}
+
+module.exports = { isProjectManaged, resolveOsRoot, resolveOsModule, resolveOsModuleIfProjectHas };

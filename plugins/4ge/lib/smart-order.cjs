@@ -27,10 +27,32 @@ const OS_DIR = process.env.FORGE_OS_STATE_DIR
 const HUD_CONTEXT_FILE = path.join(OS_DIR, 'hud-context.json');
 const LAST_TEST_FILE = path.join(REPO_ROOT, '_runs', '.last-test-result.json');
 const GIT_STATE_FILE = path.join(OS_DIR, 'git-state.json');
-const GIT_PROBE_TIMEOUT_MS = (() => {
-  const parsed = Number.parseInt(process.env.FORGE_GIT_PROBE_TIMEOUT_MS || '1200', 10);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : 1200;
-})();
+// Per-command budget for the synchronous git probes (readGitState({ refresh: true }),
+// getOrderedOptions). `git status` on the drvfs checkout takes 2.7-5.7 s, so dirty
+// comes back unknown there (the statusline then shows `+?`). The tool-call hooks do not
+// use this path: they call spawnDetachedRefresh, which probes in a detached child with
+// the long REFRESH_* budgets below. FORGE_GIT_PROBE_TIMEOUT_MS overrides it.
+const GIT_PROBE_DEFAULT_TIMEOUT_MS = 1200;
+
+function resolveGitProbeTimeoutMs(env = process.env) {
+  const parsed = Number.parseInt((env && env.FORGE_GIT_PROBE_TIMEOUT_MS) || '', 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : GIT_PROBE_DEFAULT_TIMEOUT_MS;
+}
+
+const GIT_PROBE_TIMEOUT_MS = resolveGitProbeTimeoutMs();
+
+// Detached refresh budgets. The child is off every tool call's critical path, so it
+// can wait for `git status`: 15 s per command is ~2.6x the worst measured (5.7 s with
+// other lanes loading the disk), and 30 s bounds the whole child (status at its cap plus
+// the four cheap calls, ~0.5 s measured together).
+const REFRESH_PER_COMMAND_TIMEOUT_MS = 15000;
+const REFRESH_TOTAL_BUDGET_MS = 30000;
+// A lock older than the budget plus this grace belongs to a child that died or wedged.
+const REFRESH_LOCK_GRACE_MS = 5000;
+const REFRESH_LOCK_STALE_MS = REFRESH_TOTAL_BUDGET_MS + REFRESH_LOCK_GRACE_MS;
+const REFRESH_LOCK_NAME = 'git-state.refresh.lock';
+// Carries the lock token from the hook that took the lock to the child that releases it.
+const REFRESH_TOKEN_ENV = 'FORGE_GIT_REFRESH_LOCK_TOKEN';
 
 // --- Option ID patterns for signal-to-option mapping ---
 const FORGE_IDS     = /^(forge|plan|spec|ship|phase)/i;
@@ -46,22 +68,41 @@ const BOOST = 2.5;
 // All are wrapped in try/catch — on error they return neutral (empty) state.
 
 /**
+ * Timeout for one git command: the per-command cap, cut to what is left of the
+ * deadline when one is set. Zero or less means the budget is spent.
+ * @param {number} timeoutMs
+ * @param {number|null} deadline epoch ms
+ * @param {number} [now]
+ * @returns {number}
+ */
+function commandBudgetMs(timeoutMs, deadline, now = Date.now()) {
+  if (typeof deadline !== 'number' || !Number.isFinite(deadline)) return timeoutMs;
+  return Math.min(timeoutMs, deadline - now);
+}
+
+/**
  * Read git status signals: uncommitted changes, branch name, last commit age.
+ * @param {{ cwd?: string, timeoutMs?: number, deadline?: number|null }} [opts]
  * @returns {{ hasUncommitted: boolean, branch: string, commitAgeMs: number }}
  */
-function readGitStatus() {
+function readGitStatus({ cwd = REPO_ROOT, timeoutMs = GIT_PROBE_TIMEOUT_MS, deadline = null } = {}) {
   // Each git probe is isolated so one slow or failing call cannot poison the
   // others — in particular the branch name (a cheap rev-parse) must survive a
   // slow `git status`. On a large working tree over a WSL /mnt mount, dirty
   // probes can wedge long enough to break HUD rendering. Keep the probe budget
   // short and return unknown dirty state instead of claiming the tree is clean.
-  const run = (args) => execFileSync('git', args, {
-    cwd: REPO_ROOT,
-    encoding: 'utf8',
-    timeout: GIT_PROBE_TIMEOUT_MS,
-    stdio: ['ignore', 'pipe', 'ignore'],
-    env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' },
-  });
+  // execFileSync blocks the event loop, so a deadline is enforced per command.
+  const run = (args) => {
+    const budget = commandBudgetMs(timeoutMs, deadline);
+    if (budget <= 0) throw new Error('git probe budget spent');
+    return execFileSync('git', args, {
+      cwd,
+      encoding: 'utf8',
+      timeout: budget,
+      stdio: ['ignore', 'pipe', 'ignore'],
+      env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' },
+    });
+  };
 
   let branch = 'unknown';
   try {
@@ -174,12 +215,15 @@ function readRecentEdits() {
 /**
  * Read N recent commits as structured objects.
  * @param {number} n
+ * @param {{ cwd?: string, timeoutMs?: number, deadline?: number|null }} [opts]
  * @returns {Array<{ sha: string, subject: string, ts: string }>}
  */
-function readRecentCommits(n) {
+function readRecentCommits(n, { cwd = REPO_ROOT, timeoutMs = 3000, deadline = null } = {}) {
   try {
+    const budget = commandBudgetMs(timeoutMs, deadline);
+    if (budget <= 0) return [];
     const out = execFileSync('git', ['log', `-${n}`, '--format=%h\t%s\t%cI'], {
-      cwd: REPO_ROOT, encoding: 'utf8', timeout: 3000,
+      cwd, encoding: 'utf8', timeout: budget,
       env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' },
     });
     return out.trim().split('\n').filter(Boolean).map(line => {
@@ -193,17 +237,19 @@ function readRecentCommits(n) {
 
 /**
  * Build a fresh git-state snapshot from live git data.
+ * @param {{ cwd?: string, timeoutMs?: number, deadline?: number|null }} [opts] passed to both probes;
+ *   omitted fields keep each probe's own default
  * @returns {{ branch: string, ahead: number, behind: number, dirty: boolean, uncommittedFiles: number, recentCommits: Array, lastCommitTs: string|null, timestamp: string }}
  */
-function buildFreshGitState() {
-  const git = readGitStatus();
+function buildFreshGitState(opts = {}) {
+  const git = readGitStatus(opts);
   return {
     branch: git.branch || 'main',
     ahead: git.ahead || 0,
     behind: git.behind || 0,
     dirty: typeof git.hasUncommitted === 'boolean' ? git.hasUncommitted : null,
     uncommittedFiles: typeof git.uncommittedFiles === 'number' ? git.uncommittedFiles : null,
-    recentCommits: readRecentCommits(5),
+    recentCommits: readRecentCommits(5, opts),
     lastCommitTs: git.lastCommitTs || null,
     timestamp: new Date().toISOString(),
   };
@@ -250,19 +296,212 @@ function readGitState({ refresh = false } = {}) {
 }
 
 /**
- * Write git-state to disk atomically (tmp + rename).
+ * Write git-state to disk atomically (tmp + rename). The tmp name carries the pid:
+ * a detached refresh child and a `--mode=full` HUD render can write at the same
+ * time, and a shared tmp would let one rename the other's half-written file.
  * @param {object} state
+ * @param {string} [stateFile]
+ * @returns {boolean} whether the cache was replaced
  */
-function writeGitState(state) {
+function writeGitState(state, stateFile = GIT_STATE_FILE) {
+  const tmp = `${stateFile}.${process.pid}.tmp`;
   try {
-    const dir = path.dirname(GIT_STATE_FILE);
+    const dir = path.dirname(stateFile);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    const tmp = GIT_STATE_FILE + '.tmp';
     fs.writeFileSync(tmp, JSON.stringify(state, null, 2));
-    fs.renameSync(tmp, GIT_STATE_FILE);
+    fs.renameSync(tmp, stateFile);
+    return true;
   } catch {
-    // best-effort; callers are resilient to missing state
+    // best-effort; callers are resilient to missing state. Leave no tmp behind.
+    try { fs.unlinkSync(tmp); } catch { /* never created */ }
+    return false;
   }
+}
+
+// --- Detached refresh (GATE 1(b), option A) ---
+// The tool-call hooks must not run git inline: `git status` on the drvfs checkout
+// takes seconds and the hooks have a 5 s timeout. spawnDetachedRefresh takes a
+// single-flight lock, starts `node smart-order.cjs --refresh <repoRoot>` detached and
+// returns; the child probes with the long budget, writes the cache and releases the lock.
+
+/**
+ * @param {string} [stateFile]
+ * @returns {string} lock path beside the cache
+ */
+function refreshLockPath(stateFile = GIT_STATE_FILE) {
+  return path.join(path.dirname(stateFile), REFRESH_LOCK_NAME);
+}
+
+/**
+ * @param {number} pid
+ * @returns {boolean} true when the pid exists (EPERM means it exists under another user)
+ */
+function isPidAlive(pid) {
+  if (!Number.isInteger(pid) || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    return Boolean(err && err.code === 'EPERM');
+  }
+}
+
+/**
+ * A lock is stale when its owner pid is dead or it is older than the refresh budget
+ * plus grace. A lock that does not parse yet is held (its writer is mid-handover)
+ * until it ages out by mtime.
+ * @param {string} lockPath
+ * @param {{ now?: number, isAlive?: (pid: number) => boolean, staleMs?: number }} [opts]
+ * @returns {boolean}
+ */
+function isRefreshLockStale(lockPath, { now = Date.now(), isAlive = isPidAlive, staleMs = REFRESH_LOCK_STALE_MS } = {}) {
+  let stat;
+  try { stat = fs.statSync(lockPath); } catch { return false; }
+  let info;
+  try { info = JSON.parse(fs.readFileSync(lockPath, 'utf8')); } catch { info = null; }
+  const startedAt = info && Number.isFinite(info.startedAt) ? info.startedAt : stat.mtimeMs;
+  if (now - startedAt > staleMs) return true;
+  if (info && Number.isInteger(info.pid) && !isAlive(info.pid)) return true;
+  return false;
+}
+
+/**
+ * Take the lock with O_EXCL, recovering it once if the current holder is stale.
+ * @param {string} lockPath
+ * @param {{ pid: number, token: string, now?: number, isAlive?: Function, staleMs?: number }} opts
+ * @returns {boolean} whether this caller now holds the lock
+ */
+function acquireRefreshLock(lockPath, { pid, token, now = Date.now(), isAlive = isPidAlive, staleMs = REFRESH_LOCK_STALE_MS }) {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    let fd;
+    try {
+      fs.mkdirSync(path.dirname(lockPath), { recursive: true });
+      fd = fs.openSync(lockPath, 'wx');
+    } catch (err) {
+      if (!err || err.code !== 'EEXIST') return false;
+      if (attempt > 0 || !isRefreshLockStale(lockPath, { now, isAlive, staleMs })) return false;
+      try { fs.unlinkSync(lockPath); } catch { /* another trigger recovered it first */ }
+      continue;
+    }
+    try {
+      fs.writeSync(fd, JSON.stringify({ pid, startedAt: now, token }));
+      fs.closeSync(fd);
+      return true;
+    } catch {
+      try { fs.closeSync(fd); } catch { /* already closed */ }
+      try { fs.unlinkSync(lockPath); } catch { /* already gone */ }
+      return false;
+    }
+  }
+  return false;
+}
+
+/**
+ * Rewrite the lock's owner in place. Opening with r+ (not w) means a lock the child
+ * already released is not re-created.
+ * @param {string} lockPath
+ * @param {object} owner
+ */
+function rewriteRefreshLockOwner(lockPath, owner) {
+  let fd;
+  try { fd = fs.openSync(lockPath, 'r+'); } catch { return; }
+  try {
+    const buf = Buffer.from(JSON.stringify(owner));
+    fs.writeSync(fd, buf, 0, buf.length, 0);
+    fs.ftruncateSync(fd, buf.length);
+  } catch {
+    // best-effort; an unreadable lock ages out by mtime
+  } finally {
+    fs.closeSync(fd);
+  }
+}
+
+/**
+ * Release the lock only if it still carries this token, so a lock recovered by
+ * another trigger is never removed by the child it was taken from.
+ * @param {string} lockPath
+ * @param {string} token
+ */
+function releaseRefreshLock(lockPath, token) {
+  try {
+    const info = JSON.parse(fs.readFileSync(lockPath, 'utf8'));
+    if (info && info.token === token) fs.unlinkSync(lockPath);
+  } catch {
+    // gone or unreadable; nothing to release
+  }
+}
+
+/**
+ * Probe git with the long budget and write the cache. Runs in the detached child;
+ * also safe to run by hand (without a token it takes the lock itself or stands down).
+ * @param {string} [repoRoot]
+ * @param {{ stateFile?: string, token?: string, perCommandTimeoutMs?: number, budgetMs?: number }} [opts]
+ * @returns {{ refreshed: boolean, reason?: string, state?: object }}
+ */
+function runRefresh(repoRoot = REPO_ROOT, opts = {}) {
+  const stateFile = opts.stateFile || GIT_STATE_FILE;
+  const lockPath = refreshLockPath(stateFile);
+  const started = Date.now();
+  let token = opts.token || '';
+  if (!token) {
+    token = `${process.pid}-${started}-manual`;
+    if (!acquireRefreshLock(lockPath, { pid: process.pid, token, now: started })) {
+      return { refreshed: false, reason: 'in-flight' };
+    }
+  }
+  try {
+    const state = buildFreshGitState({
+      cwd: repoRoot,
+      timeoutMs: opts.perCommandTimeoutMs || REFRESH_PER_COMMAND_TIMEOUT_MS,
+      deadline: started + (opts.budgetMs || REFRESH_TOTAL_BUDGET_MS),
+    });
+    const written = writeGitState(state, stateFile);
+    return written ? { refreshed: true, state } : { refreshed: false, reason: 'write-failed', state };
+  } finally {
+    releaseRefreshLock(lockPath, token);
+  }
+}
+
+/**
+ * Start a detached refresh and return at once. No-op while a refresh is in flight.
+ * The child gets no stdio: Claude Code waits for a hook's stdout/stderr to close,
+ * so an inherited pipe would make the hook wait out the whole probe.
+ * @param {string} [repoRoot]
+ * @param {{ stateFile?: string, spawn?: Function, isPidAlive?: Function, now?: number }} [opts]
+ *   spawn / isPidAlive / now are test seams
+ * @returns {{ spawned: boolean, reason?: string, pid?: number }}
+ */
+function spawnDetachedRefresh(repoRoot = REPO_ROOT, opts = {}) {
+  const stateFile = opts.stateFile || GIT_STATE_FILE;
+  const lockPath = refreshLockPath(stateFile);
+  const now = typeof opts.now === 'number' ? opts.now : Date.now();
+  const isAlive = opts.isPidAlive || isPidAlive;
+  const spawnFn = opts.spawn || require('child_process').spawn;
+  const token = `${process.pid}-${now}-${Math.random().toString(36).slice(2, 10)}`;
+  if (!acquireRefreshLock(lockPath, { pid: process.pid, token, now, isAlive })) {
+    return { spawned: false, reason: 'in-flight' };
+  }
+  let child;
+  try {
+    child = spawnFn(process.execPath, [__filename, '--refresh', repoRoot, '--state-file', stateFile], {
+      cwd: repoRoot,
+      detached: true,
+      stdio: 'ignore',
+      windowsHide: true,
+      env: { ...process.env, CLAUDE_PROJECT_DIR: repoRoot, [REFRESH_TOKEN_ENV]: token },
+    });
+  } catch {
+    child = null;
+  }
+  // A failed spawn (bad cwd, missing node) leaves pid undefined and reports later via 'error'.
+  if (!child || !Number.isInteger(child.pid)) {
+    releaseRefreshLock(lockPath, token);
+    return { spawned: false, reason: 'spawn-failed' };
+  }
+  if (typeof child.on === 'function') child.on('error', () => { /* lock ages out */ });
+  if (typeof child.unref === 'function') child.unref();
+  rewriteRefreshLockOwner(lockPath, { pid: child.pid, startedAt: now, token });
+  return { spawned: true, pid: child.pid };
 }
 
 // --- Core engine ---
@@ -355,12 +594,46 @@ module.exports = {
   readForgeState,
   readTestState,
   readRecentEdits,
+  // Probe budget (exported for testing)
+  GIT_PROBE_DEFAULT_TIMEOUT_MS,
+  GIT_PROBE_TIMEOUT_MS,
+  resolveGitProbeTimeoutMs,
   // Git state API (C-10)
   readGitState,
   writeGitState,
   buildFreshGitState,
   readRecentCommits,
+  // Detached refresh (GATE 1(b))
+  REFRESH_PER_COMMAND_TIMEOUT_MS,
+  REFRESH_TOTAL_BUDGET_MS,
+  REFRESH_LOCK_STALE_MS,
+  REFRESH_TOKEN_ENV,
+  commandBudgetMs,
+  refreshLockPath,
+  isPidAlive,
+  isRefreshLockStale,
+  acquireRefreshLock,
+  releaseRefreshLock,
+  runRefresh,
+  spawnDetachedRefresh,
   // Engine
   reorderOptions,
   getOrderedOptions,
 };
+
+// `node smart-order.cjs --refresh <repoRoot> [--state-file <path>]`: the detached child.
+// Exits 0 whatever happens; nobody is waiting on it.
+if (require.main === module) {
+  const args = process.argv.slice(2);
+  if (args[0] === '--refresh') {
+    const repoRoot = args[1] && !args[1].startsWith('--') ? args[1] : REPO_ROOT;
+    const at = args.indexOf('--state-file');
+    const stateFile = at > 0 && args[at + 1] ? path.resolve(args[at + 1]) : GIT_STATE_FILE;
+    try {
+      runRefresh(repoRoot, { stateFile, token: process.env[REFRESH_TOKEN_ENV] || '' });
+    } catch {
+      // the lock is released in runRefresh's finally, or ages out
+    }
+  }
+  process.exit(0);
+}

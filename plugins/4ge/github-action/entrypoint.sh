@@ -18,7 +18,9 @@ BASE_BRANCH="${DFE_BASE_BRANCH:-main}"
 MAX_DIFF_KB="${DFE_MAX_DIFF_KB:-50}"
 FAIL_ON_SEVERITY="${DFE_FAIL_ON_SEVERITY:-HIGH}"
 POST_REVIEW="${DFE_POST_REVIEW:-true}"
-REPORT_DIR="/tmp/dfe-reports"
+# Test seams: action.yml maps neither variable, so these defaults hold unless the calling workflow step supplies them.
+REPORT_DIR="${DFE_REPORT_DIR:-/tmp/dfe-reports}"
+ACTION_LIB="${DFE_ACTION_LIB:-/action/lib}"
 REPORT_JSON="${REPORT_DIR}/dfe-report.json"
 TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 
@@ -135,18 +137,19 @@ for PASS_ID in "${PASS_IDS[@]}"; do
   PASS_OUTPUT="${REPORT_DIR}/pass-${PASS_ID}.json"
 
   # node run-pass.js <pass_id> <diff_file> <output_file>
-  if node /action/lib/run-pass.js "${PASS_ID}" "${DIFF_FILE}" "${PASS_OUTPUT}"; then
+  if node "${ACTION_LIB}/run-pass.js" "${PASS_ID}" "${DIFF_FILE}" "${PASS_OUTPUT}"; then
     if [ -f "${PASS_OUTPUT}" ]; then
       PASS_VERDICT=$(node -e '
         const fs = require("fs");
         try {
           const d = JSON.parse(fs.readFileSync(process.argv[1],"utf8"));
-          const verdict = d.verdict || "CLEAN";
+          const verdict = d.verdict || "UNKNOWN";
           // Findings-based verdicts pass through. ERROR/UNKNOWN (produced on API
           // failure / token truncation / unparseable response) pass through too so
           // the aggregator can fail-closed via the could-not-complete path. Any
           // OTHER unexpected string is treated as UNKNOWN (could-not-complete) —
           // NOT BLOCKED — so a transient glitch never masquerades as a real blocker.
+          // Output with no verdict field (such as []) reads UNKNOWN, never CLEAN.
           process.stdout.write(["CLEAN", "RISK", "BLOCKED", "ERROR", "UNKNOWN"].includes(verdict) ? verdict : "UNKNOWN");
         } catch(e) { process.stdout.write("UNKNOWN"); }
       ' "${PASS_OUTPUT}")
@@ -183,22 +186,40 @@ for PASS_ID in "${PASS_IDS[@]}"; do
         } catch (e) { /* leave accumulator unchanged on bad pass output */ }
       ' "${COMBINED_FILE}" "${PASS_OUTPUT}" "${PASS_ID}"
 
-      node -e '
+      # Record a pass error for this pass, if any: an error or parse_error field in
+      # its output, or an ERROR/UNKNOWN verdict with no such field (an unrecognised
+      # verdict, or output that does not parse). The block prints 1 when it records
+      # one, so the review lists the pass and the run never reads as clean.
+      PASS_ERROR_RECORDED=$(node -e '
         const fs = require("fs");
-        const [errorsFile, passFile, passId] = process.argv.slice(1);
+        const [errorsFile, passFile, passId, passVerdict] = process.argv.slice(1);
+        const noUsableResult = passVerdict === "ERROR" || passVerdict === "UNKNOWN";
         let errors = [];
         try { errors = JSON.parse(fs.readFileSync(errorsFile, "utf8")); } catch (e) { /* start empty */ }
-        try {
-          const pass = JSON.parse(fs.readFileSync(passFile, "utf8"));
-          if (pass.error || pass.parse_error) {
-            errors.push({
-              pass: passId,
-              error: pass.error || "Could not parse structured review response",
-            });
-            fs.writeFileSync(errorsFile, JSON.stringify(errors));
-          }
-        } catch (e) { /* no pass error to preserve */ }
-      ' "${PASS_ERRORS_FILE}" "${PASS_OUTPUT}" "${PASS_ID}"
+        let pass = null;
+        try { pass = JSON.parse(fs.readFileSync(passFile, "utf8")); } catch (e) { /* unparseable pass output */ }
+        let error = null;
+        if (pass && (pass.error || pass.parse_error)) {
+          error = pass.error || "Could not parse structured review response";
+        } else if (noUsableResult) {
+          error = "Pass returned no usable result";
+        }
+        if (error) {
+          errors.push({ pass: passId, error });
+          try { fs.writeFileSync(errorsFile, JSON.stringify(errors)); } catch (e) { /* keep the run going */ }
+        }
+        process.stdout.write(error ? "1" : "0");
+      ' "${PASS_ERRORS_FILE}" "${PASS_OUTPUT}" "${PASS_ID}" "${PASS_VERDICT}")
+
+      # A pass that reported an error did not complete, even when its verdict reads
+      # CLEAN or RISK: run-pass.js passes the model output through, error field and
+      # all. ERROR/UNKNOWN verdicts were handled above; a BLOCKED verdict stays a
+      # findings-based block. Any output other than "0" counts as an error, so empty
+      # or unexpected output fails closed.
+      if [ "${PASS_ERROR_RECORDED}" != "0" ] && { [ "${PASS_VERDICT}" = "CLEAN" ] || [ "${PASS_VERDICT}" = "RISK" ]; }; then
+        echo "::warning::${PASS_ID} reported an error — review could not complete this pass"
+        COULD_NOT_COMPLETE=1
+      fi
     fi
   else
     echo "::warning::${PASS_ID} failed — continuing with remaining passes"
@@ -245,7 +266,10 @@ HIGH_COUNT=$(node -e '
   catch (e) { process.stdout.write("0"); }
 ' "${COMBINED_FILE}")
 
-# Overall verdict: worst of all pass verdicts
+# Overall verdict: BLOCKED > INCOMPLETE > RISK > CLEAN. BLOCKED is findings-based
+# and stays visible. A pass that could not complete (COULD_NOT_COMPLETE=1) turns a
+# CLEAN or RISK result INCOMPLETE, so an errored run is never reported, output or
+# reviewed as CLEAN.
 OVERALL_VERDICT="CLEAN"
 for V in "${VERDICTS[@]}"; do
   if [ "${V}" = "BLOCKED" ]; then
@@ -255,6 +279,9 @@ for V in "${VERDICTS[@]}"; do
     OVERALL_VERDICT="RISK"
   fi
 done
+if [ "${COULD_NOT_COMPLETE}" = "1" ] && [ "${OVERALL_VERDICT}" != "BLOCKED" ]; then
+  OVERALL_VERDICT="INCOMPLETE"
+fi
 
 echo ""
 echo "=== DFE Summary ==="
@@ -294,7 +321,7 @@ node -e '
 if [ "${POST_REVIEW}" = "true" ] && [ -n "${GITHUB_PR_NUMBER:-}" ]; then
   echo ""
   echo "Posting review comments..."
-  node /action/lib/github-client.js "${REPORT_JSON}" || \
+  node "${ACTION_LIB}/github-client.js" "${REPORT_JSON}" || \
     echo "::warning::Failed to post review comments — findings are in the report artifact"
 fi
 

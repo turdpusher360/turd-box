@@ -30,6 +30,10 @@ Dispatch on `opus-audit` for implementation audit work. Write report to disk FIR
 - Dependency hygiene: outdated, duplicate, unused packages
 - Tech debt quantification: categorize and estimate remediation cost
 - Pattern consistency: verify coding conventions across modules
+- Performance findings name baseline, workload, environment, budget, and comparable after-measurement; static complexity alone is not runtime proof
+- Inspect render/network waterfalls, Core Web Vitals and layout shifts, bundle or client/server boundary bleed, query amplification, and unbounded resource growth where applicable
+- Check cleanup for listeners, timers, subscriptions, observers, handles, and asynchronous work across success, failure, cancellation, and repeated execution
+- Label browser, synthetic, local-runtime, and production evidence separately; do not promote one plane into another
 
 ## Handoff
 

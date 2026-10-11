@@ -86,21 +86,26 @@ function listReportFiles(reportsDir) {
     .sort((a, b) => inferPass(a).localeCompare(inferPass(b)) || a.localeCompare(b));
 }
 
-function resolveReportFiles(reportsDir, reportFiles = []) {
+function assessReportFiles(reportsDir, reportFiles = []) {
   if (!Array.isArray(reportFiles) || reportFiles.length === 0) {
-    return listReportFiles(reportsDir);
+    const files = listReportFiles(reportsDir);
+    return { files, coverage: { declared: false, requested: [], missing: [], invalid: [], duplicate: [] } };
   }
-
-  const files = reportFiles
-    .map((filePath) => path.resolve(filePath))
+  const requested = reportFiles.map((filePath) => path.resolve(filePath));
+  const duplicate = [...new Set(requested.filter((filePath, i) => requested.indexOf(filePath) !== i))];
+  const missing = requested.filter((filePath) => !fs.existsSync(filePath));
+  const invalid = requested.filter((filePath) => fs.existsSync(filePath) && !isDfeReportFile(filePath));
+  const files = [...new Set(requested)]
     .filter((filePath) => fs.existsSync(filePath) && isDfeReportFile(filePath))
     .sort((a, b) => inferPass(a).localeCompare(inferPass(b)) || a.localeCompare(b));
-
   if (files.length === 0) {
     throw new Error('No DFE reports found for diagnostics index');
   }
+  return { files, coverage: { declared: true, requested, missing, invalid, duplicate } };
+}
 
-  return files;
+function resolveReportFiles(reportsDir, reportFiles = []) {
+  return assessReportFiles(reportsDir, reportFiles).files;
 }
 
 function sumCounts(reports) {
@@ -123,13 +128,22 @@ function overallVerdict(reports, totals) {
 
 function buildDiagnosticsIndex(options = {}) {
   const reportsDir = path.resolve(options.reportsDir || process.cwd());
-  const reports = resolveReportFiles(reportsDir, options.reportFiles).map(parseReport);
+  const { files, coverage } = assessReportFiles(reportsDir, options.reportFiles);
+  const reports = files.map(parseReport);
   const severity_totals = sumCounts(reports);
+  // A declared report that is missing, invalid or repeated, or a discovery that
+  // found nothing, is incomplete evidence: never reduce it to CLEAN.
+  const complete = files.length > 0 && coverage.missing.length === 0
+    && coverage.invalid.length === 0 && coverage.duplicate.length === 0;
   return {
     schema: SCHEMA,
     generated_at: new Date(0).toISOString(),
     reports_dir: reportsDir,
-    overall_verdict: overallVerdict(reports, severity_totals),
+    overall_verdict: complete ? overallVerdict(reports, severity_totals) : 'INCOMPLETE',
+    coverage: {
+      declared: coverage.declared, requested: coverage.requested.length, found: files.length,
+      missing: coverage.missing, invalid: coverage.invalid, duplicate: coverage.duplicate,
+    },
     severity_totals,
     reports: reports.map(({ findings, ...report }) => report),
     findings: reports.flatMap((report) => report.findings),
@@ -150,6 +164,10 @@ if (require.main === module) {
   const reportFiles = process.argv.slice(3);
   const written = writeDiagnosticsIndex({ reportsDir, reportFiles });
   process.stdout.write(`${written.output_path}\n`);
+  if (written.overall_verdict === 'INCOMPLETE') {
+    process.stderr.write(`[dfe] diagnostics index INCOMPLETE: ${written.coverage.missing.length} missing, ${written.coverage.invalid.length} invalid, ${written.coverage.duplicate.length} duplicate\n`);
+    process.exitCode = 2;
+  }
 }
 
 module.exports = {

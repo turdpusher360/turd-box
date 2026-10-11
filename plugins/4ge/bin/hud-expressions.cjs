@@ -4,6 +4,8 @@
 // Rendering lives in companion-face/companion-state; this module only maps
 // state/event inputs to the expression names those renderers consume.
 
+const { countNotReady } = require('./hud-state.cjs');
+
 // Priority-ordered rules. First match wins.
 const EXPRESSION_RULES = [
   // Forge-related
@@ -45,13 +47,10 @@ const EXPRESSION_RULES = [
 ];
 
 function countDegraded(state) {
-  // Skip shelved capabilities (intentionally degraded, not actionable).
-  const caps = (state.os && state.os.capabilities) || {};
-  let count = 0;
-  for (const c of Object.values(caps)) {
-    if (c && c.ok === false && c.shelved !== true) count++;
-  }
-  return count;
+  // Not-ready count (hud-state countNotReady): a non-shelved ok:false or any
+  // capability without a boolean ok, so an unobserved capability never keeps
+  // the companion on its healthy expression. Shelved ok:false stays exempt.
+  return countNotReady((state.os && state.os.capabilities) || {});
 }
 
 function getExpressionName(state) {

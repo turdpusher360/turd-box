@@ -3,12 +3,11 @@ name: forge-shipper
 description: Ship and handoff subagent for forge sessions. Runs Phase 7 (verification, branch completion, triple-write handoff) with verification and finishing skills injected.
 tools: Read, Write, Edit, Bash, Glob, Grep
 model: inherit
-effort: high
+effort: xhigh
 last-verified: 2026-04-22
 skills:
   - verification-before-completion
   - finishing-a-development-branch
-maxTurns: 200
 memory: project
 
 scope: forge
@@ -47,7 +46,7 @@ You receive from the lead:
 
 ### Cleanup
 1. Delete `.forge-session.json` if present
-2. Delete heartbeat files from `_runs/os/heartbeats/`
+2. Leave `_runs/os/heartbeats/` alone: every live agent on the rig writes its heartbeat there, and `process-cap-gate.cjs` counts those files to enforce the active-agent ceiling. Never delete them.
 3. Verify working tree is clean or only has expected changes
 
 ## Output Contract

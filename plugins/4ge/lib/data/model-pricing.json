@@ -1,6 +1,6 @@
 {
   "_readme": "USD per 1,000,000 tokens, keyed by model-id PREFIX (longest-prefix match wins; exact id is the longest prefix). Consumed by lib/usage-meter.cjs loadPricing(). Override without editing this file: set FORGE_USAGE_PRICING to an alternate JSON path (same shape), or pass loadPricing({ path }). Every cost computed from this table is an ESTIMATE — none of these rates was verified against a vendor pricing page from inside this build; the operator can verify/correct any row (this file is config, not doctrine).",
-  "as_of": "2026-07-10",
+  "as_of": "2026-09-28",
   "source": "Operator-recorded anchors in workspace doctrine (global CLAUDE.md model hierarchy): Fable 5 = $10 in / $50 out per Mtoken, documented as 2x Opus 4.x (implying Opus 4.x $5/$25). Cache multipliers per Anthropic's long-standing convention: creation 1.25x input (5-minute TTL) or 2x input (1-hour TTL); reads 0.1x input.",
   "cache_note": "cache_write_5m = 1.25x input; cache_write_1h = 2x input; cache_read = 0.1x input. Entries lacking the ephemeral_5m/1h split are priced at the 5m rate (may underestimate 1h-heavy sessions).",
   "models": {
@@ -13,6 +13,15 @@
       "verified": false,
       "basis": "operator-recorded anchor: $10/$50 per M, '2x Opus' (workspace model-routing doctrine)"
     },
+    "claude-fable-5-1": {
+      "input": 10,
+      "output": 50,
+      "cache_write_5m": 12.5,
+      "cache_write_1h": 20,
+      "cache_read": 0.25,
+      "verified": false,
+      "basis": "repo doctrine: .claude/rules/platform-gotchas.md Fable 5.1 line and docs/cc-version-gotchas.md v2.1.257 digest, \"1M, $10/$50 per Mtok, $0.25 cache reads\"; second-hand, not checked against a vendor page from inside this build. Cache writes are the 1.25x/2x convention in cache_note, unverified. Explicit so Fable 5.1 no longer prefix-matches the claude-fable-5 row ($1.00 cache reads)"
+    },
     "claude-mythos-5": {
       "input": 10,
       "output": 50,
@@ -21,6 +30,24 @@
       "cache_read": 1,
       "verified": false,
       "basis": "assumed = Fable 5 (same underlying model per Anthropic's Fable/Mythos note); no independent source"
+    },
+    "claude-opus-5-5": {
+      "input": 4,
+      "output": 20,
+      "cache_write_5m": 5,
+      "cache_write_1h": 8,
+      "cache_read": 0.2,
+      "verified": true,
+      "basis": "Claude Code CHANGELOG 2.1.280 (2026-09-22): \"Added Claude Opus 5.5 (claude-opus-5-5), now the default Opus model - 1M context, $4/$20 per Mtok with $0.20/Mtok cache reads\". input/output/cache_read verified from that line; cache writes are the 1.25x/2x convention, unverified"
+    },
+    "claude-opus-5": {
+      "input": 5,
+      "output": 25,
+      "cache_write_5m": 6.25,
+      "cache_write_1h": 10,
+      "cache_read": 0.5,
+      "verified": false,
+      "basis": "bundled claude-api skill model table (cached 2026-06-24): $5/$25 per Mtok; cache multipliers by convention. Explicit so the longer claude-opus-5-5 prefix cannot shadow it and vice versa"
     },
     "claude-opus-4": {
       "input": 5,
@@ -39,6 +66,24 @@
       "cache_read": 0.5,
       "verified": false,
       "basis": "catch-all prefix for non-4.x opus ids; same anchor-derived rate, least confident row"
+    },
+    "claude-sonnet-5-5": {
+      "input": 2,
+      "output": 10,
+      "cache_write_5m": 2.5,
+      "cache_write_1h": 4,
+      "cache_read": 0.2,
+      "verified": true,
+      "basis": "Claude Code CHANGELOG 2.1.284 (2026-09-28): \"Added Claude Sonnet 5.5 (claude-sonnet-5-5), now the default Sonnet model on the Anthropic API - 1M context, $2/$10 per Mtok with $0.20/Mtok cache reads\". input/output/cache_read verified from that line; cache writes are the 1.25x/2x convention in cache_note, unverified"
+    },
+    "claude-sonnet-5": {
+      "input": 2,
+      "output": 10,
+      "cache_write_5m": 2.5,
+      "cache_write_1h": 4,
+      "cache_read": 0.2,
+      "verified": false,
+      "basis": "docs/cc-version-gotchas.md digest of Claude Code CHANGELOG 2.1.243 (\"Sonnet 5 $2/$10 standard\") and 2.1.197 (promo $2/$10 through Aug 31); cache multipliers by convention. Explicit so the claude-sonnet catch-all ($3/$15, Sonnet 4.x era) no longer prices Sonnet 5, and so the longer claude-sonnet-5-5 prefix cannot shadow it and vice versa"
     },
     "claude-sonnet": {
       "input": 3,

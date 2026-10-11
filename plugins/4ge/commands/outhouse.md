@@ -21,7 +21,7 @@ Parse $ARGUMENTS for flags (all optional, can combine):
 
 Before producing any output, read `${CLAUDE_PLUGIN_ROOT}/skills/wizard-engine/references/output-format.md` for formatting rules.
 
-Invoke the wizard-engine skill with mode=outhouse and all parsed flags. Do not output any intermediate text before the skill activates.
+Read `${CLAUDE_PLUGIN_ROOT}/skills/wizard-engine/SKILL.md` in full and follow it as the pipeline instructions, with mode=outhouse and all parsed flags: in that file the `ARGUMENTS` placeholder means `outhouse` followed by those flags. Reach the engine by this path only: the skill sets `disable-model-invocation: true`, so the Skill tool cannot start it. Its `references/` and `modes/` files sit beside it in `${CLAUDE_PLUGIN_ROOT}/skills/wizard-engine/`. Do not output any intermediate text before the first output the skill file prescribes.
 
 ---
 
@@ -49,7 +49,7 @@ Call `AskUserQuestion` with one question:
 question: "What maintenance?"
 header: "Outhouse"
 options:
-- Run the health wizard (Recommended): invoke the wizard-engine skill with
+- Run the health wizard (Recommended): run the wizard-engine pipeline with
   mode=outhouse (full scan + triage + fix menu).
 - Capture an issue: route to /fix.
 - Evolve config: route to /evolve.
@@ -68,4 +68,4 @@ options:
 - Quick score: run /outhouse --quick.
 ```
 
-After a selection, dispatch exactly as if the operator had typed the direct command. For "Run the health wizard", invoke the wizard-engine skill with mode=outhouse. The menu is a router, not a new implementation path; preserve direct-command semantics. Do not ask extra confirmation when the selected action is unambiguous.
+After a selection, dispatch exactly as if the operator had typed the direct command. For "Run the health wizard", start the wizard-engine pipeline with mode=outhouse the way the flags path above does: read its SKILL.md, since the Skill tool cannot start it. The menu is a router, not a new implementation path; preserve direct-command semantics. Do not ask extra confirmation when the selected action is unambiguous.

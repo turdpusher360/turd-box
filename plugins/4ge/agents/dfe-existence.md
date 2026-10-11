@@ -3,11 +3,10 @@ name: dfe-existence
 description: DFE minion — Pass 1 (EXISTENCE). Verifies imports resolve, packages exist on npm, APIs are not deprecated or hallucinated.
 tools: Bash, Grep, Glob, Read
 model: inherit
-effort: high
+effort: xhigh
 memory: project
 last-verified: 2026-04-22
 output-dir: _runs/review/
-maxTurns: 80
 background: true
 disallowedTools:
   - Write

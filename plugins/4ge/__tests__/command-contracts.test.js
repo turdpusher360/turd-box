@@ -120,6 +120,31 @@ describe('4ge command contracts', () => {
     expect(skill).not.toContain('Write findings to _runs/review/dfe-existence-$DATE.md using the Write tool');
   });
 
+  it('names a model on every DFE Agent template and passes no mode (BL-260)', () => {
+    const command = readPluginFile('commands/dfe.md');
+    const skill = readPluginFile('skills/dfe-review/SKILL.md');
+
+    // The Agent tool ignores `mode:` (deprecated), and the A6 gate wants a model on every spawn.
+    for (const source of [command, skill]) {
+      expect(source).not.toMatch(/\bmode:\s*"/);
+      const templates = source.match(/Agent\(\s*subagent_type:[^)]*/g) || [];
+      expect(templates.length).toBeGreaterThan(0);
+      for (const template of templates) expect(template).toContain('model: "opus"');
+    }
+    expect(command).toContain('using `run_in_background: true` and `model: "opus"` on each spawn');
+  });
+
+  it('starts wizard-engine by reading its SKILL.md, since the skill disables model invocation (BL-247)', () => {
+    const skill = readPluginFile('skills/wizard-engine/SKILL.md');
+    expect(skill).toMatch(/^disable-model-invocation: true$/m);
+
+    for (const name of ['outhouse', 'fix', 'wizard']) {
+      const command = readPluginFile(`commands/${name}.md`);
+      expect(command).not.toMatch(/invoke the wizard-engine skill/i);
+      expect(command).toContain('Read `${CLAUDE_PLUGIN_ROOT}/skills/wizard-engine/SKILL.md` in full');
+    }
+  });
+
   it('keeps /dfe diagnostics mode packaged, fail-loud, and indexed', () => {
     const manifest = readManifest();
     const command = readPluginFile('commands/dfe.md');

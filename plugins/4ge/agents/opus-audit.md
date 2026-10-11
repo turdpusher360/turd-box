@@ -3,7 +3,7 @@ name: opus-audit
 description: Write-to-disk audit agent. Produces _runs/*.md reports per audit skill.
 tools: Bash, Grep, Glob, Read, Write, WebSearch, WebFetch, mcp__dev-memory__memory_search, mcp__dev-memory__memory_store
 model: inherit
-effort: max
+effort: xhigh
 memory: project
 last-verified: 2026-04-17
 ---

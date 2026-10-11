@@ -2,7 +2,7 @@
   "dep-vulnerability": { "category": "dependencies", "thresholdId": "high_vuln", "type": "count" },
   "dep-staleness": { "category": "dependencies", "thresholdId": "major_outdated", "type": "count" },
   "dep-count-budget": { "category": "dependencies", "thresholdId": null, "type": "signal_only" },
-  "agent-staleness": { "category": "agents", "thresholdId": "stale_verified", "type": "score_invert" },
+  "agent-staleness": { "category": "agents", "thresholdId": "stale_verified", "type": "score_invert", "source": "register:agent-staleness" },
   "agent-tool-coverage": { "category": "agents", "thresholdId": null, "type": "signal_only" },
   "agent-instruction-density": { "category": "agents", "thresholdId": null, "type": "signal_only" },
   "agent-tuning": { "category": "agents", "thresholdId": null, "type": "signal_only" },

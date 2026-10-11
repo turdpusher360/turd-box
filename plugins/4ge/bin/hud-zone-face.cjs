@@ -1,11 +1,13 @@
 'use strict';
 
 const { colorize } = require('./hud-palette.cjs');
-const { countDegraded } = require('./hud-state.cjs');
+const { countDegraded, classifyCapabilityHealth } = require('./hud-state.cjs');
 const { getExpressionName } = require('./hud-expressions.cjs');
 const { renderCompanionEyes } = require('./companion-face.cjs');
 const { renderColoredOrb } = require('./hud-braille-orb.cjs');
-const { computeHealthScore } = require('./hud-zone-health.cjs');
+const {
+  computeHealthScore, formatIncompleteHealth, isHealthFailed, formatFailedHealth,
+} = require('./hud-zone-health.cjs');
 const { loadCompanionConfig } = require('./companion-config.cjs');
 const { isActive: isSessionActive, getFreezeTime } = require('../lib/hud-active-flag.cjs');
 
@@ -76,19 +78,34 @@ function humanizeMs(ms) {
 function renderFaceZone(state, palette) {
   const cols = state.terminal.cols;
   const caps = (state.os && state.os.capabilities) || {};
+  const classification = classifyCapabilityHealth(caps);
   const degradedCount = countDegraded(caps);
-  const degradedNames = Object.entries(caps).filter(([, c]) => !c.ok).map(([n]) => n);
+  const degradedNames = classification.failed;
   const readyCount = Object.keys(caps).length - degradedCount;
   const tier = degradedTier(degradedCount);
   const bootTime = (state.os && state.os.bootTime) || 0;
+  const healthFailed = isHealthFailed(state, classification);
+  const failedLabel = formatFailedHealth(classification);
+  // Empty or non-boolean observations are not evidence of health. A mixed map
+  // retains its observed counts, but never gets healthy copy or a healthy quip.
+  const healthUnknown = !healthFailed
+    && (classification.total === 0 || classification.unknown.length > 0);
+  const incompleteLabel = formatIncompleteHealth(classification);
 
   // Narrow terminal: 1-line inline
   if (cols < SIDE_BY_SIDE_THRESHOLD) {
-    const face = degradedCount === 0 ? FACE_HEALTHY_INLINE : FACE_DEGRADED_INLINE[tier];
-    const faceColored = colorize(palette, degradedCount === 0 ? 'accent' : 'error', face);
-    const label = degradedCount === 0
-      ? colorize(palette, 'text', 'Agentic OS up')
-      : colorize(palette, 'warn', `${degradedCount} degraded`);
+    const face = healthFailed
+      ? FACE_DEGRADED_INLINE.severe
+      : degradedCount === 0 ? FACE_HEALTHY_INLINE : FACE_DEGRADED_INLINE[tier];
+    const faceRole = healthFailed ? 'error' : healthUnknown ? 'muted' : degradedCount === 0 ? 'accent' : 'error';
+    const faceColored = colorize(palette, faceRole, face);
+    const label = healthFailed
+      ? colorize(palette, 'error', failedLabel)
+      : healthUnknown
+        ? colorize(palette, 'warn', incompleteLabel)
+        : degradedCount === 0
+          ? colorize(palette, 'text', 'Agentic OS up')
+          : colorize(palette, 'warn', `${degradedCount} degraded`);
     return [`  ${faceColored} ${label}`];
   }
 
@@ -119,17 +136,21 @@ function renderFaceZone(state, palette) {
   const statusText = colorize(palette, 'text', 'Agentic OS');
   const bootText = colorize(palette, 'muted', humanizeMs(bootTime));
 
-  const countText = degradedCount === 0
-    ? colorize(palette, 'ok', `${readyCount} ready`)
-    : colorize(palette, 'ok', `${readyCount} ready`) + colorize(palette, 'muted', ' \u00B7 ') + colorize(palette, 'warn', `${degradedCount} degraded`);
+  const countText = healthFailed
+    ? colorize(palette, 'error', failedLabel)
+    : healthUnknown
+      ? colorize(palette, 'warn', incompleteLabel)
+      : degradedCount === 0
+        ? colorize(palette, 'ok', `${readyCount} ready`)
+        : colorize(palette, 'ok', `${readyCount} ready`) + colorize(palette, 'muted', ' \u00B7 ') + colorize(palette, 'warn', `${degradedCount} degraded`);
 
   // Expression-aware quips
   const exprName = exprNameForFace;
   let quipText = '';
-  if (degradedCount > 0) {
+  if (!healthFailed && !healthUnknown && degradedCount > 0) {
     const quip = pickQuip(degradedNames);
     quipText = colorize(palette, 'warn', quip);
-  } else {
+  } else if (!healthFailed && !healthUnknown) {
     const exprQuips = {
       neutral: 'everything is where it should be',
       'neutral alive': 'everything is where it should be',

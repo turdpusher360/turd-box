@@ -522,10 +522,25 @@ function boot(osContext, stateDir, sessionId) {
       } catch { /* stat failed — fall through to rebuild */ }
     }
 
+    // Only a session whose cwd is the project's main root may (re)write the shared
+    // baseline. From a linked worktree or an in-repo subdirectory the cwd-relative
+    // hash set is not the main tree's (empty from a subdirectory), and writing it
+    // would blind the integrity scan for up to 24 h or seed false drift. The same
+    // check gates the other cwd-derived shared writes below: agent contracts, the
+    // scanner C and E caches, and the canary cache stubs.
+    const isMainRoot = typeof _config.cwdIsProjectRoot !== 'function' || _config.cwdIsProjectRoot();
+    let skipReason = skipBaseline ? 'fresh, no manifest' : null;
+    if (!skipBaseline && !isMainRoot) {
+      skipBaseline = true;
+      skipReason = 'cwd is not the project main root';
+      // No baseline is written here, so a verified manifest must not report one.
+      if (steps['integrity'] === 'baseline-created') steps['integrity'] = 'baseline-skipped';
+    }
+
     try {
       if (skipBaseline) {
-        // Baseline is fresh and no manifest to verify against — skip the hash pass
-        warnings.push('baseline rebuild skipped (fresh, no manifest)');
+        // Baseline is fresh without a manifest, or this cwd is not the main root.
+        warnings.push(`baseline rebuild skipped (${skipReason})`);
       } else {
       const cwd = process.cwd();
       const dirsToHash = [
@@ -668,13 +683,18 @@ function boot(osContext, stateDir, sessionId) {
         }
       }
 
-      const baselinesDir = path.join(stateDir, 'baselines');
-      fs.mkdirSync(baselinesDir, { recursive: true });
-      fs.writeFileSync(
-        path.join(baselinesDir, 'agent-contracts.json'),
-        JSON.stringify({ createdAt: Date.now(), contracts }, null, 2)
-      );
-      steps['agent-contracts'] = 'stored';
+      if (isMainRoot) {
+        const baselinesDir = path.join(stateDir, 'baselines');
+        fs.mkdirSync(baselinesDir, { recursive: true });
+        fs.writeFileSync(
+          path.join(baselinesDir, 'agent-contracts.json'),
+          JSON.stringify({ createdAt: Date.now(), contracts }, null, 2)
+        );
+        steps['agent-contracts'] = 'stored';
+      } else {
+        warnings.push('agent contracts write skipped (cwd is not the project main root)');
+        steps['agent-contracts'] = 'skipped';
+      }
     } catch (err) {
       warnings.push(`Step 5 agent contracts failed: ${err.message}`);
       steps['agent-contracts'] = 'failed';
@@ -684,10 +704,14 @@ function boot(osContext, stateDir, sessionId) {
     if (scannerC) {
       try {
         const result = scannerC.scan({ cadence: 'boot' });
-        fs.writeFileSync(
-          path.join(scannerCacheDir, 'C.json'),
-          JSON.stringify(result, null, 2)
-        );
+        if (isMainRoot) {
+          fs.writeFileSync(
+            path.join(scannerCacheDir, 'C.json'),
+            JSON.stringify(result, null, 2)
+          );
+        } else {
+          warnings.push('scanner C cache write skipped (cwd is not the project main root)');
+        }
         steps['scanner-C'] = 'scanned';
         emitSafe({ type: 'BOOT_STEP', step: 5, scanner: 'C', result: 'scanned' });
       } catch (err) {
@@ -714,10 +738,14 @@ function boot(osContext, stateDir, sessionId) {
     if (scannerE) {
       try {
         const result = scannerE.scan({ cadence: 'boot' });
-        fs.writeFileSync(
-          path.join(scannerCacheDir, 'E.json'),
-          JSON.stringify(result, null, 2)
-        );
+        if (isMainRoot) {
+          fs.writeFileSync(
+            path.join(scannerCacheDir, 'E.json'),
+            JSON.stringify(result, null, 2)
+          );
+        } else {
+          warnings.push('scanner E cache write skipped (cwd is not the project main root)');
+        }
         steps['scanner-E'] = 'scanned';
         emitSafe({ type: 'BOOT_STEP', step: 6, scanner: 'E', result: 'scanned' });
       } catch (err) {
@@ -860,8 +888,8 @@ function boot(osContext, stateDir, sessionId) {
       }
     }
 
-    // Write scanner caches for passing canaries
-    if (!scannerDFailed) {
+    // Write scanner caches for passing canaries (main root only, as above)
+    if (!scannerDFailed && isMainRoot) {
       for (const scanner of _registry.getAll()) {
         if (canaryResults[scanner.id] === 'pass') {
           const cacheFile = path.join(scannerCacheDir, `${scanner.id}.json`);

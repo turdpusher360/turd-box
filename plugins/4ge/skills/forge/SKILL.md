@@ -2,8 +2,7 @@
 name: forge
 description: "Multi-teammate orchestrator — 7 phases: scope, brainstorm, spec, plan, execute, integrate, ship"
 argument-hint: "task description, 'resume', or 'park'"
-tools: Agent, Bash, Read, Write, Edit, Glob, Grep, Skill, SendMessage, TaskCreate, TaskUpdate, TaskList
-effort: high
+tools: Agent, Bash, Read, Write, Edit, Glob, Grep, Skill, SendMessage
 paths: ["plugins/4ge/**", ".claude/**", "lib/os/**", "_runs/**", "docs/superpowers/**"]
 disable-model-invocation: true
 ---
@@ -110,6 +109,7 @@ below as `Clarifying answers:`. The subagent receives DECISIONS, not questions.
 ```
 Agent(
   subagent_type: "forge-brainstorm",
+  model: "opus",
   prompt: "Task: <task description>\nScope decisions: <from Phase 1>\nClarifying answers: <structured answers from AskUserQuestion, or 'none needed'>\nDate: YYYY-MM-DD",
   name: "brainstorm-phase"
 )
@@ -138,8 +138,8 @@ After Phase 2-3, suggest `/compact` if >50% context used.
 
 Reviews are never optional in this repo. (`1f560d28`, 2026-05-29, documented the review panel as "NOT a mandatory gate" — that wording was the drift that let the ceremony erode until the operator-ordered 2026-07-21 restore. Do not reintroduce optionality.)
 
-1. Dispatch a single-lens adversarial DFE pass on the spec — `Agent(subagent_type: "DFE", mode: "bypassPermissions")`, model per routing. Document target ⇒ instruct NO minion fan-out.
-2. Verdict disk-first: `_runs/<date>/<slug>-packet-review/spec-dfe.md` — GO / GO-WITH-FIXES / NO-GO.
+1. Dispatch a single-lens adversarial DFE pass on the spec — `Agent(subagent_type: "DFE", model: "opus", name: "spec-dfe")`. Document target ⇒ instruct NO minion fan-out.
+2. Verdict disk-first: `_runs/<date>/<slug>-packet-review/spec-dfe.md` — GO / GO-WITH-FIXES / NO-GO. The verdict counts only after the DFE lane passes the served-model gate (`/4ge:dfe` Step 4): its transcript is found, it was requested as `opus`, it has at least one `"type":"assistant"` record that is not `<synthetic>`, every such record's `message.model` is `claude-opus-5-5` (advisor evidence does not count), and none carries `"stop_reason":"refusal"`. Otherwise the lane is BLOCKED and handled as that gate says.
 3. GO-WITH-FIXES: apply the spec fixes before Phase 4. NO-GO: return to Phase 2/3.
 4. A gate may be waived ONLY by explicit operator word in-chat; record the waiver in the state file (`packet_review.waived_by_operator`) and `_runs/.decisions.jsonl`. Silence is never a waiver.
 
@@ -152,6 +152,7 @@ Reviews are never optional in this repo. (`1f560d28`, 2026-05-29, documented the
 ```
 Agent(
   subagent_type: "forge-planner",
+  model: "opus",
   prompt: "Spec path: <path from Phase 2-3>\nSession slug: <slug>\nDate: YYYY-MM-DD",
   name: "plan-phase"
 )
@@ -187,6 +188,7 @@ The plan does not stage, execute, or ride a signoff unreviewed:
    `"packet_review": {"dfe": "<path>", "gambit": "<path>", "verdicts": "<...>"}`.
    rig-sentinel `forge-packet-review-gate` FAILS any staged/executing state without it (or an explicit recorded operator waiver).
 4. **Escalated form:** when the spec touches `.claude/`, permissions, hooks, or security-critical logic, the 6-agent review panel (see the `/forge` command doc) REPLACES the pair — equally required, never optional.
+   Record it in the state file as `"packet_review": {"panel": "<PANEL-VERDICT.md path>", "panel_reports": ["<report path>", ...]}`. `forge-packet-review-gate` accepts that block in place of the pair once every listed file exists on disk, but never in place of the spec-boundary `spec_dfe`.
 5. P1 findings are fixed before Phase 5. P2/P3 become plan tasks or are explicitly operator-waived.
 
 ## Phase 5: Execute
@@ -223,6 +225,7 @@ is not guaranteed to exist on a rig.
 ```
 Agent(
   subagent_type: "<agent-name>",
+  model: "opus",
   prompt: "<filled template from teammate-templates.md>",
   isolation: "worktree",
   run_in_background: true,
@@ -230,9 +233,7 @@ Agent(
 )
 ```
 
-Do not pass `model` in routine teammate dispatches. Agent frontmatter uses
-`model: inherit`, so the runtime/current session controls model choice unless
-the operator explicitly asks for a spawn-time override.
+Name `model:` on every dispatch (`.claude/rules/agent-selection.md`; the A6 hook denies a dispatch without one) and check the served model with the `/4ge:dfe` served-model gate. Agents on `model: inherit`, the plugin's own agents among them, take the spawn's `model:`. A root agent that pins a model in frontmatter can still be overridden by a spawn alias from another family (`rerun-dfe-2`, 2026-09-28).
 
 **Peer communication:** For subagent-based dispatch, teammates write interface change notifications to `_runs/{date}/forge-changes-{teammate}.md`, and the lead checks these between dispatches. SendMessage is available when using Agent Teams (TeamCreate) instead.
 
@@ -318,6 +319,7 @@ Read `references/integration-protocol.md` for the full procedure:
 ```
 Agent(
   subagent_type: "forge-shipper",
+  model: "opus",
   prompt: "Plan path: <path>\nIntegration status: <from Phase 6>\nSession summary: <key changes>",
   name: "ship-phase"
 )

@@ -24,6 +24,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const { grepFlagsProblem } = require('./check-runners.cjs');
 
 const ALLOWED_CLASSES = new Set(['economy', 'security', 'process', 'infra', 'governance']);
 const ALLOWED_REARM = new Set(['auto', 'flag-only']);
@@ -68,9 +69,13 @@ function validateCheckObject(check, where) {
   };
   switch (check.type) {
     case 'grep':
-    case 'grep-absent':
+    case 'grep-absent': {
       requireFields(['file', 'pattern']);
+      // BL-412: a -v flag inverts the check, and an operand adds a second file.
+      const flagProblem = grepFlagsProblem(check.flags);
+      if (flagProblem) errors.push(`${where}: check.type=${check.type} ${flagProblem}`);
       break;
+    }
     case 'json-path':
     case 'json-path-absent':
       requireFields(['file', 'path']);

@@ -15,6 +15,8 @@ output_file: _runs/{session}-security-audit.md
 
 Dispatch on `opus-audit` for security audit work. Write report to disk FIRST, then summarize to lead.
 
+This in-session audit does not replace the headless security review that AGENTS.md › Model Routing requires for a gating verdict (`claude-opus-5-5` at `--effort xhigh`, read-only tools; on a provider-safeguard refusal, the read-only Codex fallback that section names).
+
 ## Workflow
 
 1. `memory_search` for prior audit findings in this domain

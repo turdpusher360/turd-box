@@ -3,11 +3,10 @@ name: dfe-security
 description: DFE minion — Pass 2 (SECURITY) + Pass 7 (PROVENANCE). Injection vectors, taint analysis, OWASP Top 10, secrets in source, prompt injection artifacts.
 tools: Bash, Grep, Glob, Read
 model: inherit
-effort: max
+effort: xhigh
 memory: project
 last-verified: 2026-04-22
 output-dir: _runs/review/
-maxTurns: 80
 background: true
 disallowedTools:
   - Write

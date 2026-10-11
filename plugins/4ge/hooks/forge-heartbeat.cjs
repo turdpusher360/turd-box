@@ -20,6 +20,13 @@ const path = require('node:path');
 const { resolveForgeStateDir, migrateIfNeeded } = require('./forge-utils.cjs');
 const { readStdinJson } = require('./hook-utils.cjs');
 
+// Guarded: during an upgrade sync-to-data.cjs copies hooks one file at a time,
+// so this file can briefly sit beside an older os-guard.cjs. Then skip IPC.
+let resolveOsModuleIfProjectHas = () => null;
+try {
+  resolveOsModuleIfProjectHas = require('./os-guard.cjs').resolveOsModuleIfProjectHas || resolveOsModuleIfProjectHas;
+} catch { /* os-guard unavailable: skip */ }
+
 const SESSION_FILE = '.forge-session.json';
 const THROTTLE_INTERVAL = 10;
 const TIMEOUT_MS = 600000; // 10 minutes
@@ -80,8 +87,31 @@ const ESCALATION_THRESHOLD = 2;
     // IPC heartbeat: broadcast to all listeners when OS is running
     if (osState) {
       try {
-        const { createIPC } = require(path.join(process.cwd(), 'lib/os/services/ipc.cjs'));
-        const ipc = createIPC(osState.stateDir, osState.sessionId);
+        // .os-state.json sits in the project, and its stateDir and sessionId
+        // pick where IPC writes and which files cleanup() deletes. Accept only
+        // the shape os-boot writes: <cwd>/_runs/os and a plain session id.
+        const expectedStateDir = path.join(process.cwd(), '_runs', 'os');
+        if (typeof osState.stateDir !== 'string'
+          || path.resolve(osState.stateDir) !== expectedStateDir
+          || typeof osState.sessionId !== 'string'
+          || !/^[A-Za-z0-9_-]+$/.test(osState.sessionId)) {
+          throw new Error('unexpected .os-state.json shape');
+        }
+        // path.resolve does not follow links, but IPC writes and deletes
+        // through them: skip when any existing component is a symlink.
+        let dir = process.cwd();
+        for (const part of ['_runs', 'os', 'ipc', osState.sessionId]) {
+          dir = path.join(dir, part);
+          let st;
+          try { st = fs.lstatSync(dir); } catch { break; } // absent: created as a real dir
+          if (st.isSymbolicLink()) throw new Error('symlink in the IPC path');
+        }
+        // Plugin's own ipc.cjs, never the project's (BL-404); only where the
+        // project carries lib/os/services/ipc.cjs, as before.
+        const ipcPath = resolveOsModuleIfProjectHas(process.cwd(), 'services', 'ipc.cjs');
+        if (!ipcPath) throw new Error('plugin OS tree unavailable');
+        const { createIPC } = require(ipcPath);
+        const ipc = createIPC(expectedStateDir, osState.sessionId);
         ipc.send({
           type: 'HEARTBEAT',
           from: { pid: process.pid },

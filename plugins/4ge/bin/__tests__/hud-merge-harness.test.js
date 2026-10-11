@@ -1,4 +1,7 @@
 import { describe, it, expect } from 'vitest';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import { createRequire } from 'node:module';
 const _require = createRequire(import.meta.url);
 const { mergeHarnessStdin } = _require('../hud-data-loader.cjs');
@@ -80,9 +83,25 @@ describe('mergeHarnessStdin — cost breakdown', () => {
 
 describe('mergeHarnessStdin — model breakdown', () => {
   it('maps model.id to session.modelId', () => {
-    const state = freshState();
-    mergeHarnessStdin(state, { model: { id: 'claude-opus-4-6' } });
-    expect(state.session.modelId).toBe('claude-opus-4-6');
+    // model.id triggers the session-meta write-back (root = state.projectRoot ||
+    // CLAUDE_PROJECT_DIR || cwd). Pin it to a temp root so a hook-spawned run
+    // can never rewrite the live checkout's _runs/os/session-meta.json.
+    const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'hmh-model-root-'));
+    try {
+      const metaPath = path.join(tmpRoot, '_runs', 'os', 'session-meta.json');
+      fs.mkdirSync(path.dirname(metaPath), { recursive: true });
+      fs.writeFileSync(metaPath, JSON.stringify({ model: 'seed-model' }));
+      const state = freshState();
+      state.projectRoot = tmpRoot;
+
+      mergeHarnessStdin(state, { model: { id: 'claude-opus-4-6' } });
+
+      expect(state.session.modelId).toBe('claude-opus-4-6');
+      // The write-back landed in the temp root, not the live checkout.
+      expect(JSON.parse(fs.readFileSync(metaPath, 'utf8')).model).toBe('claude-opus-4-6');
+    } finally {
+      fs.rmSync(tmpRoot, { recursive: true, force: true });
+    }
   });
 
   it('maps model.provider to session.modelProvider', () => {
@@ -97,6 +116,92 @@ describe('mergeHarnessStdin — context window', () => {
     const state = freshState();
     mergeHarnessStdin(state, { context_window: { remaining_tokens: 500000 } });
     expect(state.session.remainingTokens).toBe(500000);
+  });
+});
+
+// Field shapes CC 2.1.280 actually sends on statusline stdin (binary-extracted,
+// docs/hud/HUD-STANDARDS.md §3.5).
+describe('mergeHarnessStdin — CC 2.1.280 stdin shape', () => {
+  const cw280 = () => ({
+    total_input_tokens: 118000,
+    total_output_tokens: 9400,
+    context_window_size: 1000000,
+    current_usage: {
+      input_tokens: 12,
+      output_tokens: 9400,
+      cache_creation_input_tokens: 3000,
+      cache_read_input_tokens: 114988,
+    },
+    used_percentage: 12,
+    remaining_percentage: 88,
+  });
+
+  it('labels the window from context_window_size', () => {
+    const state = freshState();
+    mergeHarnessStdin(state, { context_window: cw280() });
+    expect(state.session.contextLabel).toBe('of 1M');
+  });
+
+  it('labels a 200K window', () => {
+    const state = freshState();
+    mergeHarnessStdin(state, { context_window: { ...cw280(), context_window_size: 200000 } });
+    expect(state.session.contextLabel).toBe('of 200K');
+  });
+
+  it('derives remainingTokens from window size minus total_input_tokens', () => {
+    const state = freshState();
+    mergeHarnessStdin(state, { context_window: cw280() });
+    expect(state.session.remainingTokens).toBe(1000000 - 118000);
+  });
+
+  it('falls back to remaining_percentage when total_input_tokens is absent', () => {
+    const state = freshState();
+    const cw = cw280();
+    delete cw.total_input_tokens;
+    mergeHarnessStdin(state, { context_window: cw });
+    expect(state.session.remainingTokens).toBe(880000);
+  });
+
+  // Row 3 of the statusline shows the last response's output tokens only; the
+  // context size is read once, as row 1's percentage (operator report
+  // 2026-09-28). The current-context split is therefore not mapped.
+  it('maps total_output_tokens and leaves the current_usage split unmapped', () => {
+    const state = freshState();
+    const cw = cw280();
+    mergeHarnessStdin(state, { context_window: cw });
+    expect(state.session.outputTokens).toBe(cw.total_output_tokens);
+    expect(state.session.inputTokens).toBe(0);
+    expect(state.session.cacheReadTokens).toBe(0);
+    expect(state.session.cacheCreationTokens).toBe(0);
+  });
+
+  it('does not map total_input_tokens to input when current_usage is absent', () => {
+    const state = freshState();
+    const cw = cw280();
+    delete cw.current_usage;
+    mergeHarnessStdin(state, { context_window: cw });
+    expect(state.session.inputTokens).toBe(0);
+    expect(state.session.cacheReadTokens).toBe(0);
+    // total_input_tokens still drives the remaining-token figure.
+    expect(state.session.remainingTokens).toBe(cw.context_window_size - cw.total_input_tokens);
+  });
+
+  it('maps output_style.name to session.outputStyle', () => {
+    const state = freshState();
+    mergeHarnessStdin(state, { output_style: { name: 'Proactive' } });
+    expect(state.session.outputStyle).toBe('Proactive');
+  });
+
+  it('maps a present vim object to session.vimMode', () => {
+    const state = freshState();
+    mergeHarnessStdin(state, { vim: { mode: 'NORMAL' } });
+    expect(state.session.vimMode).toBe(true);
+  });
+
+  it('leaves vimMode off when the vim key is absent', () => {
+    const state = freshState();
+    mergeHarnessStdin(state, { output_style: { name: 'default' } });
+    expect(state.session.vimMode).toBe(false);
   });
 });
 
@@ -149,5 +254,54 @@ describe('mergeHarnessStdin — defensive behavior', () => {
     const state = freshState();
     mergeHarnessStdin(state, { worktree: { branch: 42 } });
     expect(state.session.branch).toBe('');
+  });
+});
+
+// Row 1's `◈` reads against the rig's manual compact line, so the loader keeps
+// the used-token figure (current_usage's input + cache creation + cache read,
+// the resident context scripts/context-now.cjs measures) next to the window size.
+describe('mergeHarnessStdin — context tokens', () => {
+  it('sums current_usage input, cache creation and cache read as the used tokens', () => {
+    const state = freshState();
+    mergeHarnessStdin(state, {
+      context_window: {
+        context_window_size: 1000000,
+        current_usage: {
+          input_tokens: 5,
+          output_tokens: 800,
+          cache_creation_input_tokens: 100,
+          cache_read_input_tokens: 200,
+        },
+      },
+    });
+    expect(state.session.contextTokens).toBe(305);
+    expect(state.session.contextTokensApprox).toBe(false);
+    expect(state.session.contextWindowSize).toBe(1000000);
+  });
+
+  it('derives an approximate figure from used_percentage x window size without current_usage', () => {
+    const state = freshState();
+    mergeHarnessStdin(state, { context_window: { used_percentage: 33.5, context_window_size: 1000000 } });
+    expect(state.session.contextTokens).toBe(335000);
+    expect(state.session.contextTokensApprox).toBe(true);
+  });
+
+  it('does not treat total_input_tokens as the used tokens', () => {
+    const state = freshState();
+    mergeHarnessStdin(state, { context_window: { total_input_tokens: 999999, context_window_size: 1000000 } });
+    expect(state.session.contextTokens).toBeUndefined();
+  });
+
+  it.each([
+    ['no context_window', {}],
+    ['null context_window', { context_window: null }],
+    ['empty context_window', { context_window: {} }],
+    ['null current_usage and no percent', { context_window: { current_usage: null, context_window_size: 1000000 } }],
+    ['wrong-type usage fields', { context_window: { current_usage: { input_tokens: 'x', cache_read_input_tokens: -5 } } }],
+    ['percent without a window size', { context_window: { used_percentage: 33 } }],
+  ])('leaves the token figure unset for %s', (_name, harness) => {
+    const state = freshState();
+    expect(() => mergeHarnessStdin(state, harness)).not.toThrow();
+    expect(state.session.contextTokens).toBeUndefined();
   });
 });

@@ -162,3 +162,52 @@ describe('hud-zone-context compact budget row', () => {
     expect(lines).toEqual([]);
   });
 });
+
+// Codex r1 P2 (S693): a known remainder of 0 rendered as "unknown left".
+describe('hud-zone-context: known zero remainder renders "0 left"', () => {
+  const { mergeHarnessStdin } = require('../hud-data-loader.cjs');
+  const { buildCanonicalState } = require('../hud-state.cjs');
+
+  it('renders "0 left" for a known remainder of 0', () => {
+    const text = renderContextCompact({
+      session: { inputTokens: 200000, remainingTokens: 0 },
+    }, plainPalette()).map(stripAnsi).join('\n');
+
+    expect(text).toContain('ctx budget 0 left');
+    expect(text).not.toContain('unknown left');
+  });
+
+  it('renders "0 left" even when no other token figure is known', () => {
+    const text = renderContextCompact({
+      session: { remainingTokens: 0 },
+    }, plainPalette()).map(stripAnsi).join('\n');
+
+    expect(text).toContain('ctx budget 0 left');
+  });
+
+  it('carries a full window from stdin through the canonical state as "0 left"', () => {
+    // The statusline path: raw state -> mergeHarnessStdin -> buildCanonicalState -> zone.
+    const raw = { session: {} };
+    mergeHarnessStdin(raw, {
+      context_window: {
+        context_window_size: 200000,
+        total_input_tokens: 200000,
+        current_usage: { input_tokens: 150000, cache_read_input_tokens: 50000 },
+      },
+    });
+    const state = buildCanonicalState(raw);
+
+    expect(state.session.remainingTokens).toBe(0);
+    const text = renderContextCompact(state, plainPalette()).map(stripAnsi).join('\n');
+    expect(text).toContain('ctx budget 0 left');
+    expect(text).not.toContain('unknown left');
+  });
+
+  it('still renders "unknown left" when no stdin remainder arrived', () => {
+    const state = buildCanonicalState({ session: { inputTokens: 1000 } });
+
+    expect(state.session.remainingTokens).toBeNull();
+    const text = renderContextCompact(state, plainPalette()).map(stripAnsi).join('\n');
+    expect(text).toContain('ctx budget unknown left');
+  });
+});

@@ -3,7 +3,7 @@ name: opus-review
 description: Read-only judgment agent. Code review, audit analysis, architectural critique.
 tools: Glob, Grep, Read, Bash, mcp__dev-memory__memory_search, mcp__dev-memory__memory_store
 model: inherit
-effort: max
+effort: xhigh
 memory: project
 last-verified: 2026-04-17
 ---

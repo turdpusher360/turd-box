@@ -92,9 +92,9 @@ const PATH_TOOL_FIELD = Object.freeze({
 /**
  * Resolve the AISLE state dir via the canonical config derivation (single
  * source of truth — never re-derived here). First call per process spawns
- * `git worktree list` (~45ms measured in P1), memoized thereafter. Injectable
- * via opts.stateDir on every public function so tests never pay it or touch
- * real state.
+ * one `git rev-parse --git-common-dir` (see config.cjs deriveProjectId),
+ * memoized thereafter. Injectable via opts.stateDir on every public function
+ * so tests never pay it or touch real state.
  * @returns {string} absolute AISLE state dir
  */
 function resolveStateDir() {

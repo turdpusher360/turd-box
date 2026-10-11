@@ -3,9 +3,11 @@ import { createRequire } from 'node:module';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 
 const require = createRequire(import.meta.url);
-const { scanAutoresearch } = require('../wizard-scan-autoresearch.cjs');
+const { scanAutoresearch, readAgentStaleness } = require('../wizard-scan-autoresearch.cjs');
 
 // ---------------------------------------------------------------------------
 // Helpers — write fixture data into a temp project layout
@@ -311,5 +313,229 @@ describe('wizard-scan-autoresearch', () => {
     const domainMap = makeMap('dep-vulnerability', 'count', 'high_vuln', 'dependencies');
     const { findings } = scanAutoresearch(tmpRoot, domainMap);
     expect(Object.keys(findings)).toHaveLength(0);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// agent-staleness: read at scan time from .claude/agents/*.md with the rules of
+// the check-agent-staleness register hook. The wizard never runs that hook.
+// ---------------------------------------------------------------------------
+
+const REGISTER_MAP = {
+  'agent-staleness': {
+    category: 'agents', thresholdId: 'stale_verified', type: 'score_invert', source: 'register:agent-staleness',
+  },
+};
+
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..', '..');
+const REAL_HOOK = path.join(REPO_ROOT, '.claude', 'hooks', 'check-agent-staleness.cjs');
+const MODULE_PATH = path.join(REPO_ROOT, 'plugins', '4ge', 'lib', 'wizard-scan-autoresearch.cjs');
+
+const DAY_MS = 86400000;
+// Noon UTC: a date-only last-verified parses to UTC midnight, so every fixture
+// date sits half a day inside its whole-day bucket in any local time zone.
+const NOW = Date.UTC(2026, 8, 30, 12);
+
+/** YYYY-MM-DD for `days` days before `nowMs`. */
+function isoDay(nowMs, days) {
+  return new Date(nowMs - days * DAY_MS).toISOString().slice(0, 10);
+}
+
+function agentsDir(projectRoot) {
+  const dir = path.join(projectRoot, '.claude', 'agents');
+  fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+function writeAgent(projectRoot, name, body) {
+  fs.writeFileSync(path.join(agentsDir(projectRoot), `${name}.md`), body);
+}
+
+/** An agent file whose frontmatter carries `line` (pass '' for no last-verified). */
+function agentBody(line) {
+  return `---\nname: a\n${line}\n---\nbody\n`;
+}
+
+/** The hook file whose presence marks a repo that follows the last-verified convention. */
+function writeHookFile(projectRoot, source = '// marker only\n') {
+  const dir = path.join(projectRoot, '.claude', 'hooks');
+  fs.mkdirSync(dir, { recursive: true });
+  const hookPath = path.join(dir, 'check-agent-staleness.cjs');
+  fs.writeFileSync(hookPath, source);
+  return hookPath;
+}
+
+describe('wizard-scan-autoresearch — agent-staleness read in-process', () => {
+  it('a fresh agent scores 100', () => {
+    writeHookFile(tmpRoot);
+    writeAgent(tmpRoot, 'fresh', agentBody(`last-verified: ${isoDay(NOW, 1)}`));
+    expect(readAgentStaleness(tmpRoot, { now: NOW })).toBe(100);
+  });
+
+  it('exactly 14 days old is not stale; 15 days old is', () => {
+    writeHookFile(tmpRoot);
+    writeAgent(tmpRoot, 'boundary', agentBody(`last-verified: ${isoDay(NOW, 14)}`));
+    expect(readAgentStaleness(tmpRoot, { now: NOW })).toBe(100);
+    writeAgent(tmpRoot, 'stale', agentBody(`last-verified: ${isoDay(NOW, 15)}`));
+    expect(readAgentStaleness(tmpRoot, { now: NOW })).toBe(50);
+  });
+
+  it('an agent without a last-verified line counts as missing', () => {
+    writeHookFile(tmpRoot);
+    writeAgent(tmpRoot, 'fresh', agentBody(`last-verified: ${isoDay(NOW, 1)}`));
+    writeAgent(tmpRoot, 'none', agentBody(''));
+    expect(readAgentStaleness(tmpRoot, { now: NOW })).toBe(50);
+  });
+
+  it('a date the pattern does not match counts as missing', () => {
+    writeHookFile(tmpRoot);
+    writeAgent(tmpRoot, 'slashes', agentBody('last-verified: 2026/09/29'));
+    writeAgent(tmpRoot, 'word', agentBody('last-verified: soon'));
+    writeAgent(tmpRoot, 'indented', agentBody(`  last-verified: ${isoDay(NOW, 1)}`));
+    writeAgent(tmpRoot, 'fresh', agentBody(`last-verified: ${isoDay(NOW, 1)}`));
+    expect(readAgentStaleness(tmpRoot, { now: NOW })).toBe(25);
+  });
+
+  it('an impossible calendar date counts as fresh, as in the hook (Invalid Date gives NaN days)', () => {
+    writeHookFile(tmpRoot);
+    writeAgent(tmpRoot, 'impossible', agentBody('last-verified: 2026-13-45'));
+    expect(readAgentStaleness(tmpRoot, { now: NOW })).toBe(100);
+  });
+
+  it('matches last-verified anywhere in the file, not only in the frontmatter', () => {
+    writeHookFile(tmpRoot);
+    writeAgent(tmpRoot, 'in-body', `---\nname: a\n---\nNotes.\nlast-verified: ${isoDay(NOW, 2)}\n`);
+    expect(readAgentStaleness(tmpRoot, { now: NOW })).toBe(100);
+  });
+
+  it('a directory named x.md counts as missing', () => {
+    writeHookFile(tmpRoot);
+    writeAgent(tmpRoot, 'fresh', agentBody(`last-verified: ${isoDay(NOW, 1)}`));
+    fs.mkdirSync(path.join(agentsDir(tmpRoot), 'x.md'));
+    expect(readAgentStaleness(tmpRoot, { now: NOW })).toBe(50);
+  });
+
+  it.skipIf(process.platform === 'win32')('a FIFO named y.md counts as missing and does not block', (ctx) => {
+    writeHookFile(tmpRoot);
+    writeAgent(tmpRoot, 'fresh', agentBody(`last-verified: ${isoDay(NOW, 1)}`));
+    const made = spawnSync('mkfifo', [path.join(agentsDir(tmpRoot), 'y.md')]);
+    if (made.error || made.status !== 0) ctx.skip();
+    // Run in a child with a deadline: a blocking read would hang this worker, not fail it.
+    const script = 'const [m, r, n] = process.argv.slice(1);' +
+      'process.stdout.write(String(require(m).readAgentStaleness(r, { now: Number(n) })));';
+    const run = spawnSync(process.execPath, ['-e', script, MODULE_PATH, tmpRoot, String(NOW)], {
+      encoding: 'utf8', timeout: 10000, stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    expect(run.error).toBeUndefined();
+    expect(run.stdout).toBe('50');
+  });
+
+  it('reads only the first 64 KiB of each file', () => {
+    writeHookFile(tmpRoot);
+    const pad = 'x'.repeat(70 * 1024);
+    writeAgent(tmpRoot, 'line-first', `last-verified: ${isoDay(NOW, 1)}\n${pad}\n`);
+    writeAgent(tmpRoot, 'line-past-cap', `${pad}\nlast-verified: ${isoDay(NOW, 1)}\n`);
+    expect(readAgentStaleness(tmpRoot, { now: NOW })).toBe(50);
+  });
+
+  it('is null when the hook file is absent, even with agents and experiment rows', () => {
+    writeAgent(tmpRoot, 'fresh', agentBody(`last-verified: ${isoDay(NOW, 1)}`));
+    writeExperiments(tmpRoot, 'agent-staleness', [{ status: 'baseline', metric: 0, timestamp: daysAgo(1) }]);
+    expect(readAgentStaleness(tmpRoot, { now: NOW })).toBeNull();
+    const result = scanAutoresearch(tmpRoot, REGISTER_MAP);
+    expect(result.findings).toEqual({});
+    expect(result.stale).toEqual([]);
+  });
+
+  it('is null when .claude/agents is absent, not a directory, or holds no .md files', () => {
+    writeHookFile(tmpRoot);
+    expect(readAgentStaleness(tmpRoot, { now: NOW })).toBeNull();
+    fs.writeFileSync(path.join(tmpRoot, '.claude', 'agents'), 'not a directory');
+    expect(readAgentStaleness(tmpRoot, { now: NOW })).toBeNull();
+    fs.rmSync(path.join(tmpRoot, '.claude', 'agents'));
+    fs.writeFileSync(path.join(agentsDir(tmpRoot), 'README.txt'), 'last-verified: 2026-09-29\n');
+    expect(readAgentStaleness(tmpRoot, { now: NOW })).toBeNull();
+    expect(scanAutoresearch(tmpRoot, REGISTER_MAP).findings).toEqual({});
+  });
+
+  it('feeds the score_invert finding through REGISTER_SOURCES (real clock, dates far from the boundary)', () => {
+    writeHookFile(tmpRoot);
+    const now = Date.now();
+    writeAgent(tmpRoot, 'a', agentBody(`last-verified: ${isoDay(now, 1)}`));
+    writeAgent(tmpRoot, 'b', agentBody(`last-verified: ${isoDay(now, 2)}`));
+    writeAgent(tmpRoot, 'c', agentBody(`last-verified: ${isoDay(now, 100)}`));
+    writeAgent(tmpRoot, 'd', agentBody(''));
+    const { findings } = scanAutoresearch(tmpRoot, REGISTER_MAP);
+    expect(findings.agents.stale_verified).toBe(3); // 2 of 4 fresh = 50 -> ceil(50/20) = 3
+  });
+
+  it('records a zero finding when every agent is fresh', () => {
+    writeHookFile(tmpRoot);
+    writeAgent(tmpRoot, 'a', agentBody(`last-verified: ${isoDay(Date.now(), 1)}`));
+    const { findings } = scanAutoresearch(tmpRoot, REGISTER_MAP);
+    expect(findings.agents.stale_verified).toBe(0);
+  });
+
+  it("never runs or loads the scanned repo's hook", () => {
+    const marker = path.join(tmpRoot, 'hook-ran.txt');
+    const hookPath = writeHookFile(tmpRoot,
+      `require('fs').writeFileSync(${JSON.stringify(marker)}, 'ran');\n` +
+      "process.stdout.write('[agent-staleness] WARNING: 9 agent(s) not verified in 14+ days: x (99d)\\n');\n");
+    writeAgent(tmpRoot, 'fresh', agentBody(`last-verified: ${isoDay(Date.now(), 1)}`));
+    const { findings } = scanAutoresearch(tmpRoot, REGISTER_MAP);
+    expect(findings.agents.stale_verified).toBe(0);
+    expect(readAgentStaleness(tmpRoot)).toBe(100);
+    expect(fs.existsSync(marker)).toBe(false);
+    // The fixture is live: running it does write the marker.
+    spawnSync(process.execPath, [hookPath], { timeout: 10000, stdio: 'ignore' });
+    expect(fs.existsSync(marker)).toBe(true);
+  });
+
+  it('matches the real check-agent-staleness hook on the same agents (parity)', () => {
+    const hooksDir = path.join(tmpRoot, '.claude', 'hooks');
+    fs.mkdirSync(hooksDir, { recursive: true });
+    const hookCopy = path.join(hooksDir, 'check-agent-staleness.cjs');
+    fs.copyFileSync(REAL_HOOK, hookCopy);
+    expect(fs.readFileSync(hookCopy).equals(fs.readFileSync(REAL_HOOK))).toBe(true);
+    // The hook requires ../../lib/hook-utils.cjs for timing only; an empty module stands in.
+    fs.mkdirSync(path.join(tmpRoot, 'lib'), { recursive: true });
+    fs.writeFileSync(path.join(tmpRoot, 'lib', 'hook-utils.cjs'), '');
+
+    // The hook reads the real clock, so every date sits days away from the 14-day line.
+    // No FIFO here: the hook's readFileSync would block on one.
+    const now = Date.now();
+    writeAgent(tmpRoot, 'fresh-1', agentBody(`last-verified: ${isoDay(now, 1)}`));
+    writeAgent(tmpRoot, 'fresh-7', agentBody(`last-verified: ${isoDay(now, 7)}`));
+    writeAgent(tmpRoot, 'in-body', `---\nname: a\n---\nlast-verified: ${isoDay(now, 3)}\n`);
+    writeAgent(tmpRoot, 'impossible', agentBody('last-verified: 2026-13-45'));
+    writeAgent(tmpRoot, 'stale-60', agentBody(`last-verified: ${isoDay(now, 60)}`));
+    writeAgent(tmpRoot, 'stale-200', agentBody(`last-verified: ${isoDay(now, 200)}`));
+    writeAgent(tmpRoot, 'none', agentBody(''));
+    writeAgent(tmpRoot, 'word', agentBody('last-verified: soon'));
+    fs.mkdirSync(path.join(agentsDir(tmpRoot), 'x.md'));
+    const total = 9;
+
+    const run = spawnSync(process.execPath, [hookCopy], {
+      cwd: tmpRoot, encoding: 'utf8', timeout: 10000, stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    expect(run.error).toBeUndefined();
+    expect(run.status).toBe(0);
+    const staleLine = run.stdout.match(/\[agent-staleness\] WARNING: (\d+) agent\(s\) not verified/);
+    const missingLine = run.stdout.match(/\[agent-staleness\] (\d+) agent\(s\) missing last-verified/);
+    // Both lines must parse, so parity cannot pass on a defaulted zero.
+    expect(staleLine).not.toBeNull();
+    expect(missingLine).not.toBeNull();
+    const staleCount = Number(staleLine[1]);
+    const missingCount = Number(missingLine[1]);
+    expect(staleCount).toBe(2);
+    expect(missingCount).toBe(3);
+    const hookMetric = Math.round((100 * Math.max(0, total - (staleCount + missingCount))) / total);
+
+    expect(readAgentStaleness(tmpRoot)).toBe(hookMetric);
+  });
+
+  it('the shipped domain map sources agent-staleness from the register check', () => {
+    const shippedMap = require('../domain-threshold-map.json');
+    expect(shippedMap['agent-staleness'].source).toBe('register:agent-staleness');
   });
 });

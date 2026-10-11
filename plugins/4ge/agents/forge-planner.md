@@ -3,11 +3,10 @@ name: forge-planner
 description: Plan writing subagent for forge sessions. Runs Phase 4 (plan writing) with the writing-plans skill injected. Reads approved spec, produces DAG-structured execution plan.
 tools: Read, Write, Glob, Grep, mcp__dev-memory__memory_search, mcp__dev-memory__memory_store
 model: inherit
-effort: high
+effort: xhigh
 last-verified: 2026-07-04
 skills:
   - writing-plans
-maxTurns: 200
 memory: project
 
 scope: forge

@@ -27,7 +27,7 @@ If no commit message is provided, auto-generate one:
 4. Store session context to memory: `mcp__dev-memory__memory_store` with a brief summary of what is being shipped
 5. If `--amend` flag: run `git commit --amend` with the message; otherwise run `git commit -m "<message>"`. Always append a model-aware co-author line:
    - Read `_runs/os/session-meta.json` and extract the `model` field
-   - Map to display name by detecting version first: `fable-5` → `Claude Fable 5 (1M context)`, `opus-4-8` → `Claude Opus 4.8 (1M context)`, `opus-4-7` → `Claude Opus 4.7 (1M context)`, `opus-4-6` → `Claude Opus 4.6 (1M context)`, `sonnet-5` → `Claude Sonnet 5 (1M context)`, `sonnet-4-6` → `Claude Sonnet 4.6`. Fall back by family: `fable` → `Claude Fable`, `opus` → `Claude Opus`, `sonnet` → `Claude Sonnet`, else → `Claude`.
+   - Map to display name by detecting version first, taking the longest matching key so a longer id is never read as its shorter prefix (`sonnet-5-5` is not `sonnet-5`, `fable-5-1` is not `fable-5`): `fable-5-1` → `Claude Fable 5.1 (1M context)`, `fable-5` → `Claude Fable 5 (1M context)`, `opus-5-5` → `Claude Opus 5.5 (1M context)`, `opus-4-8` → `Claude Opus 4.8 (1M context)`, `opus-4-7` → `Claude Opus 4.7 (1M context)`, `opus-4-6` → `Claude Opus 4.6 (1M context)`, `sonnet-5-5` → `Claude Sonnet 5.5 (1M context)`, `sonnet-5` → `Claude Sonnet 5 (1M context)`, `sonnet-4-6` → `Claude Sonnet 4.6`. Fall back by family: `fable` → `Claude Fable`, `opus` → `Claude Opus`, `sonnet` → `Claude Sonnet`, else → `Claude`.
    - Append: `Co-Authored-By: {display name} <noreply@anthropic.com>`
 6. Show the commit hash and a summary of changed files
 7. If `--no-push` flag: stop here — commit is done, no push

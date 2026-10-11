@@ -54,8 +54,8 @@ if (!diffContent.trim()) {
 
 // ─── Determine model ──────────────────────────────────────────────────────────
 
-const ALLOWED_SONNET_MODELS = new Set(['claude-sonnet-5']);
-const ALLOWED_OPUS_MODELS = new Set(['claude-opus-4-8', 'claude-opus-4-7']);
+const ALLOWED_SONNET_MODELS = new Set(['claude-sonnet-5', 'claude-sonnet-5-5']);
+const ALLOWED_OPUS_MODELS = new Set(['claude-opus-4-8', 'claude-opus-4-7', 'claude-opus-5-5']);
 
 function readModelEnv(envName, defaultValue) {
   return (process.env[envName] || defaultValue).trim();

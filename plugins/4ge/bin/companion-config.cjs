@@ -43,6 +43,11 @@ const DEFAULTS = {
     enabled: true,
     rotationMs: 45000,
     tone: 'warm',
+    // Memory-hub insights: the dev-memory query and the memory-* rules. OFF by
+    // default (operator ruling 2026-09-22): the query is not scoped to the session's
+    // own state yet, so it surfaced old foreign handoff narratives. Opt in with
+    // companion.insights.memory: true.
+    memory: false,
   },
 };
 
@@ -138,6 +143,8 @@ function loadCompanionConfig(projectRoot) {
   if (!VALID_TONES.includes(merged.insights.tone)) {
     merged.insights.tone = DEFAULTS.insights.tone;
   }
+  // Default-false flag, same idiom as faceMotion/zen: only a literal true opts in.
+  merged.insights.memory = (merged.insights.memory === true);
 
   _cached = merged;
   _cachedAt = now;

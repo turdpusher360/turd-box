@@ -37,14 +37,20 @@ Resolve the target repo (cwd unless an arg gives a path). Then:
 
 ```bash
 REPO="${1:-$(pwd)}"
-# Current SSOT + its marker
+# Current SSOT + its marker: the first line holding any of the three marker forms
 ls "$REPO/BACKLOG.md" "$REPO/docs/BACKLOG.md" 2>/dev/null
-grep -m1 "reconciled as of S" "$REPO/BACKLOG.md" 2>/dev/null
+MARKER_FORMS='Last-reconciled:[[:space:]]*S[0-9]+|reconciled as of S[0-9]+|Reconciled[[:space:]]+[0-9]{4}-[0-9]{2}-[0-9]{2}[[:space:]]+through[[:space:]]+S[0-9]+'
+grep -m1 -iE "$MARKER_FORMS" "$REPO/BACKLOG.md" 2>/dev/null
+# Frozen snapshot? Only the marker line counts (see Step 4)
+grep -m1 -iE "$MARKER_FORMS" "$REPO/BACKLOG.md" 2>/dev/null | grep -qF 'Frozen snapshot, not the live backlog' && echo "FROZEN: stop (Step 4)"
 # Latest handoff session number
 ls "$REPO/_runs/HANDOFF-S"*.md 2>/dev/null | sed -E 's/.*HANDOFF-S([0-9]+).*/\1/' | sort -n | tail -1
 # Decision-log presence (precondition for the drift check)
 ls "$REPO/_runs/.decisions.jsonl" 2>/dev/null || echo "MISSING .decisions.jsonl — drift check degraded"
 ```
+
+If that prints `FROZEN`, stop here: `BACKLOG.md` declares itself frozen (Step 4). Do not
+dispatch the fold.
 
 If `BACKLOG.md` does not exist, this is a **first reconcile**: seed it from
 `_runs/dragnet/<repo>-backlog.md` if present, else create the empty fixed structure
@@ -56,7 +62,7 @@ decision entries). Recommend seeding the decision log as a follow-up.
 
 ## Step 2 — Dispatch the opus-audit fold agent
 
-Dispatch ONE `opus-audit`-class agent with `model: opus`, `mode: bypassPermissions`. It does
+Dispatch ONE `opus-audit`-class agent with `model: opus`. It does
 the entire fold in a fresh context and writes disk-first. Give it this exact charter:
 
 > **Reconcile <REPO> as of the latest handoff.** Read, in order:
@@ -93,7 +99,7 @@ the entire fold in a fresh context and writes disk-first. Give it this exact cha
 > raised.
 
 Use the existing dispatch path: `Agent({ subagent_type: "opus-audit", model: "opus",
-mode: "bypassPermissions", prompt: <the charter above with REPO/M/N substituted> })`
+prompt: <the charter above with REPO/M/N substituted> })`
 (historical label is `opus-audit`; `model: "opus"` sets the actual model). If `opus-audit` is
 unavailable in the project's approved agents, fall back to the `audit-bull` skill →
 `@opus-audit`, same charter.
@@ -159,6 +165,12 @@ REPO="${1:-$(pwd)}"
 
 `TASKING.md` / `TASKS.md` stay append-only as the raw audit trail. `BACKLOG.md` is the
 curated, deletable SSOT — items move OPEN→DONE/PARKED/KILLED and **leave OPEN**.
+
+**Stop if `BACKLOG.md` declares itself frozen.** A `BACKLOG.md` whose marker line (the
+first line holding any marker form Step 1 greps) also carries the fixed phrase
+`Frozen snapshot, not the live backlog` is a frozen snapshot, not the live backlog.
+`/reconcile` does not rewrite it, re-header it or bump its marker: report where its header
+says current work lives, and stop. Un-freezing it is the owner's call, not a reconcile step.
 
 ## Step 5 — Store the reconcile summary in dev-memory
 

@@ -100,8 +100,11 @@ function renderContextBudgetCompact(session, palette) {
   const input = Number(session.inputTokens) || 0;
   const output = Number(session.outputTokens) || 0;
   const cache = (Number(session.cacheReadTokens) || 0) + (Number(session.cacheCreationTokens) || 0);
-  const remaining = Number(session.remainingTokens) || 0;
-  if (input <= 0 && output <= 0 && cache <= 0 && remaining <= 0) return '';
+  // A known remainder of 0 (full window) is a fact to show, not an unknown.
+  const rawRemaining = session.remainingTokens;
+  const remainingKnown = typeof rawRemaining === 'number' && Number.isFinite(rawRemaining) && rawRemaining >= 0;
+  const remaining = remainingKnown ? rawRemaining : 0;
+  if (input <= 0 && output <= 0 && cache <= 0 && !remainingKnown) return '';
 
   const remainingRole = remaining > 0 ? 'ok' : 'warn';
   const parts = [
@@ -109,7 +112,7 @@ function renderContextBudgetCompact(session, palette) {
     colorize(palette, 'muted', 'ctx budget '),
   ];
 
-  if (remaining > 0) {
+  if (remainingKnown) {
     parts.push(colorize(palette, remainingRole, `${fmtTokens(remaining)} left`));
   } else {
     parts.push(colorize(palette, remainingRole, 'unknown left'));

@@ -3,11 +3,10 @@ name: dfe-runtime
 description: DFE minion — Pass 4 (RUNTIME) + Pass 5 (TRUST). Environment mismatches, missing await, global state, boundary validation, type assertion hiding.
 tools: Bash, Grep, Glob, Read
 model: inherit
-effort: high
+effort: xhigh
 memory: project
 last-verified: 2026-04-22
 output-dir: _runs/review/
-maxTurns: 80
 background: true
 disallowedTools:
   - Write

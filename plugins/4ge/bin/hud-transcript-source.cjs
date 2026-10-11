@@ -309,6 +309,7 @@ function parseTranscript(filepath) {
  * @param {object} opts
  * @param {string} opts.cwd
  * @param {string|null} [opts.sessionId]
+ * @param {string|null} [opts.transcriptPath]
  * @param {number} [opts.tailCount=12]
  * @returns {null | object}
  */
@@ -317,7 +318,7 @@ function loadTranscriptActivity(opts = {}) {
   const sessionId = opts.sessionId || null;
   const tailCount = typeof opts.tailCount === 'number' ? opts.tailCount : 12;
 
-  const filepath = findTranscriptPath(cwd, sessionId);
+  const filepath = opts.transcriptPath || findTranscriptPath(cwd, sessionId);
   if (!filepath) return null;
 
   const parsed = parseTranscript(filepath);

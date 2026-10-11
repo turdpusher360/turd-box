@@ -63,6 +63,43 @@ function runProbes(entries) {
 }
 
 /**
+ * Stamp each probe result with the time it was observed (`observed_at`, ISO-8601).
+ * Copies each entry: a capability may return the object it caches (aisle does), so
+ * stamping in place would leak the time into that capability's own cache.
+ *
+ * `observed_at` is additive and optional. Every reader keys on `ok` and named fields,
+ * and Anvil's HealthSchema passes unknown keys through. Entries written at boot carry
+ * no time, and a reader must treat that as "observation time unknown".
+ *
+ * @param {Record<string, any>} healthMap
+ * @returns {Record<string, any>}
+ */
+function stampObserved(healthMap) {
+  const observedAt = new Date().toISOString();
+  const out = {};
+  for (const [name, entry] of Object.entries(healthMap)) {
+    out[name] = { ...entry, observed_at: observedAt };
+  }
+  return out;
+}
+
+/**
+ * Read the health map already on disk. A missing, unparseable or non-object file
+ * reads as empty, so the caller writes exactly what it probed, as it always has.
+ *
+ * @param {string} stateDir
+ * @returns {Record<string, any>}
+ */
+function readHealth(stateDir) {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(path.join(stateDir, 'health.json'), 'utf8'));
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+/**
  * Atomic write of a flat health map to stateDir/health.json.
  *
  * health.json itself stays a pure flat cap->health map (no wrapper keys) — its
@@ -93,13 +130,25 @@ function writeHealth(stateDir, healthMap, writerOpts) {
 /**
  * Run cheap probes only. Used by os-accounting PostToolUse hook.
  *
+ * Expensive probes run only in refreshAll (and at boot), so what they last recorded
+ * is carried over from the health.json already on disk, not erased. A carried-over
+ * entry keeps the `observed_at` it already has; one without a time (boot wrote it)
+ * stays untimed. Entries for capabilities that are not a known expensive probe are
+ * not carried, so a removed capability cannot linger.
+ *
  * @param {string} capDir
  * @param {string} stateDir
  * @param {object} [writerOpts] Optional attribution hints forwarded to writeHealth.
+ * @returns {Record<string, any>} The map written to health.json.
  */
 function refreshCheap(capDir, stateDir, writerOpts) {
-  const { cheap } = classifyProbes(capDir);
-  const healthMap = runProbes(cheap);
+  const { cheap, expensive } = classifyProbes(capDir);
+  const healthMap = stampObserved(runProbes(cheap));
+  const previous = readHealth(stateDir);
+  for (const { name } of expensive) {
+    const entry = previous[name];
+    if (entry && typeof entry === 'object' && !Array.isArray(entry)) healthMap[name] = entry;
+  }
   writeHealth(stateDir, healthMap, writerOpts);
   return healthMap;
 }
@@ -113,7 +162,7 @@ function refreshCheap(capDir, stateDir, writerOpts) {
  */
 function refreshAll(capDir, stateDir, writerOpts) {
   const { cheap, expensive } = classifyProbes(capDir);
-  const healthMap = { ...runProbes(cheap), ...runProbes(expensive) };
+  const healthMap = { ...stampObserved(runProbes(cheap)), ...stampObserved(runProbes(expensive)) };
   writeHealth(stateDir, healthMap, writerOpts);
   return healthMap;
 }

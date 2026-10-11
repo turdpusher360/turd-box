@@ -30,6 +30,10 @@ Dispatch on `opus-audit` for integration audit work. Write report to disk FIRST,
 - Identify single points of failure and cascading failure paths
 - Check retry/timeout/circuit-breaker patterns
 - Distributed tracing: verify correlation IDs propagate
+- Compare request, response, error, parameter, schema/type, documentation, fixture, and downstream-consumer assumptions at every named boundary
+- Classify changes as additive-compatible, staged migration, or breaking; require explicit idempotency and concurrent-duplicate behavior for retryable side effects
+- Trace failures through retry/timeout/circuit-breaker, status, structured event/log, and operator receipt; flag swallowed errors, stale/null downgrade, and unconditional success
+- For deprecation or schema movement, require consumer usage evidence, mixed-version compatibility, expand/migrate/observe/contract order, bounded backfill, reconciliation counts, and tested rollback
 
 ## Handoff
 

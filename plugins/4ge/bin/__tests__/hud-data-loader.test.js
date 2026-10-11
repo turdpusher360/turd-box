@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from 'vitest';
 const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
@@ -15,6 +15,34 @@ const {
   readFreshVramState,
   readFreshReaperState,
 } = require('../hud-data-loader.cjs');
+const { countDegraded } = require('../hud-state.cjs');
+const companionInsights = require('../companion-insights.cjs');
+const { buildProjectSlug } = require('../hud-transcript-source.cjs');
+const actualRefreshMemoryCache = companionInsights.refreshMemoryCache;
+const realRefreshMemoryCache = vi.fn((...args) => actualRefreshMemoryCache(...args));
+const refreshMemoryCacheStub = vi.fn().mockResolvedValue(undefined);
+
+// loadHudData() requires companion-insights.cjs at call time and destructures
+// this export then. Replacing the CommonJS exports-object property therefore
+// contains every test in this file without relying on ESM vi.mock interception.
+companionInsights.refreshMemoryCache = refreshMemoryCacheStub;
+
+afterAll(() => {
+  companionInsights.refreshMemoryCache = actualRefreshMemoryCache;
+});
+
+const SHELVED_MALFORMED_CASES = [
+  ['boot-ready + ok="true"', 'ready', { ok: 'true' }],
+  ['boot-ready + ok=null', 'ready', { ok: null }],
+  ['boot-degraded + ok="true"', 'degraded', { ok: 'true' }],
+  ['boot-degraded + ok=1', 'degraded', { ok: 1 }],
+  ['boot-degraded + ok={}', 'degraded', { ok: {} }],
+];
+
+const SHELVED_CONTROL_CASES = [
+  ['boot-degraded + ok=false', { probe: { ok: false } }],
+  ['boot-degraded + no health entry', {}],
+];
 
 describe('hud-data-loader', () => {
   let tmpStateDir;
@@ -102,6 +130,73 @@ describe('hud-data-loader', () => {
     expect(caps.git.init_ms).toBe(5);
     expect(caps.forge.ok).toBe(false);
     expect(caps.forge.reason).toBe('no session');
+  });
+
+  it.each([
+    ['health-only string "false"', {}, { probe: { ok: 'false' } }],
+    ['health-only null', {}, { probe: { ok: null } }],
+    ['health-only number', {}, { probe: { ok: 1 } }],
+    ['boot-ready plus null', { capabilities: { probe: { status: 'ready', init_ms: 4 } } }, { probe: { ok: null } }],
+    ['boot-ready plus string "false"', { capabilities: { probe: { status: 'ready', init_ms: 4 } } }, { probe: { ok: 'false' } }],
+    ['boot-degraded plus string "true"', { capabilities: { probe: { status: 'degraded', init_ms: 4 } } }, { probe: { ok: 'true' } }],
+  ])('treats %s as a non-ready failed live probe', (_label, boot, health) => {
+    const caps = buildCapabilities(boot, health);
+
+    expect(caps.probe.ok).toBe(false);
+    expect(caps.probe.status).toBe('degraded');
+    expect(countDegraded(caps)).toBe(1);
+    expect(deriveOverall(caps)).toBe('degraded');
+  });
+
+  it.each(SHELVED_MALFORMED_CASES)(
+    '[RED-r5 F1 loader] %s clears the inherited shelved exemption',
+    (_label, bootStatus, healthEntry) => {
+      const caps = buildCapabilities(
+        { capabilities: { probe: { status: bootStatus, init_ms: 4, shelved: true } } },
+        { probe: healthEntry },
+      );
+
+      expect(caps.probe).toMatchObject({ ok: false, status: 'degraded', init_ms: 4 });
+      expect(caps.probe).not.toHaveProperty('shelved');
+      expect(countDegraded(caps)).toBe(1);
+      expect(deriveOverall(caps)).toBe('degraded');
+    },
+  );
+
+  it.each(SHELVED_CONTROL_CASES)(
+    '[guard-r5 F1 loader] %s keeps the documented shelved exemption',
+    (_label, health) => {
+      const caps = buildCapabilities(
+        { capabilities: { probe: { status: 'degraded', init_ms: 4, shelved: true } } },
+        health,
+      );
+
+      expect(caps.probe).toEqual({
+        status: 'degraded', init_ms: 4, ok: false, shelved: true,
+      });
+      expect(countDegraded(caps)).toBe(0);
+      expect(deriveOverall(caps)).toBe('degraded');
+    },
+  );
+
+  it('preserves round-3 behavior when a health entry has no ok observation', () => {
+    const healthOnly = buildCapabilities({}, { probe: { reason: 'no sample' }, empty: null });
+    expect(healthOnly.probe).toEqual({ status: 'degraded', init_ms: 0, reason: 'no sample' });
+    expect(healthOnly.empty).toEqual({ status: 'degraded', init_ms: 0 });
+
+    const bootReady = buildCapabilities(
+      { capabilities: { probe: { status: 'ready', init_ms: 4 } } },
+      { probe: { reason: 'no new sample' } },
+    );
+    expect(bootReady.probe).toMatchObject({ ok: true, status: 'ready', init_ms: 4, reason: 'no new sample' });
+  });
+
+  it('keeps null boot capability data unknown instead of dereferencing it', () => {
+    const caps = buildCapabilities({ capabilities: { probe: null } }, {});
+
+    expect(caps.probe).toEqual({ status: 'unknown', init_ms: 0 });
+    expect(deriveOverall(caps)).toBe('unknown');
+    expect(deriveOverall({ probe: null })).toBe('unknown');
   });
 
   it('computeUptime returns ms since booted_at', () => {
@@ -223,6 +318,270 @@ describe('hud-data-loader', () => {
     expect(deriveOverall({})).toBe('unknown');
   });
 
+  it('deriveOverall preserves an explicit failed boot when capabilities are empty', () => {
+    expect(deriveOverall({}, { overall: 'failed' })).toBe('failed');
+    expect(deriveOverall({}, {})).toBe('unknown');
+  });
+
+  it('loadHudData carries an explicit failed empty boot into os.overallHealth', () => {
+    fs.writeFileSync(path.join(tmpStateDir, 'health.json'), '{}');
+    fs.writeFileSync(path.join(tmpStateDir, 'boot-status.json'), JSON.stringify({
+      session_id: 'failed-boot',
+      booted_at: new Date().toISOString(),
+      capabilities: {},
+      overall: 'failed',
+      total_boot_ms: 0,
+      reason: 'registry unavailable',
+    }));
+
+    const raw = loadHudData({ stateDir: tmpStateDir, cwd: tmpCwd, runExpensiveProbes: false });
+    expect(raw.os.capabilities).toEqual({});
+    expect(raw.os.overallHealth).toBe('failed');
+    expect(raw.os.bootFailed).toBe(true);
+  });
+
+  // HUD r5 review P2-1 case B: the next cheap health refresh fills the map, and
+  // deriveOverall then reads ready. bootFailed keeps the failed boot visible.
+  it('keeps bootFailed after a cheap health refresh fills the capability map', () => {
+    const probes = ['forge-session', 'git', 'file-integrity', 'process-health', 'memory',
+      'hooks', 'agents', 'skills', 'workflow'];
+    fs.writeFileSync(path.join(tmpStateDir, 'health.json'),
+      JSON.stringify(Object.fromEntries(probes.map((name) => [name, { ok: true }]))));
+    fs.writeFileSync(path.join(tmpStateDir, 'boot-status.json'), JSON.stringify({
+      session_id: 'failed-boot',
+      booted_at: new Date().toISOString(),
+      capabilities: {},
+      overall: 'failed',
+      total_boot_ms: 0,
+      reason: 'registry unavailable',
+    }));
+
+    const raw = loadHudData({ stateDir: tmpStateDir, cwd: tmpCwd, runExpensiveProbes: false });
+    expect(Object.keys(raw.os.capabilities)).toHaveLength(9);
+    expect(raw.os.overallHealth).toBe('ready');
+    expect(raw.os.bootFailed).toBe(true);
+  });
+
+  it('leaves bootFailed false for a boot that registered capabilities or did not fail', () => {
+    fs.writeFileSync(path.join(tmpStateDir, 'health.json'), JSON.stringify({ git: { ok: true } }));
+    const writeBoot = (status) => fs.writeFileSync(path.join(tmpStateDir, 'boot-status.json'), JSON.stringify(status));
+
+    writeBoot({ capabilities: { git: { status: 'ready', init_ms: 3 } }, overall: 'failed' });
+    expect(loadHudData({ stateDir: tmpStateDir, cwd: tmpCwd, runExpensiveProbes: false }).os.bootFailed).toBe(false);
+
+    writeBoot({ capabilities: {}, overall: 'ready' });
+    expect(loadHudData({ stateDir: tmpStateDir, cwd: tmpCwd, runExpensiveProbes: false }).os.bootFailed).toBe(false);
+  });
+
+  it('[guard-r5 F3] routes the lazy CommonJS refresh through the suite stub', () => {
+    refreshMemoryCacheStub.mockClear();
+    realRefreshMemoryCache.mockClear();
+
+    expect(companionInsights.refreshMemoryCache).toBe(refreshMemoryCacheStub);
+
+    // Under Vitest the loader skips the refresh outright (its VITEST guard).
+    loadHudData({ stateDir: tmpStateDir, cwd: tmpCwd, runExpensiveProbes: false });
+    expect(refreshMemoryCacheStub).not.toHaveBeenCalled();
+
+    // With the guard's env blanked, the lazy require still resolves to the
+    // suite stub, so neither branch can reach the real hub from this file.
+    vi.stubEnv('VITEST', '');
+    try {
+      loadHudData({ stateDir: tmpStateDir, cwd: tmpCwd, runExpensiveProbes: false });
+    } finally {
+      vi.unstubAllEnvs();
+    }
+
+    expect(refreshMemoryCacheStub).toHaveBeenCalledTimes(1);
+    expect(refreshMemoryCacheStub).toHaveBeenCalledWith(tmpCwd);
+    expect(realRefreshMemoryCache).not.toHaveBeenCalled();
+  });
+
+  describe('transcript freshness enrichment', () => {
+    const NOW_MS = 2_000_000_000_000;
+    const SESSION_ID = 'transcript-session';
+    const TRANSCRIPT_LINES = [
+      {
+        type: 'assistant',
+        timestamp: '2033-05-18T03:33:19.000Z',
+        message: {
+          content: [{
+            type: 'tool_use',
+            id: 'tool-1',
+            name: 'Bash',
+            input: { command: 'printf fresh' },
+          }],
+        },
+      },
+      {
+        type: 'user',
+        timestamp: '2033-05-18T03:33:19.500Z',
+        message: {
+          content: [{
+            type: 'tool_result',
+            tool_use_id: 'tool-1',
+            is_error: false,
+            content: 'fresh result',
+          }],
+        },
+      },
+    ];
+
+    function makeTranscriptFixture(mtimeMs) {
+      const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'hdl-home-'));
+      const projectDir = path.join(fakeHome, '.claude', 'projects', buildProjectSlug(tmpCwd));
+      const transcriptPath = path.join(projectDir, `${SESSION_ID}.jsonl`);
+      const transcriptContents = TRANSCRIPT_LINES.map((line) => JSON.stringify(line)).join('\n');
+      fs.mkdirSync(projectDir, { recursive: true });
+      fs.writeFileSync(transcriptPath, transcriptContents);
+      fs.utimesSync(transcriptPath, mtimeMs / 1000, mtimeMs / 1000);
+      fs.writeFileSync(
+        path.join(tmpStateDir, 'session-meta.json'),
+        JSON.stringify({ session_id: SESSION_ID }),
+      );
+      const homeSpy = vi.spyOn(os, 'homedir').mockReturnValue(fakeHome);
+      return {
+        transcriptPath,
+        transcriptContents,
+        cleanup() {
+          homeSpy.mockRestore();
+          fs.rmSync(fakeHome, { recursive: true, force: true });
+        },
+      };
+    }
+
+    function loadWithReadSpy(fixture, onTranscriptRead = null) {
+      const actualReadFileSync = fs.readFileSync;
+      const transcriptReads = [];
+      const readSpy = vi.spyOn(fs, 'readFileSync').mockImplementation((filePath, ...args) => {
+        if (path.resolve(String(filePath)) === path.resolve(fixture.transcriptPath)) {
+          transcriptReads.push(filePath);
+          if (onTranscriptRead) onTranscriptRead();
+        }
+        return actualReadFileSync.call(fs, filePath, ...args);
+      });
+      try {
+        return {
+          raw: loadHudData({ stateDir: tmpStateDir, cwd: tmpCwd, runExpensiveProbes: false }),
+          transcriptReads,
+        };
+      } finally {
+        readSpy.mockRestore();
+      }
+    }
+
+    it.each([
+      ['stale', NOW_MS - 30_001],
+      ['exactly at the 30s cutoff', NOW_MS - 30_000],
+    ])('skips the transcript read when its mtime is %s', (_label, mtimeMs) => {
+      const fixture = makeTranscriptFixture(mtimeMs);
+      const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(NOW_MS);
+      try {
+        const { raw, transcriptReads } = loadWithReadSpy(fixture);
+        expect(raw.transcript).toBeNull();
+        expect(transcriptReads).toHaveLength(0);
+      } finally {
+        nowSpy.mockRestore();
+        fixture.cleanup();
+      }
+    });
+
+    it('preserves the complete fresh transcript enrichment output', () => {
+      const fixture = makeTranscriptFixture(NOW_MS - 1_000);
+      const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(NOW_MS);
+      try {
+        const { raw, transcriptReads } = loadWithReadSpy(fixture);
+        expect(transcriptReads).toHaveLength(1);
+        const expected = {
+          source: 'transcript-tail',
+          transcriptPath: fixture.transcriptPath,
+          fileSize: Buffer.byteLength(fixture.transcriptContents),
+          totalLines: 2,
+          typeCounts: { assistant: 1, user: 1 },
+          toolCounts: { Bash: 1 },
+          toolFrequency: [{ name: 'Bash', count: 1 }],
+          toolCallsTotal: 1,
+          toolResultsTotal: 1,
+          toolErrorsTotal: 0,
+          textMessagesTotal: 0,
+          sessionStartedAt: '2033-05-18T03:33:19.000Z',
+          lastActivityAt: '2033-05-18T03:33:19.500Z',
+          recentEvents: [
+            {
+              ts: '2033-05-18T03:33:19.000Z',
+              kind: 'tool_use',
+              name: 'Bash',
+              summary: 'printf fresh',
+              id: 'tool-1',
+            },
+            {
+              ts: '2033-05-18T03:33:19.500Z',
+              kind: 'tool_result',
+              id: 'tool-1',
+              error: false,
+              summary: 'fresh result',
+            },
+          ],
+        };
+        expect(JSON.stringify(raw.transcript)).toBe(JSON.stringify(expected));
+      } finally {
+        nowSpy.mockRestore();
+        fixture.cleanup();
+      }
+    });
+
+    it('keeps future-mtime transcripts eligible', () => {
+      const fixture = makeTranscriptFixture(NOW_MS + 60_000);
+      const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(NOW_MS);
+      try {
+        const { raw, transcriptReads } = loadWithReadSpy(fixture);
+        expect(transcriptReads).toHaveLength(1);
+        expect(raw.transcript).not.toBeNull();
+        expect(raw.transcript.transcriptPath).toBe(fixture.transcriptPath);
+      } finally {
+        nowSpy.mockRestore();
+        fixture.cleanup();
+      }
+    });
+
+    it('retains the final freshness gate when a transcript crosses the cutoff during its read', () => {
+      let clock = NOW_MS;
+      const fixture = makeTranscriptFixture(NOW_MS - 29_999);
+      const nowSpy = vi.spyOn(Date, 'now').mockImplementation(() => clock);
+      try {
+        const { raw, transcriptReads } = loadWithReadSpy(fixture, () => { clock += 1; });
+        expect(transcriptReads).toHaveLength(1);
+        expect(raw.transcript).toBeNull();
+      } finally {
+        nowSpy.mockRestore();
+        fixture.cleanup();
+      }
+    });
+
+    it('keeps transcript read errors best-effort', () => {
+      const fixture = makeTranscriptFixture(NOW_MS - 1_000);
+      const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(NOW_MS);
+      const actualReadFileSync = fs.readFileSync;
+      const readSpy = vi.spyOn(fs, 'readFileSync').mockImplementation((filePath, ...args) => {
+        if (path.resolve(String(filePath)) === path.resolve(fixture.transcriptPath)) {
+          throw new Error('fixture read failure');
+        }
+        return actualReadFileSync.call(fs, filePath, ...args);
+      });
+      try {
+        let raw;
+        expect(() => {
+          raw = loadHudData({ stateDir: tmpStateDir, cwd: tmpCwd, runExpensiveProbes: false });
+        }).not.toThrow();
+        expect(raw.transcript).toBeNull();
+      } finally {
+        readSpy.mockRestore();
+        nowSpy.mockRestore();
+        fixture.cleanup();
+      }
+    });
+  });
+
   it('loadHudData reads flat health.json and produces contextLabel/toolCount/rateLimits N/A', () => {
     fs.writeFileSync(
       path.join(tmpStateDir, 'health.json'),
@@ -322,6 +681,65 @@ describe('hud-data-loader', () => {
     expect(raw.session.rateLimits).toBe('N/A');
     expect(raw.os.overallHealth).toBe('unknown');
     expect(raw.forge.active).toBe(false);
+  });
+
+  // Under the statusLine slot stdout is a pipe (no .columns); CC exports
+  // COLUMNS/LINES to the command instead.
+  //
+  // Run `fn` with process.stdout reporting the given size (undefined = a pipe),
+  // so these tests hold whether or not the runner's stdout is a TTY. The
+  // original own-property descriptors are restored afterwards.
+  function withStdoutSize(size, fn) {
+    const saved = {};
+    for (const key of ['columns', 'rows']) {
+      saved[key] = Object.getOwnPropertyDescriptor(process.stdout, key);
+      Object.defineProperty(process.stdout, key, { value: size[key], configurable: true, writable: true });
+    }
+    try {
+      return fn();
+    } finally {
+      for (const key of ['columns', 'rows']) {
+        if (saved[key]) Object.defineProperty(process.stdout, key, saved[key]);
+        else delete process.stdout[key];
+      }
+    }
+  }
+
+  it('loadHudData sizes the terminal from COLUMNS/LINES when stdout has no size', () => {
+    vi.stubEnv('COLUMNS', '52');
+    vi.stubEnv('LINES', '30');
+    try {
+      const raw = withStdoutSize({ columns: undefined, rows: undefined },
+        () => loadHudData({ stateDir: tmpStateDir, cwd: tmpCwd, runExpensiveProbes: false }));
+      expect(raw.terminal.cols).toBe(52);
+      expect(raw.terminal.rows).toBe(30);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it('loadHudData ignores a non-numeric COLUMNS', () => {
+    vi.stubEnv('COLUMNS', 'wide');
+    try {
+      const raw = withStdoutSize({ columns: undefined, rows: undefined },
+        () => loadHudData({ stateDir: tmpStateDir, cwd: tmpCwd, runExpensiveProbes: false }));
+      expect(raw.terminal.cols).toBe(80);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it('loadHudData prefers a sized stdout over COLUMNS/LINES', () => {
+    vi.stubEnv('COLUMNS', '52');
+    vi.stubEnv('LINES', '30');
+    try {
+      const raw = withStdoutSize({ columns: 120, rows: 40 },
+        () => loadHudData({ stateDir: tmpStateDir, cwd: tmpCwd, runExpensiveProbes: false }));
+      expect(raw.terminal.cols).toBe(120);
+      expect(raw.terminal.rows).toBe(40);
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it('loadHudData hydrates context and rate trend history from hud-history.json', () => {
@@ -633,9 +1051,25 @@ describe('mergeHarnessStdin', () => {
   });
 
   it('falls back to model.id when display_name is absent', () => {
-    const state = makeBaseState();
-    mergeHarnessStdin(state, { model: { id: 'claude-opus-4-6' } });
-    expect(state.session.model).toBe('claude-opus-4-6');
+    // A model.id triggers the session-meta write-back, whose root resolves as
+    // state.projectRoot || CLAUDE_PROJECT_DIR || cwd. Pin it to a temp root so
+    // a hook-spawned run (CLAUDE_PROJECT_DIR = the live checkout) can never
+    // rewrite the real _runs/os/session-meta.json.
+    const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'hdl-model-root-'));
+    try {
+      const metaPath = path.join(tmpRoot, '_runs', 'os', 'session-meta.json');
+      fs.mkdirSync(path.dirname(metaPath), { recursive: true });
+      fs.writeFileSync(metaPath, JSON.stringify({ model: 'seed-model' }));
+      const state = Object.assign(makeBaseState(), { projectRoot: tmpRoot });
+
+      mergeHarnessStdin(state, { model: { id: 'claude-opus-4-6' } });
+
+      expect(state.session.model).toBe('claude-opus-4-6');
+      // The write-back landed in the temp root, not the live checkout.
+      expect(JSON.parse(fs.readFileSync(metaPath, 'utf8')).model).toBe('claude-opus-4-6');
+    } finally {
+      fs.rmSync(tmpRoot, { recursive: true, force: true });
+    }
   });
 
   it('maps context_window.used_percentage into session.contextPct', () => {

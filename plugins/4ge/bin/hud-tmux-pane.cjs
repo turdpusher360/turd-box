@@ -79,51 +79,12 @@ function ensureStateDir() {
   }
 }
 
-// --- Seed demo state files if empty ---
-function seedDemoState() {
-  const healthPath = path.join(stateDir, 'health.json');
-  const bootPath = path.join(stateDir, 'boot-status.json');
-  const metaPath = path.join(stateDir, 'session-meta.json');
-
-  if (!fs.existsSync(healthPath)) {
-    const health = {
-      memory: { ok: true, reason: 'hub responding' },
-      git: { ok: true, reason: 'repo clean' },
-      forge: { ok: true, reason: 'idle' },
-      audit: { ok: true, reason: 'ready' },
-      aisle: { ok: true, reason: 'posture ready' },
-      infra: { ok: false, reason: 'docker not running' },
-    };
-    fs.writeFileSync(healthPath, JSON.stringify(health, null, 2));
-  }
-
-  if (!fs.existsSync(bootPath)) {
-    const boot = {
-      session_id: 'tmux-proto-001',
-      booted_at: new Date().toISOString(),
-      total_boot_ms: 142,
-      capabilities: {
-        memory: { status: 'ready', init_ms: 12 },
-        git: { status: 'ready', init_ms: 8 },
-        forge: { status: 'ready', init_ms: 45 },
-        audit: { status: 'ready', init_ms: 22 },
-        aisle: { status: 'ready', init_ms: 31 },
-        infra: { status: 'degraded', init_ms: 0, reason: 'docker not running' },
-      },
-    };
-    fs.writeFileSync(bootPath, JSON.stringify(boot, null, 2));
-  }
-
-  if (!fs.existsSync(metaPath)) {
-    const meta = {
-      session_id: 'tmux-proto-001',
-      model: 'opus-4.6',
-      est_context_pct: 12,
-      tool_count_running: 0,
-    };
-    fs.writeFileSync(metaPath, JSON.stringify(meta, null, 2));
-  }
-}
+// The pane does not synthesize health.json, boot-status.json or
+// session-meta.json. It once seeded demo copies of all three here (an all-ok
+// health, a "ready" boot status, a fake session) whenever they were missing,
+// which showed a fresh checkout as healthy with no real check behind it, in
+// the shared _runs/os other readers use. Missing files now stay missing, and
+// the face and health zones render an empty capability map as "health unknown".
 
 // --- Build state from disk ---
 function buildState(options = {}) {
@@ -208,7 +169,7 @@ function renderScene(options = {}) {
     output += colorize(palette, 'muted', '  \u2500'.repeat(Math.min(cols - 4, 60))) + '\n';
 
     for (const [name, h] of Object.entries(health)) {
-      const ok = h && h.ok;
+      const ok = !!(h && h.ok === true);
       const icon = ok ? colorize(palette, 'ok', '\u2713') : colorize(palette, 'error', '\u2717');
       const reason = (h && h.reason) ? colorize(palette, 'muted', ` (${h.reason})`) : '';
       output += `  ${icon} ${colorize(palette, 'text', name)}${reason}\n`;
@@ -339,7 +300,6 @@ function main() {
   process.on('SIGTERM', shutdown);
 
   ensureStateDir();
-  seedDemoState();
   printStartupBanner();
 
   // Brief pause to show banner, then render
@@ -359,6 +319,5 @@ module.exports = {
   renderScene,
   renderMenu,
   ensureStateDir,
-  seedDemoState,
   usesSurfaceHost: true,
 };

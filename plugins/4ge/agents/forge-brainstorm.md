@@ -7,7 +7,6 @@ effort: xhigh
 last-verified: 2026-06-07
 skills:
   - brainstorming
-maxTurns: 200
 memory: project
 
 scope: forge

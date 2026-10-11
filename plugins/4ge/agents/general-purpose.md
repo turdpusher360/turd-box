@@ -11,8 +11,7 @@ tools:
   - mcp__dev-memory__memory_search
   - mcp__dev-memory__memory_store
 model: inherit
-effort: high
-maxTurns: 200
+effort: xhigh
 ---
 
 General-purpose agent. Inherits model from parent session. No custom system prompt — uses Claude Code defaults.

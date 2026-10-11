@@ -4,6 +4,12 @@ const { resolvePalette, getTheme } = require('./hud-palette.cjs');
 
 // --- Defaults ---
 const MAX_BASH_COLS = 79;
+// Statusline-only ceiling (C2.2 A2). CC (>=2.1.153) hands the statusline
+// command the full terminal width in COLUMNS, and renderStatusLine fits every
+// row to it, so that one render mode may widen past the 79-column Bash canvas.
+// 132 follows hud-x's wide frame cap (hud-x/engine.cjs frameWidth); the value
+// is 132 (operator ruling 2026-09-28).
+const MAX_STATUSLINE_COLS = 132;
 const DEFAULT_TERMINAL = { cols: Math.min(process.stdout.columns || 79, MAX_BASH_COLS), rows: process.stdout.rows || 24 };
 const DEFAULT_SESSION = {
   id: '',
@@ -28,10 +34,11 @@ const DEFAULT_SESSION = {
   cacheCreationTokens: 0,
   modelId: '',
   modelProvider: '',
-  remainingTokens: 0,
+  // null = unknown (no harness figure yet); 0 = a known, exhausted window.
+  remainingTokens: null,
   cost: 0,
 };
-const DEFAULT_OS = { overallHealth: 'unknown', bootTime: 0, capabilities: {}, vram: null, processes: null };
+const DEFAULT_OS = { overallHealth: 'unknown', bootFailed: false, bootTime: 0, capabilities: {}, vram: null, processes: null };
 const DEFAULT_FORGE = { active: false, phase: null, teammates: [], scope: null };
 const DEFAULT_CONTEXT = { trigger: 'unknown', event: null, zone: null, agentId: '', agentType: '', agentName: '' };
 const DEFAULT_REACTIVE = null;
@@ -169,12 +176,49 @@ function countDegraded(caps) {
   return count;
 }
 
+// Classify observation truth independently from the legacy actionable-
+// degradation count above. Only an explicit boolean ok value is observed:
+// true is ready, false is failed/degraded, and everything else is unknown.
+function classifyCapabilityHealth(caps) {
+  const entries = (caps && typeof caps === 'object') ? Object.entries(caps) : [];
+  const ready = [];
+  const failed = [];
+  const unknown = [];
+
+  for (const [name, capability] of entries) {
+    if (capability && capability.ok === true) ready.push(name);
+    else if (capability && capability.ok === false) failed.push(name);
+    else unknown.push(name);
+  }
+
+  return { total: entries.length, ready, failed, unknown };
+}
+
+// Not-ready count for the readiness readers (ratios, colours, expressions).
+// Counts what countDegraded counts (a non-shelved ok:false) plus every
+// capability without a boolean ok: unobserved or malformed is not ready. A
+// shelved ok:false still counts as ready (the AISLE exemption above). Use this
+// instead of countDegraded, never alongside it, or failed capabilities count twice.
+function countNotReady(caps) {
+  if (!caps || typeof caps !== 'object') return 0;
+  let count = 0;
+  for (const c of Object.values(caps)) {
+    if (!c || typeof c.ok !== 'boolean') count++;
+    else if (c.ok === false && c.shelved !== true) count++;
+  }
+  return count;
+}
+
 // --- Build canonical state from raw input ---
-function buildCanonicalState(raw) {
+// opts.renderMode is set by the renderer, never read from raw input: in the
+// non-statusline modes stdin is shallow-merged into raw, so a raw `mode` key
+// must not be able to lift the Bash-canvas cap.
+function buildCanonicalState(raw, opts) {
   const r = (raw && typeof raw === 'object') ? raw : {};
+  const maxCols = (opts && opts.renderMode === 'statusline') ? MAX_STATUSLINE_COLS : MAX_BASH_COLS;
 
   const terminal = {
-    cols: Math.min((r.terminal && typeof r.terminal.cols === 'number' && r.terminal.cols > 0) ? r.terminal.cols : DEFAULT_TERMINAL.cols, MAX_BASH_COLS),
+    cols: Math.min((r.terminal && typeof r.terminal.cols === 'number' && r.terminal.cols > 0) ? r.terminal.cols : DEFAULT_TERMINAL.cols, maxCols),
     rows: (r.terminal && typeof r.terminal.rows === 'number' && r.terminal.rows > 0) ? r.terminal.rows : DEFAULT_TERMINAL.rows,
   };
 
@@ -211,7 +255,9 @@ function buildCanonicalState(raw) {
     cacheCreationTokens: typeof rawSession.cacheCreationTokens === 'number' ? rawSession.cacheCreationTokens : 0,
     modelId: typeof rawSession.modelId === 'string' ? rawSession.modelId : '',
     modelProvider: typeof rawSession.modelProvider === 'string' ? rawSession.modelProvider : '',
-    remainingTokens: typeof rawSession.remainingTokens === 'number' ? rawSession.remainingTokens : 0,
+    remainingTokens: (typeof rawSession.remainingTokens === 'number' && Number.isFinite(rawSession.remainingTokens))
+      ? rawSession.remainingTokens
+      : null,
     cost: typeof rawSession.cost === 'number' ? rawSession.cost : 0,
     linesAdded: typeof rawSession.linesAdded === 'number' ? rawSession.linesAdded : 0,
     linesRemoved: typeof rawSession.linesRemoved === 'number' ? rawSession.linesRemoved : 0,
@@ -220,6 +266,9 @@ function buildCanonicalState(raw) {
   const rawOs = r.os || {};
   const os = {
     overallHealth: rawOs.overallHealth || DEFAULT_OS.overallHealth,
+    // Loader flag (explicit failed boot, no capabilities registered); the
+    // canonical whitelist must carry it or full/zone/pane renders never see it.
+    bootFailed: rawOs.bootFailed === true,
     bootTime: (typeof rawOs.bootTime === 'number') ? rawOs.bootTime : 0,
     capabilities: (rawOs.capabilities && typeof rawOs.capabilities === 'object') ? rawOs.capabilities : {},
     vram: normalizeVramState(rawOs.vram),
@@ -292,6 +341,8 @@ function buildCanonicalState(raw) {
 module.exports = {
   buildCanonicalState,
   countDegraded,
+  classifyCapabilityHealth,
+  countNotReady,
   clamp,
   clampPercentValue,
   coercePercentHistory,
@@ -301,6 +352,7 @@ module.exports = {
   normalizeProcessState,
   normalizeRigContextState,
   MAX_BASH_COLS,
+  MAX_STATUSLINE_COLS,
   DEFAULT_TERMINAL,
   DEFAULT_SESSION,
   DEFAULT_OS,

@@ -10,9 +10,9 @@
  *   - If the PROJECT wires its own os-boot in .claude/settings.json
  *     (the source monorepo, or any Blueprint-installed project), this hook
  *     defers — the project-managed OS is authoritative.
- *   - The OS module tree resolves project-first: <cwd>/lib/os when present,
- *     else the vendored copy via CLAUDE_PLUGIN_DATA → CLAUDE_PLUGIN_ROOT →
- *     __dirname/../vendor.
+ *   - The OS module tree resolves only from the plugin's vendored copy, via
+ *     CLAUDE_PLUGIN_DATA → CLAUDE_PLUGIN_ROOT → __dirname/../vendor; never
+ *     <cwd>/lib/os (BL-404).
  *
  * Deltas vs the project-managed hook (the source monorepo's os-boot):
  *   - memoryHubUrl: null unless the user configures .4ge/config.json
@@ -108,10 +108,10 @@ function readForgeConfig(cwd) {
     process.exit(0);
   }
 
-  // Resolve the OS tree (project copy first, then vendored).
+  // Resolve the plugin's vendored OS tree; never the project's lib/os (BL-404).
   const osRoot = resolveOsRoot(cwd);
   if (!osRoot) {
-    process.stderr.write('[4ge-os-boot] no OS tree found (project or vendored) — skipping\n');
+    process.stderr.write('[4ge-os-boot] no vendored OS tree found — skipping\n');
     process.exit(0);
   }
   const osLib = path.join(osRoot.root, 'lib', 'os');
@@ -302,7 +302,7 @@ function readForgeConfig(cwd) {
       if (!model && input && typeof input.model === 'string' && input.model) model = input.model;
       if (model) model = model.split('[1m]')[0].trim();
       if (!model) model = 'unknown';
-      const contextWindow = /opus|fable/i.test(model) ? 1000000 : 200000;
+      const contextWindow = /opus|fable|sonnet-5|^sonnet$/i.test(model) ? 1000000 : 200000;
 
       let sessionNumber = 0;
       try { sessionNumber = deriveSessionNumber(cwd); } catch { /* 0 */ }

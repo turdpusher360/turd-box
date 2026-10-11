@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>__TITLE__</title>
+<style>
+  /* Default palette is swappable — replace the :root values with the project's brand. */
+  :root{
+    --accent:#ff9e00; --accent2:#e86a00; --ground:#531901; --text:#ffeab6;
+    --bg:#022b5c; --panel:#01356e; --row:#013a78; --row-hover:#02458c;
+    --line:#02458c; --code-bg:#01274f; --muted:#9db8d9; --dim:#8aa8cf; --dim-line:#3c639b;
+    --link:#7db6ef; --grad1:#014ea6; --grad2:#0067c6;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    background:linear-gradient(180deg,var(--bg) 0%,#012048 100%);color:var(--text);
+    padding-bottom:90px;min-height:100vh}
+  header{background:linear-gradient(135deg,var(--grad1),var(--grad2));padding:26px 32px 20px;
+    border-bottom:3px solid var(--accent)}
+  header h1{font-size:24px;font-weight:800;letter-spacing:.5px}
+  header p{opacity:.85;margin-top:6px;font-size:14px;max-width:760px}
+  .counts{margin-top:10px;font-size:13px;color:var(--accent);font-weight:700}
+  .controls{position:sticky;top:0;z-index:20;background:var(--panel);padding:12px 32px;
+    display:flex;gap:10px;flex-wrap:wrap;align-items:center;border-bottom:1px solid var(--line);
+    box-shadow:0 4px 14px rgba(0,0,0,.35)}
+  .controls input[type=search]{background:var(--code-bg);border:1px solid var(--grad2);
+    color:var(--text);padding:8px 12px;border-radius:8px;font-size:14px;width:240px}
+  .controls input[type=search]::placeholder{color:var(--muted)}
+  .chip{background:transparent;border:1px solid var(--grad2);color:var(--text);
+    padding:7px 14px;border-radius:999px;font-size:13px;cursor:pointer;font-weight:600}
+  .chip.active{background:var(--accent);border-color:var(--accent);color:var(--ground)}
+  main{padding:10px 32px}
+  section{margin-top:26px}
+  .sec-head{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:8px}
+  .sec-head h2{font-size:17px;font-weight:800;color:var(--accent);letter-spacing:.4px}
+  .sec-head .badge{font-size:12px;color:var(--muted)}
+  .sec-head button{background:none;border:none;font-size:12px;cursor:pointer;
+    text-decoration:underline;color:var(--link)}
+  .rows{border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  .row{display:flex;align-items:center;gap:12px;padding:9px 14px;background:var(--row);
+    border-bottom:1px solid var(--line);cursor:pointer}
+  .row:last-child{border-bottom:none}
+  .row:hover{background:var(--row-hover)}
+  .row input{width:16px;height:16px;accent-color:var(--accent);flex-shrink:0;cursor:pointer}
+  .row code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12.5px;
+    color:#fff;background:var(--code-bg);padding:2px 7px;border-radius:5px;white-space:nowrap}
+  .row .desc{font-size:13px;color:#cfe0f5;flex:1;min-width:180px}
+  .tag{font-size:10.5px;font-weight:800;padding:3px 8px;border-radius:999px;white-space:nowrap;letter-spacing:.3px}
+  .tag.yes{background:var(--accent);color:var(--ground)}
+  .tag.maybe{background:transparent;border:1px solid var(--accent);color:var(--accent)}
+  .tag.na{background:transparent;border:1px solid var(--dim-line);color:var(--dim)}
+  .warn{font-size:11px;color:var(--accent2);font-weight:700;white-space:nowrap}
+  footer{position:fixed;bottom:0;left:0;right:0;z-index:30;background:var(--ground);
+    border-top:3px solid var(--accent);padding:14px 32px;display:flex;align-items:center;gap:18px}
+  footer .sel{font-size:15px;font-weight:800}
+  footer button{background:var(--accent);color:var(--ground);border:none;padding:11px 22px;
+    border-radius:9px;font-size:15px;font-weight:800;cursor:pointer}
+  footer button:hover{background:var(--accent2);color:#fff}
+  #out-wrap{display:none;position:fixed;inset:0;z-index:40;background:rgba(1,20,45,.88);padding:5vh 8vw}
+  #out-box{background:var(--panel);border:2px solid var(--accent);border-radius:14px;
+    padding:22px;max-height:90vh;display:flex;flex-direction:column;gap:12px}
+  #out-box h3{color:var(--accent);font-size:16px}
+  #out-box .hint{font-size:12px;color:var(--muted)}
+  #out-box textarea{flex:1;min-height:300px;background:var(--code-bg);color:var(--text);
+    border:1px solid var(--grad2);border-radius:8px;padding:12px;
+    font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12.5px;resize:vertical}
+  #out-box .btns{display:flex;gap:10px;flex-wrap:wrap}
+  #out-box .btns button{background:var(--accent);color:var(--ground);border:none;
+    padding:9px 18px;border-radius:8px;font-weight:800;cursor:pointer;font-size:14px}
+  #out-box .btns .ghost{background:transparent;border:1px solid var(--accent);color:var(--accent)}
+  .hid{display:none !important}
+  @media (max-width:640px){
+    header,.controls,main,footer{padding-left:16px;padding-right:16px}
+    .controls input[type=search]{width:100%}
+    #out-wrap{padding:3vh 4vw}
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>__TITLE__</h1>
+  <p>__SUBTITLE__</p>
+  <div class="counts" id="hdr-count"></div>
+</header>
+
+<div class="controls">
+  <input type="search" id="q" placeholder="Filter items&hellip;">
+  <button class="chip active" data-f="all">All</button>
+  <button class="chip" data-f="yes">Relevant</button>
+  <button class="chip" data-f="maybe">Maybe</button>
+  <button class="chip" data-f="na">Unlikely</button>
+  <button class="chip" data-f="sel">Selected</button>
+</div>
+
+<main id="main"></main>
+
+<footer>
+  <div class="sel" id="sel-count">0 selected</div>
+  <button id="gen">Generate run list</button>
+</footer>
+
+<div id="out-wrap">
+  <div id="out-box">
+    <h3>Run list &mdash; copy and paste this back to Claude</h3>
+    <p class="hint">On a phone or Termius use <b>Copy one-line</b> &mdash; a multi-line paste splits into separate prompts there.</p>
+    <textarea id="out" readonly></textarea>
+    <div class="btns">
+      <button id="copy">Copy to clipboard</button>
+      <button id="copy1">Copy one-line</button>
+      <button class="ghost" id="close">Close</button>
+    </div>
+    <div class="hint" id="copy-status"></div>
+  </div>
+</div>
+
+<script>
+// Rows: [group, id, desc, tag, warn?]  tag: "yes" (pre-checked) | "maybe" | "na"
+// The data placeholder below is substituted by assets/render-picker.cjs, which JS-escapes the JSON so a row
+// can never close this script block. In-memory state only — never localStorage/sessionStorage
+// (they fail in sandboxed artifact iframes).
+const DATA = __DATA__;
+
+// @core-begin — DOM-free helpers; the plugin test evaluates this block on its own.
+const ESC = {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"};
+const esc = (s)=>String(s==null?"":s).replace(/[&<>"']/g,c=>ESC[c]);
+// Item ids feed the paste-back grammar: CR/LF (and the U+2028/U+2029 line separators) split the
+// multi-line form, ";" splits the one-line form. Only those delimiters are neutralised \u2014 an id is
+// the exact runnable identifier, so ordinary internal whitespace (a quoted "a  b", a tab) survives.
+const cleanId = (s)=>String(s==null?"":s).replace(/[\r\n\u2028\u2029;]+/g," ").trim();
+const buildRunList = (ids,total)=>`RUN LIST — approved (${ids.length} run / ${total-ids.length} skipped)\nRUN (${ids.length}):\n${ids.join("\n")}`;
+const buildOneLine = (ids)=>`RUN LIST: ${ids.join("; ")}`;
+const rowVisible = (tag,checked,filter,query,text)=>{
+  let show = filter==="all" || (filter==="sel" ? checked : tag===filter);
+  if(show && query) show = text.includes(query);
+  return show;
+};
+// @core-end
+
+const TAGS = {yes:"RUN", maybe:"MAYBE", na:"UNLIKELY"};
+const main = document.getElementById("main");
+const order = [...new Set(DATA.map(r=>r[0]))];
+
+order.forEach(group=>{
+  const rows = DATA.filter(r=>r[0]===group);
+  const sec = document.createElement("section");
+  sec.innerHTML = `
+    <div class="sec-head">
+      <h2>${esc(group)}</h2><span class="badge">${rows.length} items</span>
+      <button data-act="all">select all</button><button data-act="none">select none</button>
+    </div><div class="rows"></div>`;
+  const wrap = sec.querySelector(".rows");
+  rows.forEach(r=>{
+    const [g,rawId,d,t,w] = r;
+    const id = cleanId(rawId);
+    const tag = TAGS[t] ? t : "maybe";
+    const label = document.createElement("label");
+    label.className = "row"; label.dataset.tag = tag; label.dataset.id = id;
+    label.dataset.text = (id+" "+d).toLowerCase();
+    label.innerHTML = `
+      <input type="checkbox" ${tag==="yes"?"checked":""}>
+      <code>${esc(id)}</code>
+      <span class="desc">${esc(d)}</span>
+      ${w?`<span class="warn">&#9888; ${esc(w)}</span>`:""}
+      <span class="tag ${tag}">${TAGS[tag]}</span>`;
+    wrap.appendChild(label);
+  });
+  main.appendChild(sec);
+});
+
+const allRows = [...document.querySelectorAll(".row")];
+const selCount = document.getElementById("sel-count");
+const hdrCount = document.getElementById("hdr-count");
+let filter = "all", query = "";
+
+function applyFilter(){
+  allRows.forEach(row=>{
+    const checked = row.querySelector("input").checked;
+    row.classList.toggle("hid", !rowVisible(row.dataset.tag, checked, filter, query, row.dataset.text));
+  });
+  document.querySelectorAll("section").forEach(sec=>{
+    sec.classList.toggle("hid", sec.querySelectorAll(".row:not(.hid)").length===0);
+  });
+}
+function updateCounts(){
+  const sel = allRows.filter(r=>r.querySelector("input").checked).length;
+  selCount.textContent = `${sel} selected`;
+  hdrCount.textContent = `${DATA.length} items total • ${sel} selected`;
+  if(filter==="sel") applyFilter();
+}
+document.querySelectorAll(".chip").forEach(c=>c.addEventListener("click",()=>{
+  document.querySelectorAll(".chip").forEach(x=>x.classList.remove("active"));
+  c.classList.add("active"); filter = c.dataset.f; applyFilter();
+}));
+document.getElementById("q").addEventListener("input",e=>{
+  query = e.target.value.trim().toLowerCase(); applyFilter();
+});
+main.addEventListener("change",updateCounts);
+main.addEventListener("click",e=>{
+  if(e.target.dataset.act){
+    e.preventDefault();
+    const sec = e.target.closest("section");
+    sec.querySelectorAll(".row:not(.hid) input").forEach(i=>i.checked = e.target.dataset.act==="all");
+    updateCounts();
+  }
+});
+
+// Paste-back grammar (both forms are parsed by the skill):
+//   multi-line:  RUN LIST — approved (N run / M skipped) / RUN (N): / one id per line
+//   one-line:    RUN LIST: id; id; id        (phone/Termius-safe)
+const outWrap = document.getElementById("out-wrap");
+const out = document.getElementById("out");
+const copyStatus = document.getElementById("copy-status");
+const selectedIds = ()=>allRows.filter(r=>r.querySelector("input").checked).map(r=>r.dataset.id);
+const setStatus = (t)=>{ copyStatus.textContent = t; };
+// Clipboard: the async API rejects in sandboxed iframes and on denied permission, so the
+// fallback must run on the rejection, not on a synchronous throw.
+async function copyText(text){
+  out.value = text; out.focus(); out.select();
+  try{ await navigator.clipboard.writeText(text); setStatus("Copied."); return true; }catch(e){}
+  try{ out.select(); if(document.execCommand("copy")){ setStatus("Copied."); return true; } }catch(e){}
+  setStatus("Clipboard blocked — the text is selected above; copy it manually.");
+  return false;
+}
+document.getElementById("gen").addEventListener("click",()=>{
+  out.value = buildRunList(selectedIds(), allRows.length);
+  setStatus("");
+  outWrap.style.display = "block";
+  out.focus(); out.select();
+});
+document.getElementById("close").addEventListener("click",()=>outWrap.style.display="none");
+document.getElementById("copy").addEventListener("click",()=>{ copyText(out.value); });
+document.getElementById("copy1").addEventListener("click",()=>{ copyText(buildOneLine(selectedIds())); });
+updateCounts(); applyFilter();
+</script>
+</body>
+</html>

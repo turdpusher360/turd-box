@@ -33,16 +33,18 @@ describe('action metadata', () => {
       expect(source).not.toMatch(/\bFUCKED\b/);
     }
 
-    // Public-facing surfaces expose only CLEAN/RISK/BLOCKED. entrypoint.sh is
-    // EXEMPT from the ERROR/UNKNOWN ban: its fail-closed logic (f2f04b40) uses
-    // ERROR/UNKNOWN as internal "could-not-complete" states mapped to exit 2 —
-    // never surfaced as a public verdict.
+    // Public-facing surfaces expose only CLEAN/RISK/BLOCKED/INCOMPLETE. entrypoint.sh
+    // is EXEMPT from the ERROR/UNKNOWN ban: its fail-closed logic (f2f04b40) uses
+    // ERROR/UNKNOWN as internal "could-not-complete" pass states mapped to exit 2.
+    // The run-level verdict for that case is INCOMPLETE, never ERROR or
+    // UNKNOWN. A single pass still reports CLEAN, RISK or BLOCKED (passes.json).
     for (const source of [actionYml, readme, passes]) {
       expect(source).not.toMatch(/\bUNKNOWN\b/);
       expect(source).not.toMatch(/\bERROR\b/);
     }
 
-    expect(actionYml).toContain('Overall verdict: CLEAN, RISK, or BLOCKED');
+    expect(actionYml).toContain('Overall verdict: CLEAN, RISK, BLOCKED, or INCOMPLETE');
+    expect(readme).toContain('INCOMPLETE');
     expect(passes).toContain('CLEAN|RISK|BLOCKED');
   });
 

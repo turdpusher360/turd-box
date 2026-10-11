@@ -3,14 +3,14 @@ name: sonnet-execute
 description: General-purpose execution runtime for skill-dispatched work. All domain fix-* and ops-infra skills route here.
 tools: Bash, Grep, Glob, Read, Edit, Write, mcp__dev-memory__memory_search, mcp__dev-memory__memory_store
 model: inherit
-effort: high
+effort: xhigh
 memory: project
 last-verified: 2026-05-14
 ---
 
 # sonnet-execute
 
-General-purpose execution runtime (effort: high) for all skill-dispatched execution. Agent name retained for compatibility; model selection inherits the active runtime unless explicitly overridden at spawn. Invoked with domain skills (`fix-hook`, `fix-aisle`, `fix-hud`, `fix-kernel`, `fix-plugin`, `fix-commander`, `fix-wizard`, `fix-cloudflare`, `fix-d365`, `fix-teams`, `ops-infra`, etc.).
+General-purpose execution runtime (effort: xhigh) for all skill-dispatched execution. Agent name retained for compatibility; model selection inherits the active runtime unless explicitly overridden at spawn. Invoked with domain skills (`fix-hook`, `fix-aisle`, `fix-hud`, `fix-kernel`, `fix-plugin`, `fix-commander`, `fix-wizard`, `fix-cloudflare`, `fix-d365`, `fix-teams`, `ops-infra`, etc.).
 
 You are a RUNTIME. Domain knowledge comes from:
   (a) the invoked skill body (workflow + output contract)

@@ -85,6 +85,27 @@ const STATE_SUBDIRS = Object.freeze([
 ]);
 
 let _derivedProjectId = null;
+let _derivedRoot = null;
+
+function rootFromCommonDir(result, pathImpl = path) {
+  if (!result || result.status !== 0) return null;
+  let out = String(result.stdout || '').trim();
+  if (!out || /[\r\n]/.test(out) || !pathImpl.isAbsolute(out)) return null;
+  // Git for Windows prints '/', but a caller-set GIT_DIR can carry '\'. Fold it on
+  // win32 only so the '/.git' strip sees it; on POSIX '\' is a filename character.
+  if (pathImpl.sep === '\\') out = out.replace(/\\/g, '/');
+  const root = (out.endsWith('/.git') ? out.slice(0, -'/.git'.length) : out).trim();
+  return root || null;
+}
+
+function slugifyRoot(root) {
+  return root.replace(/[\\/:\s_]/g, '-').replace(/^-+/, '');
+}
+
+// Slugs are lossy ('/a/b_c' and '/a/b-c' share one), so root checks compare paths.
+function sameRoot(cwd, root, pathImpl = path) {
+  return pathImpl.resolve(cwd) === pathImpl.resolve(root);
+}
 
 /**
  * Validate a config object against the AISLE schema.
@@ -254,6 +275,12 @@ module.exports = {
    */
   STATE_SUBDIRS,
 
+  /** Pure test seam for validating platform-specific common-dir output. */
+  _rootFromCommonDir: rootFromCommonDir,
+
+  /** Pure test seam for the cwd-versus-root path comparison. */
+  _sameRoot: sameRoot,
+
   /**
    * Derive a project ID from the current working directory.
    * Matches the CC slug format used in ~/.claude/projects/.
@@ -263,30 +290,38 @@ module.exports = {
    * Example: 'C:\My_Project' -> 'C--My-Project'
    * (backslash -> dash, colon -> dash, underscore -> dash)
    *
-   * Memoized per process-lifetime: `git worktree list` costs ~140ms and is
-   * called 4+ times during AISLE boot. CWD and repo root are constant for
+   * Memoized per process-lifetime because CWD and repo root are constant for
    * a given hook process invocation.
    *
    * @returns {string} project slug
    */
   deriveProjectId() {
     if (_derivedProjectId !== null) return _derivedProjectId;
-    // Use git to resolve the main worktree path (not cwd, which may be a linked worktree)
+    // The old list visited every registration: 4.4-7.5 s at 150 registrations,
+    // then killed at 3 s. The common dir mirrors git's main-worktree path
+    // without that scan. Non-repos, non-zero exits, old git's echoed flag, and
+    // non-absolute output fall back to cwd.
     let root;
     try {
       const result = require('child_process').spawnSync(
-        'git', ['worktree', 'list', '--porcelain'],
+        'git', ['rev-parse', '--path-format=absolute', '--git-common-dir'],
         { encoding: 'utf8', timeout: 3000, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, GIT_OPTIONAL_LOCKS: '0' } }
       );
-      if (result.stdout) {
-        const match = result.stdout.match(/^worktree\s+(.+)/m);
-        if (match) root = match[1].trim();
-      }
+      root = rootFromCommonDir(result);
     } catch { /* fall through to cwd */ }
     root = root || process.cwd();
+    _derivedRoot = root;
     // P0-5 fix: include underscore in replacement class to match CC slug format
-    _derivedProjectId = root.replace(/[\\/:\s_]/g, '-').replace(/^-+/, '');
+    _derivedProjectId = slugifyRoot(root);
     return _derivedProjectId;
+  },
+
+  cwdIsProjectRoot() {
+    const id = this.deriveProjectId();
+    // Compare the real root when this module derived the ID. A replaced
+    // deriveProjectId (a test stub) memoizes no root, so it keeps the slug check.
+    if (_derivedRoot !== null && id === _derivedProjectId) return sameRoot(process.cwd(), _derivedRoot);
+    return slugifyRoot(process.cwd()) === id;
   },
 
   /**

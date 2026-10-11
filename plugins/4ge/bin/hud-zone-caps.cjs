@@ -30,6 +30,7 @@ const CAP_SHORT = {
   'file-integrity': 'files',
   'process-health': 'process',
   'autoresearch': 'autores',
+  'memory-service': 'memory',
   // Naturally short (≤10 chars) — no remapping needed:
   //   git, infra, audit, forge, aisle
 };
@@ -47,6 +48,7 @@ const CAP_FILES = {
   'forge':         'forge.cjs',
   'autoresearch':  'autoresearch.cjs',
   'aisle':         'aisle.cjs',
+  'memory-service': 'memory-service.cjs',
 };
 
 // Resolve the capabilities directory once (absolute path for file:// URLs).
@@ -82,20 +84,24 @@ function renderCapsZone(state, palette) {
   const items = [];
   const seen = new Set();
 
+  // Green only on an observed ok === true. No boolean ok means unobserved:
+  // warn, never ready. ok === false stays error (shelved included, as before).
+  const readiness = (cap) => ({
+    ok: !!cap && cap.ok === true,
+    unknown: !cap || typeof cap.ok !== 'boolean',
+  });
+
   for (const name of CAP_ORDER) {
     if (!(name in caps)) continue;
-    const cap = caps[name];
-    const ok = cap && cap.ok !== false;
     const short = CAP_SHORT[name] || name;
-    items.push({ name: short, ok, fullName: name });
+    items.push({ name: short, ...readiness(caps[name]), fullName: name });
     seen.add(name);
   }
 
   for (const [name, cap] of Object.entries(caps)) {
     if (seen.has(name)) continue;
-    const ok = cap && cap.ok !== false;
     const short = CAP_SHORT[name] || name.slice(0, 10);
-    items.push({ name: short, ok, fullName: name });
+    items.push({ name: short, ...readiness(cap), fullName: name });
   }
 
   // Empty state — no caps reported
@@ -116,7 +122,7 @@ function renderCapsZone(state, palette) {
   for (let i = 0; i < items.length; i += perRow) {
     const row = items.slice(i, i + perRow);
     const parts = row.map((item) => {
-      const dotColor = item.ok ? 'ok' : 'error';
+      const dotColor = item.ok ? 'ok' : item.unknown ? 'warn' : 'error';
       const label = osc8CapLink(item.fullName, item.name.padEnd(10));
       return colorize(palette, dotColor, '\u25CF') + ' ' + colorize(palette, 'muted', label);
     });

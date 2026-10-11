@@ -2,7 +2,7 @@
 name: respawn
 description: "Context Respawn — extract decision chain, write DCD, prepare fresh instance with continuity"
 tools: Bash, Read, Write
-effort: low
+effort: xhigh
 paths: ["**"]
 disable-model-invocation: true
 ---

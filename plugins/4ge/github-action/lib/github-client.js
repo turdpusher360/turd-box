@@ -133,17 +133,33 @@ function formatSummary(report) {
     ? ['P1', 'P2', 'P3', 'P4', 'P5', 'P6']
     : ['P1', 'P2', 'P3'];
 
+  // A pass listed in pass_errors did not return a usable result, so its row says
+  // INCOMPLETE whatever its finding count.
+  const erroredPasses = new Set(passErrors.map((item) => item.pass));
+
   for (const pid of runPasses) {
     const counts = passCounts[pid] || { total: 0, critical: 0, high: 0 };
-    const statusIcon = counts.total === 0 ? 'CLEAN' : counts.critical > 0 || counts.high > 0 ? 'BLOCKED' : 'RISK';
+    const statusIcon = erroredPasses.has(pid)
+      ? 'INCOMPLETE'
+      : counts.total === 0 ? 'CLEAN' : counts.critical > 0 || counts.high > 0 ? 'BLOCKED' : 'RISK';
     passTable.push(`| ${pid}: ${passNames[pid]} | ${statusIcon} | ${counts.total} |`);
   }
 
-  const verdictLine = verdict === 'CLEAN'
-    ? 'No issues found.'
-    : verdict === 'RISK'
-      ? `${stats.total} findings — review before merging.`
-      : `${stats.critical} CRITICAL + ${stats.high} HIGH findings — do not merge.`;
+  // "No issues found." only for a CLEAN run with no pass errors and no findings. A
+  // CLEAN verdict that still lists findings gets the findings line; an incomplete
+  // or unrecognised result says plainly that it is not clean.
+  let verdictLine;
+  if (verdict === 'BLOCKED') {
+    verdictLine = `${stats.critical} CRITICAL + ${stats.high} HIGH findings — do not merge.`;
+  } else if (verdict === 'INCOMPLETE' || passErrors.length > 0) {
+    verdictLine = 'Review could not complete: one or more passes did not return a usable result. This is not a clean result.';
+  } else if (verdict === 'CLEAN' && stats.total === 0) {
+    verdictLine = 'No issues found.';
+  } else if (verdict === 'RISK' || verdict === 'CLEAN') {
+    verdictLine = `${stats.total} findings — review before merging.`;
+  } else {
+    verdictLine = 'Review result not recognised. This is not a clean result.';
+  }
 
   const modeLines = isReportOnly
     ? ['', '> Report-only mode: this review is posted as COMMENT and does not request changes.']
@@ -239,22 +255,23 @@ function formatUnanchored(findings) {
 
 async function createReview(commitSha, findings, lineIndex) {
   const { stats } = report;
+  const passErrors = Array.isArray(report.pass_errors) ? report.pass_errors : [];
 
   // GitHub review event:
-  //   APPROVE    → CLEAN (no HIGH/CRITICAL)
-  //   COMMENT    → MEDIUM/LOW only
-  //   REQUEST_CHANGES → HIGH/CRITICAL present
+  //   COMMENT         → report-only mode (fail_on_severity NONE)
+  //   REQUEST_CHANGES → BLOCKED verdict, or HIGH/CRITICAL present
+  //   APPROVE         → only a CLEAN verdict with no pass errors and no findings
+  //   COMMENT         → everything else: RISK, INCOMPLETE, an unrecognised
+  //                     verdict, or pass errors. An errored run never approves.
   let event;
   if (report.fail_on_severity === 'NONE') {
     event = 'COMMENT';
-  } else if (report.verdict === 'BLOCKED') {
+  } else if (report.verdict === 'BLOCKED' || stats.critical > 0 || stats.high > 0) {
     event = 'REQUEST_CHANGES';
-  } else if (stats.critical > 0 || stats.high > 0) {
-    event = 'REQUEST_CHANGES';
-  } else if (stats.total > 0) {
-    event = 'COMMENT';
-  } else {
+  } else if (report.verdict === 'CLEAN' && passErrors.length === 0 && stats.total === 0) {
     event = 'APPROVE';
+  } else {
+    event = 'COMMENT';
   }
 
   // Partition findings by whether their line is actually present in the PR diff.

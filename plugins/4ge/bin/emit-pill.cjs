@@ -129,17 +129,23 @@ function collectPillInputs(opts) {
   const execGit = typeof o.execGit === 'function' ? o.execGit : makeExecGit(cwd);
 
   // Live git beats cartridge (pill design constraints 1–2, spec §6.3).
+  // DFE-06 truth path: a git call that THROWS is recorded as gitFailed so the
+  // rendered HEAD line says UNKNOWN and the CLI exits non-zero, instead of a
+  // quiet "unknown" that reads like a missing input.
   let head;
   let branch;
+  let gitFailed = false;
   try {
     head = execGit('rev-parse --short=12 HEAD') || null;
   } catch {
     head = null;
+    gitFailed = true;
   }
   try {
     branch = execGit('branch --show-current') || null;
   } catch {
     branch = null;
+    gitFailed = true;
   }
 
   const cart = o.cartridge && typeof o.cartridge === 'object' ? o.cartridge : null;
@@ -224,7 +230,7 @@ function collectPillInputs(opts) {
   }
   const operatorPending = countOpenQueueRows(queueText);
 
-  return { repo: cwd, branch, head, campaign, shipped, lanes, next, tripwires, operatorPending };
+  return { repo: cwd, branch, head, gitFailed, campaign, shipped, lanes, next, tripwires, operatorPending };
 }
 
 /**
@@ -240,7 +246,9 @@ function assembleLines(inp, opts) {
       '   branch: ' +
       (inp.branch || 'unknown') +
       '   HEAD: ' +
-      (inp.head || 'unknown'),
+      (inp.gitFailed
+        ? 'UNKNOWN (git failed: verify HEAD by hand before adopting this pill)'
+        : (inp.head || 'unknown')),
   );
   lines.push(VERIFY_LINE);
   if (inp.campaign) {
@@ -286,6 +294,7 @@ function renderPill(inputs) {
     repo: raw.repo || null,
     branch: raw.branch || null,
     head: raw.head || null,
+    gitFailed: !!raw.gitFailed,
     campaign: raw.campaign || null,
     shipped: raw.shipped || null,
     lanes: Array.isArray(raw.lanes) ? raw.lanes : null,
@@ -347,6 +356,11 @@ function main(argv) {
     const pill = renderPill(inputs);
     writePillAtomic(path.resolve(cwd, out), pill + '\n');
     process.stdout.write(pill + '\n');
+    if (inputs.gitFailed) {
+      // The pill is written (it says UNKNOWN) but the run is not a success.
+      process.stderr.write('[emit-pill] git failed: HEAD is UNKNOWN in the pill; do not adopt it unverified\n');
+      return 1;
+    }
     return 0;
   } catch (err) {
     process.stderr.write(
