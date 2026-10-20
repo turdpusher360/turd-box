@@ -17,17 +17,18 @@ Dispatch on `sonnet-execute` for plugin domain work.
 ## Workflow
 
 1. `memory_search` for domain context (2-4 word query)
-2. Vocabulary doc is pre-loaded via CONTEXT_MAP injection
+2. Vocabulary doc is pre-loaded via CONTEXT_MAP injection (only when dispatched as sonnet-execute; otherwise Read the doc first)
 3. Grep/Glob for affected files per vocabulary doc enforce_paths
 4. Implement following patterns from vocabulary doc
 5. Run tests if applicable
 6. Write report to `_runs/<task-name>.md`
+7. Store key decisions with `memory_store`
 
 ## Constraints
 
 - Three distinct config files: .4ge/config.json (runtime), .4ge-wizard.json (wizard), .4ge-config.json (economy)
 - Never modify .4ge-wizard.json (wizard domain -- use fix-wizard skill)
-- Protected hooks (guard-git-scope, guard-dns-exfil, enforce-approved-agents, file-content-secret-guard) cannot be disabled
+- Protected hooks (guard-git-scope, guard-dns-exfil, enforce-approved-agents, file-content-secret-guard) cannot be disabled (config ids use underscores, plugins/4ge/lib/security-constants.cjs)
 - config-compiler.cjs is NOT a compiler -- it analyzes hook trigger frequency
 
 ## Handoff
@@ -36,3 +37,4 @@ Dispatch on `sonnet-execute` for plugin domain work.
 - HUD rendering: dispatch with fix-hud skill on sonnet-execute
 - Hook wiring/protocol: dispatch with fix-hook skill on sonnet-execute
 - Cross-package features: dispatch on sonnet-execute
+- Gate/guard code touched (allow/deny hooks, settings and permissions, secret handling): say so in the report; the read-only audit (AGENTS.md › Model Routing) runs before the signed commit, launched by the author lane and checked by the lead

@@ -18,11 +18,12 @@ Dispatch on `sonnet-execute` for HUD engine work: zones, expressions, palette, s
 ## Workflow
 
 1. `memory_search` for HUD engine context
-2. Vocabulary doc is pre-loaded via CONTEXT_MAP injection
+2. Vocabulary doc is pre-loaded via CONTEXT_MAP injection (only when dispatched as sonnet-execute; otherwise Read the doc first)
 3. Glob/Grep for affected zone files in `plugins/4ge/bin/hud-*.cjs`
 4. Implement following pipeline and zone patterns from vocabulary doc
 5. Test: `npx vitest run plugins/4ge/bin/__tests__/` -- tests green
 6. Write report to `_runs/<task-name>.md`
+7. Store key decisions with `memory_store`
 
 ## Constraints
 
@@ -34,6 +35,6 @@ Dispatch on `sonnet-execute` for HUD engine work: zones, expressions, palette, s
 
 ## Handoff
 
-- Ops/deploy: dispatch on sonnet-execute with ops skill
-- Test infrastructure: dispatch with test skill on sonnet-execute
+- Ops/deploy: dispatch with ops-infra skill on sonnet-execute
+- Test infrastructure: dispatch with run-test or write-test skill on sonnet-execute
 - Cross-package features: dispatch on sonnet-execute

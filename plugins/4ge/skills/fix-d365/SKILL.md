@@ -21,6 +21,7 @@ Dispatch on `sonnet-execute` for d365 domain work.
 3. Implement following domain patterns
 4. Run tests if applicable
 5. Write report to `_runs/<task-name>.md`
+6. Store key decisions with `memory_store`
 
 ## Constraints
 
@@ -28,6 +29,7 @@ Dispatch on `sonnet-execute` for d365 domain work.
 - OData query syntax: $filter, $expand, $select -- case-sensitive field names
 - Webhook HMAC verification: timing-safe comparison required
 - Mock testing: use D365 response fixtures, not live API calls
+- Never read or print secret values (API tokens, client secrets, signing keys, bot credentials); use fixtures and secret stores
 
 ## Handoff
 

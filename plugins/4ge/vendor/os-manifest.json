@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-10-10T01:41:00.923Z",
-  "sourceHead": "9d4833a21031199bf05211eb923295097efdf917",
+  "generatedAt": "2026-10-13T15:30:25.457Z",
+  "sourceHead": "2114e9b4b403a659385436e659df1d147dc3b130",
   "files": {
     "lib/aisle/.gitignore": {
       "sourceSha256": "051f52b7c0fb350f7e8e5cd2e6aceb85e7cf198ff9062f9b52959eac14209671",
@@ -463,8 +463,8 @@
       "transformed": true
     },
     "lib/os/registry/harness-gate-baseline.json": {
-      "sourceSha256": "0f2f136d91638342d8f0809109096590cba044ffbe2227c4438b97a944caa8dd",
-      "vendoredSha256": "0f2f136d91638342d8f0809109096590cba044ffbe2227c4438b97a944caa8dd",
+      "sourceSha256": "6e4601911a3e498ff290f6e8a435721fde63cd83e7dc59b9b065221cc701edc1",
+      "vendoredSha256": "6e4601911a3e498ff290f6e8a435721fde63cd83e7dc59b9b065221cc701edc1",
       "transformed": false
     },
     "lib/os/registry/register-loader.cjs": {

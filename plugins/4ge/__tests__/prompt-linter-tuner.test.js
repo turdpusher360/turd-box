@@ -49,6 +49,53 @@ describe('prompt-linter-tuner', () => {
     expect(demotions.some(d => d.rule === 'new-rule')).toBe(false);
   });
 
+  it('keeps required checks with misses eligible for demotion', () => {
+    const history = Array.from({ length: 10 }, (_, i) => ({
+      rule: 'required-check', required: true, followed: i === 0,
+    }));
+
+    expect(computeFollowThroughRate(history, 'required-check')).toBe(0.1);
+    expect(suggestDemotions(history)).toEqual([
+      expect.objectContaining({ rule: 'required-check', rate: 0.1, total: 10 }),
+    ]);
+  });
+
+  it('does not demote advisory checks with misses', () => {
+    const history = Array.from({ length: 10 }, (_, i) => ({
+      rule: 'verification:lint-before-commit', required: false, followed: i === 0,
+    }));
+
+    // As with absent history, no eligible requirements yields the existing zero sentinel.
+    expect(computeFollowThroughRate(history, 'verification:lint-before-commit')).toBe(0);
+    expect(suggestDemotions(history)).toEqual([]);
+  });
+
+  it('excludes advisory outcomes from mixed follow-through rates and demotions', () => {
+    const required = Array.from({ length: 10 }, (_, i) => ({
+      rule: 'mixed-check', required: true, followed: i === 0,
+    }));
+    const advisory = [
+      ...Array.from({ length: 10 }, () => ({ rule: 'mixed-check', required: false, followed: false })),
+      ...Array.from({ length: 10 }, () => ({ rule: 'mixed-check', required: false, followed: true })),
+      ...Array.from({ length: 10 }, () => ({ rule: 'advisory-only', required: false, followed: false })),
+    ];
+    const history = [...required, ...advisory];
+
+    expect(computeFollowThroughRate(history, 'mixed-check')).toBe(0.1);
+    expect(suggestDemotions(history)).toEqual([
+      expect.objectContaining({ rule: 'mixed-check', rate: 0.1, total: 10 }),
+    ]);
+  });
+
+  it('does not count advisory misses toward the minimum required sample', () => {
+    const history = [
+      ...Array.from({ length: 4 }, () => ({ rule: 'small-sample', followed: false })),
+      ...Array.from({ length: 10 }, () => ({ rule: 'small-sample', required: false, followed: false })),
+    ];
+
+    expect(suggestDemotions(history)).toEqual([]);
+  });
+
   it('includes follow-through rate in demotion suggestion', () => {
     const history = Array.from({ length: 10 }, () => ({ rule: 'low-rule', followed: false }));
     const demotions = suggestDemotions(history);

@@ -1,6 +1,60 @@
 #!/usr/bin/env node
 'use strict';
 
+// --- Statusline fast path (runs before the heavy requires below) ---
+// CC polls `--mode=statusline` every 2 s per session. Read stdin synchronously,
+// and when this session's cached frame is fresh and its inputs unchanged,
+// print it and stop before loading ~25 modules and reading drvfs state.
+// Any failure (TTY, EAGAIN, no cache, bad JSON) falls through to the normal
+// full render; the pre-read stdin is then reused by the CLI entry below.
+let PREREAD_STDIN = null;
+let STATUSLINE_CACHE = null;
+function isStatuslineArgv(argv) {
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === '--mode=statusline') return true;
+    if (argv[i] === '--mode' && argv[i + 1] === 'statusline') return true;
+  }
+  return false;
+}
+// Environment keys the statusline render reads (width, color, context line,
+// companion state path, project root). Any change to one is a cache miss.
+const STATUSLINE_ENV_KEYS = [
+  'CLAUDE_PROJECT_DIR', 'COLUMNS', 'LINES', 'TERM', 'COLORTERM', 'NO_COLOR',
+  'CLICOLOR', 'CLICOLOR_FORCE', 'COMPANION_STATE_PATH',
+];
+function statuslineCacheExtra(argv) {
+  const pe = process.env;
+  const vars = {};
+  for (const k of STATUSLINE_ENV_KEYS) if (pe[k] !== undefined) vars[k] = pe[k];
+  for (const k of Object.keys(pe).sort()) {
+    if (k.startsWith('FORGE_HUD_') && k !== 'FORGE_HUD_STATUSLINE_CACHE_DIR') vars[k] = pe[k];
+  }
+  return { argv, vars };
+}
+// Cache dir override (tests). Under Vitest the cache is off unless a test
+// names its own dir, so spawned CLI tests never share the live tmp cache.
+function statuslineCacheDir() {
+  const dir = process.env.FORGE_HUD_STATUSLINE_CACHE_DIR;
+  if (dir) return dir;
+  return process.env.VITEST ? null : undefined;
+}
+if (require.main === module && isStatuslineArgv(process.argv.slice(2))) {
+  try {
+    if (!require('node:tty').isatty(0) && statuslineCacheDir() !== null) {
+      PREREAD_STDIN = require('node:fs').readFileSync(0, 'utf8');
+      STATUSLINE_CACHE = require('../lib/hud-statusline-cache.cjs');
+      const parsed = STATUSLINE_CACHE.parseStdin(PREREAD_STDIN);
+      const hit = parsed
+        ? STATUSLINE_CACHE.lookup(parsed, { dir: statuslineCacheDir(), extra: statuslineCacheExtra(process.argv.slice(2)) })
+        : null;
+      if (hit !== null) {
+        process.stdout.write(hit);
+        return; // module-scope return (CJS wrapper): skip the full render
+      }
+    }
+  } catch { /* fast path unavailable: render in full */ }
+}
+
 const { colorize, stripAnsi, displayWidth, fitAnsi } = require('./hud-palette.cjs');
 const { buildCanonicalState, countNotReady } = require('./hud-state.cjs');
 const { createCanvas, paintRows, allocateVerticalZones, render } = require('./hud-canvas.cjs');
@@ -25,8 +79,10 @@ const { renderWeasleyZone, ZONE_META: WEASLEY_META, weasleyVisible } = require('
 const { renderBoardZone, ZONE_META: BOARD_META, boardVisible } = require('./hud-zone-board.cjs');
 const { loadHudData, mergeHarnessStdin, resolveSessionUptime, applySessionIsolation } = require('./hud-data-loader.cjs');
 const { countSessionToolUses } = require('./hud-tool-count.cjs');
-const { renderSubstrateZone } = require('./hud-zone-substrate.cjs');
-const { composeScene } = require('./scene-compositor.cjs');
+// Substrate and scene modes are never reached from the statusline: load them on first use so
+// a tick does not pay their file opens (each is slow on the drvfs checkout).
+const renderSubstrateZone = (...args) => require('./hud-zone-substrate.cjs').renderSubstrateZone(...args);
+const composeScene = (...args) => require('./scene-compositor.cjs').composeScene(...args);
 const {
   statuslineZoneMap,
   statuslineRoleMap,
@@ -578,7 +634,12 @@ function resolveCompanionFace(rawState, palette, modelFace, options = {}) {
       return colorize(palette, (modelFace && modelFace.color) || 'accent', face);
     }
 
-    const resolved = companion.resolveExpression(stdinJson);
+    // renderStatusLine resolves once per tick and passes the result in: every
+    // resolveExpression call is a read-modify-write of the shared companion state.
+    const resolved = Object.prototype.hasOwnProperty.call(options, 'resolved')
+      ? options.resolved
+      : companion.resolveExpression(stdinJson);
+    if (!resolved) throw new Error('companion expression unavailable');
 
     // faceMotion gate (Wave 1): the per-tool eye SWAP for thinking/exhausted is
     // the e4d905d2 regression. It is OFF by default — calm steady eyes. The swap
@@ -849,7 +910,15 @@ function renderStatusLine(rawState, maxRows) {
 
   // Row 1: Face + model + caps + ctx (grade removed — orb replaces it)
   const modelFace = resolveModelFace(session.modelId);
-  const faceStr = resolveCompanionFace(rawState, palette, modelFace);
+  // One companion resolve per tick, shared by the face (row 1) and the orb (rows 2-3).
+  // Each resolve rewrites the shared state file, so the two calls doubled the writes
+  // (SP1 D1/D4). A failed resolve leaves the orb at its default spin and the face at
+  // its failure fallback, as before.
+  let companionState = null;
+  try {
+    companionState = require('./companion-state.cjs').resolveExpression(rawState);
+  } catch { /* no companion = default spin */ }
+  const faceStr = resolveCompanionFace(rawState, palette, modelFace, { resolved: companionState });
   const modelId = session.modelId || session.model || '';
   const modelFamily = modelId.includes('fable') ? 'fable' : modelId.includes('mythos') ? 'mythos' : modelId.includes('opus') ? 'opus' : modelId.includes('sonnet') ? 'sonnet' : modelId.includes('haiku') ? 'haiku' : '';
   // Per-model color (fable, mythos and opus 5.5 bypass this — see renderModelLabel)
@@ -897,17 +966,15 @@ function renderStatusLine(rawState, maxRows) {
   const dot = `${SEP}\u00B7${RST}`;
 
   // Health orb: 3 chars x 2 rows, sits under the face on rows 2-3.
-  // Reads companion state for reactive spin speed.
-  let companionState = null;
-  try {
-    const companion = require('./companion-state.cjs');
-    companionState = companion.resolveExpression(rawState);
-  } catch { /* no companion = default spin */ }
+  // Reads the companion state resolved above for reactive spin speed.
   // Gate time-based animations on session-active flag. When idle, pass the
   // freeze timestamp (captured when session went idle) so the orb holds the
   // frame it was last on rather than snapping to rest. Output bytes stay
   // stable across CC's 2s statusLine polls — mobile Termius bounce fix.
-  const engineCwd = path.resolve(__dirname, '..', '..', '..');
+  // The flag and the companion config belong to the session's project, not to the folder
+  // this file sits in: an engine run from the plugin cache would otherwise never see the
+  // repo's active flag, and the orb would differ from the checkout engine on every tick.
+  const engineCwd = projectRoot;
   const animate = require('./companion-config.cjs').loadCompanionConfig(engineCwd).animate;
   // animate OFF → force the idle/frozen branch regardless of session activity
   const outerActive = animate ? isSessionActive(engineCwd) : false;
@@ -1003,8 +1070,10 @@ function renderStatusLine(rawState, maxRows) {
   const orbPad0 = orbRow0 + ' '.repeat(Math.max(0, prefixWidth - orbWidth));
   const orbPad1 = orbRow1 + ' '.repeat(Math.max(0, prefixWidth - orbWidth));
   // Feed rows (anomaly/reactive/compact) get a blank gutter the same width as the
-  // creature sprite, so their text lines up under the header body column.
-  const feedGutter = ' '.repeat(prefixWidth);
+  // creature sprite, so their text lines up under the header body column. It leads with
+  // the braille blank (BB) like rows 2-3: the harness trims leading normal spaces from
+  // every line, which flushed every feed row to column 0.
+  const feedGutter = BB + ' '.repeat(Math.max(0, prefixWidth - 1));
 
   // Row 1: face · model · caps · ctx% · 5h% ↻timer · effort · think:off
   const r1 = [
@@ -1259,6 +1328,33 @@ function renderByMode(rawState, mode, maxRows) {
   }
 }
 
+// True when a reactive event's statusline rows include the activity zone. That zone is
+// the one statusline row that reads state.transcript: renderReactiveStatuslineRows draws
+// it through renderCatalogEntry, which falls back to its full renderer.
+function reactiveNeedsTranscript(reactive) {
+  const event = reactive && reactive.event;
+  if (!event) return false;
+  const zoneKeys = REACTIVE_STATUSLINE_ZONES[event] || ['context'];
+  return zoneKeys.some((zoneKey) => {
+    const entry = getZoneEntry(zoneKey);
+    return !!entry && entry.key === 'activity';
+  });
+}
+
+// Load options for the statusline CLI branch. A statusline renders one session, so it
+// picks data by the live stdin session id, never by the shared session-meta.json session
+// (another session's transcript). It parses a transcript only while a fresh reactive event
+// shows the activity zone, and then only this session's own (the loader's strict pick).
+function statuslineLoadOptions(stdinData, effectiveRoot) {
+  return {
+    stateDir: path.join(effectiveRoot, '_runs', 'os'),
+    cwd: effectiveRoot,
+    runExpensiveProbes: false,
+    skipTranscript: (reactive) => !reactiveNeedsTranscript(reactive),
+    sessionId: stdinData && typeof stdinData.session_id === 'string' ? stdinData.session_id : '',
+  };
+}
+
 // --- CLI Entry ---
 if (require.main === module) {
   const PLUGIN_ROOT = path.resolve(__dirname, '..', '..', '..');
@@ -1288,16 +1384,9 @@ if (require.main === module) {
     }
   }
 
-  // Read JSON from stdin
-  let input = '';
-  const chunks = [];
-  process.stdin.setEncoding('utf8');
-
-  // Handle piped input
-  if (!process.stdin.isTTY) {
-    process.stdin.on('data', (chunk) => chunks.push(chunk));
-    process.stdin.on('end', () => {
-      input = chunks.join('');
+  // Read JSON from stdin (already read synchronously by the statusline fast
+  // path when it ran; otherwise streamed).
+  const handleInput = (input) => {
       let stdinData = null;
       try {
         if (input && input.trim()) stdinData = JSON.parse(input);
@@ -1319,11 +1408,7 @@ if (require.main === module) {
       let rawState;
       if (mode === 'statusline') {
         // Statusline mode: load disk state without override, then apply harness merge
-        rawState = loadHudData({
-          stateDir: require('node:path').join(effectiveRoot, '_runs', 'os'),
-          cwd: effectiveRoot,
-          runExpensiveProbes: false,
-        });
+        rawState = loadHudData(statuslineLoadOptions(stdinData, effectiveRoot));
         if (stdinData) mergeHarnessStdin(rawState, stdinData);
         // S595 per-instance isolation (operator ruling S594): a statusline
         // speaks only for its own session — suppress foreign-session OS state
@@ -1341,6 +1426,8 @@ if (require.main === module) {
           cwd: effectiveRoot,
           runExpensiveProbes: mode === 'full',
           stdinOverride: stdinData,
+          // The live session picks the transcript; no stdin id keeps the meta session pick.
+          sessionId: stdinData && typeof stdinData.session_id === 'string' ? stdinData.session_id : undefined,
         });
       }
 
@@ -1385,7 +1472,19 @@ if (require.main === module) {
       }
       const output = renderByMode(rawState, mode, maxRows);
       process.stdout.write(output);
-    });
+      if (mode === 'statusline' && STATUSLINE_CACHE) {
+        const fresh = STATUSLINE_CACHE.parseStdin(input);
+        if (fresh) STATUSLINE_CACHE.store(fresh, output, { dir: statuslineCacheDir(), extra: statuslineCacheExtra(args) });
+      }
+  };
+
+  if (PREREAD_STDIN !== null) {
+    handleInput(PREREAD_STDIN);
+  } else if (!process.stdin.isTTY) {
+    const chunks = [];
+    process.stdin.setEncoding('utf8');
+    process.stdin.on('data', (chunk) => chunks.push(chunk));
+    process.stdin.on('end', () => handleInput(chunks.join('')));
   } else {
     // No stdin — assemble raw state from disk
     const rawState = loadHudData({
@@ -1421,6 +1520,7 @@ module.exports = {
   renderSubstrate,
   renderByMode,
   resolveProjectRoot,
+  statuslineLoadOptions,
   ZONE_CATALOG,
   getZoneEntry,
   getCompositeZoneEntries,

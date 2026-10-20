@@ -1,6 +1,6 @@
 {
   "_readme": "USD per 1,000,000 tokens, keyed by model-id PREFIX (longest-prefix match wins; exact id is the longest prefix). Consumed by lib/usage-meter.cjs loadPricing(). Override without editing this file: set FORGE_USAGE_PRICING to an alternate JSON path (same shape), or pass loadPricing({ path }). Every cost computed from this table is an ESTIMATE — none of these rates was verified against a vendor pricing page from inside this build; the operator can verify/correct any row (this file is config, not doctrine).",
-  "as_of": "2026-09-28",
+  "as_of": "2026-10-16",
   "source": "Operator-recorded anchors in workspace doctrine (global CLAUDE.md model hierarchy): Fable 5 = $10 in / $50 out per Mtoken, documented as 2x Opus 4.x (implying Opus 4.x $5/$25). Cache multipliers per Anthropic's long-standing convention: creation 1.25x input (5-minute TTL) or 2x input (1-hour TTL); reads 0.1x input.",
   "cache_note": "cache_write_5m = 1.25x input; cache_write_1h = 2x input; cache_read = 0.1x input. Entries lacking the ephemeral_5m/1h split are priced at the 5m rate (may underestimate 1h-heavy sessions).",
   "models": {
@@ -72,9 +72,9 @@
       "output": 10,
       "cache_write_5m": 2.5,
       "cache_write_1h": 4,
-      "cache_read": 0.2,
+      "cache_read": 0.1,
       "verified": true,
-      "basis": "Claude Code CHANGELOG 2.1.284 (2026-09-28): \"Added Claude Sonnet 5.5 (claude-sonnet-5-5), now the default Sonnet model on the Anthropic API - 1M context, $2/$10 per Mtok with $0.20/Mtok cache reads\". input/output/cache_read verified from that line; cache writes are the 1.25x/2x convention in cache_note, unverified"
+      "basis": "Claude Code CHANGELOG 2.1.284 (2026-09-28): \"Added Claude Sonnet 5.5 (claude-sonnet-5-5), now the default Sonnet model on the Anthropic API - 1M context, $2/$10 per Mtok with $0.20/Mtok cache reads\"; CHANGELOG 2.1.296 (2026-10-09): \"Updated /cost, the status line, --max-budget-usd and the SDK's cost figures to price Sonnet 5.5 cache reads at $0.10 per million tokens (was $0.20)\". input/output verified from the 2.1.284 line, cache_read from the 2.1.296 line; cache writes are the 1.25x/2x convention in cache_note, unverified. The bundled claude-api skill model table (cached 2026-10-06) still lists $0.20 cache reads; the 2.1.296 changelog bullet (2026-10-09) is the newer source"
     },
     "claude-sonnet-5": {
       "input": 2,
@@ -93,6 +93,15 @@
       "cache_read": 0.3,
       "verified": false,
       "basis": "training-data recollection of Sonnet 4.x list price ($3/$15); UNVERIFIED — no in-repo anchor"
+    },
+    "claude-haiku-5-5": {
+      "input": 0.1,
+      "output": 0.5,
+      "cache_write_5m": 0.125,
+      "cache_write_1h": 0.2,
+      "cache_read": 0.005,
+      "verified": false,
+      "basis": "Claude Code CHANGELOG 2.1.293 (2026-10-07): \"Added Claude Haiku 5.5 (claude-haiku-5-5), now the default Haiku model on the Anthropic API — 1M context, $0.10/$0.50 per Mtok ($0.50/$2.50 for prompts over 100K)\". input/output are the base rate from that line; this flat table cannot express the over-100K tier, so long-prompt turns are under-priced 5x (hence verified false). No cache rate is published: cache_read assumes the 0.05x-input ratio of the published 5.5 rows (Opus 5.5 $0.20 on $4; Sonnet 5.5 $0.10 on $2 from 2.1.296), not the 0.1x cache_note convention; cache writes are the 1.25x/2x convention. All cache rates unverified. Explicit so the claude-haiku catch-all ($1/$5) no longer prices Haiku 5.5"
     },
     "claude-haiku": {
       "input": 1,

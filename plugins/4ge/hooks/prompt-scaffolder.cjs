@@ -7,6 +7,10 @@ if (require.main === module) {
       const data = await readStdinJson();
 
       const prompt = (data.tool_input && data.tool_input.prompt) || data.user_prompt || '';
+      // A /secret capture never reaches the title file or stdout. A load
+      // failure lands in the catch below, which exits with no sink.
+      const { isSecretCapturePrompt } = require('./secret-capture-match.cjs');
+      if (isSecretCapturePrompt(prompt)) process.exit(0);
       if (!prompt || prompt.startsWith('/')) process.exit(0);
 
       const path = require('path');

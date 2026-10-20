@@ -24,8 +24,9 @@ Dispatch on `sonnet-execute` for ops-infra domain work.
 
 ## Constraints
 
-- Docker images pinned by digest -- update digests when bumping versions
+- Docker images pinned by digest -- a digest bump is a stack change: propose it, apply only with user approval
 - Never modify Docker stack or subscription tiers without user approval
+- Deploys, DNS and dashboard changes are owner-gated: implement and test locally, then stop for the operator's per-action approval; after approval, the owning lane runs the deploy and proves it live
 - WebFetch/fetch cannot reach localhost -- use Docker logs or curl from Bash
 - MCP diagnostics: check hub on port 8091, Streamable HTTP is stateless
 - Platform gotchas: see .claude/rules/platform-gotchas.md (auto-loaded)

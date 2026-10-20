@@ -123,6 +123,8 @@ const REAPER_LOG_TTL_MS = 2 * 60 * 60 * 1000;
 
 const HUD_HISTORY_TTL_MS = 6 * 60 * 60 * 1000;
 const HUD_HISTORY_MAX_SAMPLES = 120;
+// HUD_HISTORY_MAX_SAMPLES applies per session; the shared file keeps a few sessions' worth.
+const HUD_HISTORY_MAX_TOTAL_SAMPLES = 3 * HUD_HISTORY_MAX_SAMPLES;
 const HUD_HISTORY_MIN_SAMPLE_MS = 30000;
 const RIG_CONTEXT_DEFAULT_TTL_MS = 60 * 60 * 1000;
 
@@ -281,6 +283,8 @@ function normalizeHudHistorySample(sample, now = Date.now()) {
   if (now - tsMs > HUD_HISTORY_TTL_MS) return null;
 
   const normalized = { ts: new Date(tsMs).toISOString() };
+  const sid = typeof sample.sid === 'string' ? sample.sid.slice(0, 64) : '';
+  if (sid) normalized.sid = sid;
   const contextPct = clampPct(sample.contextPct);
   const rateFiveHour = clampPct(sample.rateFiveHour);
   const rateSevenDay = clampPct(sample.rateSevenDay);
@@ -291,14 +295,30 @@ function normalizeHudHistorySample(sample, now = Date.now()) {
   return normalized;
 }
 
+// Newest first: keep at most HUD_HISTORY_MAX_SAMPLES per session, then the newest
+// HUD_HISTORY_MAX_TOTAL_SAMPLES overall, returned oldest first. One shared cap let a
+// busy session evict every other session's samples.
+function capHudHistorySamples(samples) {
+  const perSession = new Map();
+  const kept = [];
+  for (let i = samples.length - 1; i >= 0; i -= 1) {
+    const sid = samples[i].sid || '';
+    const n = perSession.get(sid) || 0;
+    if (n >= HUD_HISTORY_MAX_SAMPLES) continue;
+    perSession.set(sid, n + 1);
+    kept.push(samples[i]);
+    if (kept.length >= HUD_HISTORY_MAX_TOTAL_SAMPLES) break;
+  }
+  return kept.reverse();
+}
+
 function readFreshHudHistory(filePath, now = Date.now()) {
   const raw = readJsonSafe(filePath);
   if (!raw || typeof raw !== 'object' || !Array.isArray(raw.samples)) return { v: 1, samples: [] };
   const samples = raw.samples
     .map((sample) => normalizeHudHistorySample(sample, now))
-    .filter(Boolean)
-    .slice(-HUD_HISTORY_MAX_SAMPLES);
-  return { v: 1, samples };
+    .filter(Boolean);
+  return { v: 1, samples: capHudHistorySamples(samples) };
 }
 
 function rigStatusRank(status) {
@@ -376,18 +396,28 @@ function readRigContext(filePath, now = Date.now()) {
   return normalizeRigContext(readJsonSafe(filePath), { now });
 }
 
-function hudHistorySessionFields(history) {
-  const samples = history && Array.isArray(history.samples) ? history.samples : [];
+function hudHistorySessionFields(history, sessionId) {
+  const all = history && Array.isArray(history.samples) ? history.samples : [];
+  // A string session id scopes the trend to that session's own samples: the history file
+  // is shared by every session rendering this repo, and a statusline speaks only for its
+  // own session. Samples with no `sid` (written before the field existed) belong to
+  // no session, so a scoped read skips them. No session id (fleet and full-HUD callers)
+  // keeps the whole file.
+  const samples = typeof sessionId === 'string'
+    ? all.filter((sample) => (sample.sid || '') === sessionId)
+    : all;
   const contextPctHistory = samples
     .map((sample) => sample.contextPct)
     .filter((value) => Number.isFinite(value));
   const rateLimitHistory = samples
     .filter((sample) => Number.isFinite(sample.rateFiveHour) || Number.isFinite(sample.rateSevenDay))
-    .map((sample) => ({
-      ts: sample.ts,
-      fiveHour: Number.isFinite(sample.rateFiveHour) ? sample.rateFiveHour : 0,
-      sevenDay: Number.isFinite(sample.rateSevenDay) ? sample.rateSevenDay : 0,
-    }));
+    .map((sample) => {
+      // A tier the stdin did not carry stays absent, never a stand-in 0.
+      const entry = { ts: sample.ts };
+      if (Number.isFinite(sample.rateFiveHour)) entry.fiveHour = sample.rateFiveHour;
+      if (Number.isFinite(sample.rateSevenDay)) entry.sevenDay = sample.rateSevenDay;
+      return entry;
+    });
 
   const fields = {};
   if (contextPctHistory.length > 0) fields.contextPctHistory = contextPctHistory;
@@ -395,10 +425,14 @@ function hudHistorySessionFields(history) {
   return fields;
 }
 
-function hydrateHudHistoryState(state, history) {
+function hydrateHudHistoryState(state, history, sessionId) {
   if (!state || typeof state !== 'object') return state;
   state.session = state.session || {};
-  Object.assign(state.session, hudHistorySessionFields(history));
+  // Replace, never merge: an empty scoped history must not leave an earlier, unscoped
+  // array on the state.
+  delete state.session.contextPctHistory;
+  delete state.session.rateLimitHistory;
+  Object.assign(state.session, hudHistorySessionFields(history, sessionId));
   return state;
 }
 
@@ -409,10 +443,19 @@ function sameHudHistoryValues(a, b) {
     && a.rateSevenDay === b.rateSevenDay;
 }
 
+function lastHudHistorySampleFor(samples, sid) {
+  for (let i = samples.length - 1; i >= 0; i -= 1) {
+    if ((samples[i].sid || '') === sid) return samples[i];
+  }
+  return undefined;
+}
+
 function appendHudHistorySample(state, options = {}) {
   if (!state || typeof state !== 'object' || !state.projectRoot || !state.session) return state;
   const now = options.now || Date.now();
+  const sid = typeof state.session.id === 'string' ? state.session.id.slice(0, 64) : '';
   const sample = { ts: new Date(now).toISOString() };
+  if (sid) sample.sid = sid;
 
   if (options.includeContext === true) {
     const contextPct = clampPct(state.session.contextPct);
@@ -420,8 +463,10 @@ function appendHudHistorySample(state, options = {}) {
   }
 
   if (options.includeRate === true && state.session.rateLimits && typeof state.session.rateLimits === 'object') {
-    const rateFiveHour = clampPct(state.session.rateLimits.fiveHour);
-    const rateSevenDay = clampPct(state.session.rateLimits.sevenDay);
+    // `rateTiers` names the tiers the stdin carried; a defaulted 0 is not a reading.
+    const tiers = options.rateTiers || { fiveHour: true, sevenDay: true };
+    const rateFiveHour = tiers.fiveHour === false ? null : clampPct(state.session.rateLimits.fiveHour);
+    const rateSevenDay = tiers.sevenDay === false ? null : clampPct(state.session.rateLimits.sevenDay);
     if (rateFiveHour !== null) sample.rateFiveHour = rateFiveHour;
     if (rateSevenDay !== null) sample.rateSevenDay = rateSevenDay;
   }
@@ -430,7 +475,9 @@ function appendHudHistorySample(state, options = {}) {
 
   const historyPath = path.join(state.projectRoot, '_runs', 'os', 'hud-history.json');
   const history = readFreshHudHistory(historyPath, now);
-  const last = history.samples[history.samples.length - 1];
+  // The same-value dedupe compares with THIS session's last sample: two sessions
+  // alternating readings no longer defeat it.
+  const last = lastHudHistorySampleFor(history.samples, sid);
   const lastMs = last ? Date.parse(last.ts) : 0;
   const tooSoonSame = last
     && sameHudHistoryValues(last, sample)
@@ -439,7 +486,7 @@ function appendHudHistorySample(state, options = {}) {
 
   const nextHistory = tooSoonSame
     ? history
-    : { v: 1, samples: [...history.samples, sample].slice(-HUD_HISTORY_MAX_SAMPLES) };
+    : { v: 1, samples: capHudHistorySamples([...history.samples, sample]) };
 
   if (!tooSoonSame) {
     try {
@@ -448,7 +495,7 @@ function appendHudHistorySample(state, options = {}) {
     } catch { /* best-effort -- HUD history must never break statusline render */ }
   }
 
-  return hydrateHudHistoryState(state, nextHistory);
+  return hydrateHudHistoryState(state, nextHistory, sid);
 }
 
 function clipHudText(value, max = 160) {
@@ -766,11 +813,23 @@ function loadHudData(opts = {}) {
 
   // Optional transcript enrichment (AD-6). Gated on freshness.
   let transcript = null;
+  // A caller that knows the live session (statusline stdin) picks the transcript by it,
+  // never by the shared session-meta.json session (the per-instance ruling).
+  // `skipTranscript` is for callers that render nothing from it: true, or a function of the
+  // fresh reactive state that returns true to skip (the statusline parses one only while a
+  // reactive event shows the activity zone). No live id (fleet and full HUD) keeps the meta
+  // session pick.
+  const liveSessionId = typeof opts.sessionId === 'string' ? opts.sessionId : undefined;
   try {
-    const { findTranscriptPath, loadTranscriptActivity } = require('./hud-transcript-source.cjs');
-    const sessionId = meta.session_id || (bootStatus && bootStatus.session_id) || '';
+    const skipTranscript = typeof opts.skipTranscript === 'function'
+      ? opts.skipTranscript(reactive) !== false
+      : !!opts.skipTranscript;
+    const sessionId = skipTranscript ? '' : (liveSessionId !== undefined
+      ? liveSessionId
+      : meta.session_id || (bootStatus && bootStatus.session_id) || '');
     if (sessionId) {
-      const transcriptPath = findTranscriptPath(cwd, sessionId);
+      const { findTranscriptPath, loadTranscriptActivity } = require('./hud-transcript-source.cjs');
+      const transcriptPath = findTranscriptPath(cwd, sessionId, { strict: liveSessionId !== undefined });
       if (transcriptPath && isFreshTranscriptPath(transcriptPath)) {
         const result = loadTranscriptActivity({ cwd, sessionId, transcriptPath });
         // Keep the final eligibility check: a transcript can cross the cutoff
@@ -800,7 +859,7 @@ function loadHudData(opts = {}) {
       toolCount: meta.tool_count_running || 0,
       uptime,
       rateLimits: 'N/A',
-      ...hudHistorySessionFields(hudHistory),
+      ...hudHistorySessionFields(hudHistory, liveSessionId),
     },
     os: {
       overallHealth,
@@ -902,6 +961,7 @@ function mergeHarnessStdin(state, harness) {
   if (!harness || typeof harness !== 'object') return state;
   let includeHistoryContext = false;
   let includeHistoryRate = false;
+  let historyRateTiers = null;
 
   // Model label
   if (harness.model) {
@@ -967,6 +1027,12 @@ function mergeHarnessStdin(state, harness) {
   if (harness.rate_limits) {
     const rl = harness.rate_limits;
     includeHistoryRate = true;
+    // The history records only the tiers this stdin carried; the row-1 figures below
+    // keep their defaulted 0.
+    historyRateTiers = {
+      fiveHour: !!(rl.five_hour && typeof rl.five_hour.used_percentage === 'number'),
+      sevenDay: !!(rl.seven_day && typeof rl.seven_day.used_percentage === 'number'),
+    };
     state.session.rateLimits = {
       fiveHour:
         (rl.five_hour && typeof rl.five_hour.used_percentage === 'number')
@@ -1071,6 +1137,7 @@ function mergeHarnessStdin(state, harness) {
     appendHudHistorySample(state, {
       includeContext: includeHistoryContext,
       includeRate: includeHistoryRate,
+      rateTiers: historyRateTiers || undefined,
     });
   }
 

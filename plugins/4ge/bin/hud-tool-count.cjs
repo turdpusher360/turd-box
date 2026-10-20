@@ -214,14 +214,18 @@ function pruneStaleCaches(dir, keepFile, now) {
 
 function writeCache(file, entry, { isNew, now }) {
   if (!file) return;
+  const tmp = `${file}.${process.pid}.${now}.tmp`;
   try {
     const dir = path.dirname(file);
     fs.mkdirSync(dir, { recursive: true });
-    const tmp = `${file}.${process.pid}.${now}.tmp`;
     fs.writeFileSync(tmp, JSON.stringify(entry), 'utf8');
     fs.renameSync(tmp, file);
     if (isNew) pruneStaleCaches(dir, file, now);
-  } catch { /* best-effort: the count is still right for this tick */ }
+  } catch {
+    // best-effort: the count is still right for this tick. A failed write or rename
+    // must not strand its tmp file beside the cache (D4: 0 B and 221 B leaks).
+    try { fs.unlinkSync(tmp); } catch { /* nothing to remove */ }
+  }
 }
 
 /**

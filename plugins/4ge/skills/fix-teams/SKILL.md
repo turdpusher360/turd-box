@@ -21,13 +21,15 @@ Dispatch on `sonnet-execute` for teams domain work.
 3. Implement following domain patterns
 4. Run tests if applicable
 5. Write report to `_runs/<task-name>.md`
+6. Store key decisions with `memory_store`
 
 ## Constraints
 
-- Adaptive Cards: JSON schema v1.5 -- test with snapshot comparisons
+- Adaptive Cards: target schema v1.2 (mobile ceiling, see card-review); a newer feature needs a 1.2 fallback -- test with snapshot comparisons
 - Bot Framework: activity handler pattern, turn context lifecycle
 - Teams manifest: validate with Teams toolkit before deploy
 - Messaging extensions: search/action command patterns
+- Never read or print secret values (API tokens, client secrets, signing keys, bot credentials); use fixtures and secret stores
 
 ## Handoff
 

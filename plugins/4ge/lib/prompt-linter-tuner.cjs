@@ -33,7 +33,7 @@ function trackRuleCompliance(rule, followed, metadata = {}) {
 }
 
 function computeFollowThroughRate(history, rule) {
-  const ruleEntries = history.filter(h => h.rule === rule && h.applicable !== false);
+  const ruleEntries = history.filter(h => h.rule === rule && h.applicable !== false && h.required !== false);
   if (ruleEntries.length === 0) return 0;
   const followed = ruleEntries.filter(h => h.followed).length;
   return followed / ruleEntries.length;
@@ -42,7 +42,7 @@ function computeFollowThroughRate(history, rule) {
 function suggestDemotions(history) {
   const ruleGroups = {};
   for (const entry of history) {
-    if (entry.applicable === false) continue;
+    if (entry.applicable === false || entry.required === false) continue;
     if (!ruleGroups[entry.rule]) ruleGroups[entry.rule] = [];
     ruleGroups[entry.rule].push(entry);
   }

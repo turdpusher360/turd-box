@@ -72,11 +72,12 @@ function coerceRateLimitHistory(values) {
       const fiveHour = clampPercentValue(sample.fiveHour);
       const sevenDay = clampPercentValue(sample.sevenDay);
       if (fiveHour === null && sevenDay === null) return null;
-      return {
-        ts: typeof sample.ts === 'string' ? sample.ts : '',
-        fiveHour: fiveHour === null ? 0 : fiveHour,
-        sevenDay: sevenDay === null ? 0 : sevenDay,
-      };
+      // A tier the sample did not carry stays absent: a stand-in 0 would read as a
+      // real reading in that tier's trend (the `rate trend` sawtooth).
+      const entry = { ts: typeof sample.ts === 'string' ? sample.ts : '' };
+      if (fiveHour !== null) entry.fiveHour = fiveHour;
+      if (sevenDay !== null) entry.sevenDay = sevenDay;
+      return entry;
     })
     .filter(Boolean);
 }

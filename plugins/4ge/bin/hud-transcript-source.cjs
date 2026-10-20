@@ -137,9 +137,11 @@ function findProjectDir(cwd) {
  * Find the active transcript file for a given session id (or newest if none).
  * @param {string} cwd
  * @param {string|null} sessionId
+ * @param {{strict?: boolean}} [options]  strict: a session id with no transcript
+ *   file returns null instead of the newest file of any session
  * @returns {string|null}
  */
-function findTranscriptPath(cwd, sessionId) {
+function findTranscriptPath(cwd, sessionId, options = {}) {
   const projectDir = findProjectDir(cwd);
   if (!projectDir) return null;
 
@@ -161,6 +163,8 @@ function findTranscriptPath(cwd, sessionId) {
   if (sessionId) {
     const match = files.find(({ f }) => f.startsWith(sessionId));
     if (match) return match.full;
+    // A live session with no transcript yet gets none, never another session's.
+    if (options && options.strict) return null;
   }
 
   return files[0] ? files[0].full : null;

@@ -17,17 +17,18 @@ Dispatch on `sonnet-execute` for wizard domain work.
 ## Workflow
 
 1. `memory_search` for domain context (2-4 word query)
-2. Vocabulary doc is pre-loaded via CONTEXT_MAP injection
+2. Vocabulary doc is pre-loaded via CONTEXT_MAP injection (only when dispatched as sonnet-execute; otherwise Read the doc first)
 3. Grep/Glob for affected files per vocabulary doc enforce_paths
 4. Implement following patterns from vocabulary doc
 5. Run tests if applicable
 6. Write report to `_runs/<task-name>.md`
+7. Store key decisions with `memory_store`
 
 ## Constraints
 
 - Security floors are non-negotiable (5 rules in vocabulary doc)
 - wizard-output.cjs and wizard-scoring.cjs are coupled -- keep in sync
-- Config merge: 3-layer (defaults, .4ge-wizard.json, frontmatter), null-as-delete, arrays REPLACE
+- Config merge: 4-layer (plugin defaults, vertical defaults, .4ge-wizard.json, mode frontmatter), null-as-delete, arrays REPLACE
 - The max field is a FLOOR (most-negative limit), not a ceiling
 
 ## Handoff

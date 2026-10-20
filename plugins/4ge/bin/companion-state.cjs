@@ -87,6 +87,30 @@ function saveState(state) {
   } catch { /* non-fatal */ }
 }
 
+// -- Quiet-tick write skip (SP1 D4, 2026-10-15) --
+//
+// The statusline ticks about every 2 s per session, and a quiet tick changed only
+// `lastHeartbeat`, yet rewrote the whole shared state file (tmp + rename) each time.
+// A tick now persists only when something other than the heartbeat moved, or when the
+// persisted heartbeat is older than HEARTBEAT_WRITE_INTERVAL_MS. Nothing in the repo
+// reads `lastHeartbeat`; the interval keeps its liveness meaning at one-minute
+// granularity. A real change (session id, expression, changedAt, blinkAt, gaze phase,
+// counters) always persists, so the expression state machine is unaffected.
+const HEARTBEAT_WRITE_INTERVAL_MS = 60000;
+
+function stateWithoutHeartbeat(state) {
+  const rest = { ...state };
+  delete rest.lastHeartbeat;
+  return JSON.stringify(rest);
+}
+
+function saveTickState(state, before, priorHeartbeat, now) {
+  const heartbeatDue = !(now - (priorHeartbeat || 0) < HEARTBEAT_WRITE_INTERVAL_MS);
+  if (!heartbeatDue && stateWithoutHeartbeat(state) === before) return false;
+  saveState(state);
+  return true;
+}
+
 // ── Session State Detection ──
 
 /**
@@ -195,6 +219,9 @@ function applyIdleAnimation(result, state, now) {
 function resolveExpression(stdin, eventHint) {
   const now = Date.now();
   const state = loadState();
+  // What the file held, minus the heartbeat, for the quiet-tick write skip below.
+  const before = stateWithoutHeartbeat(state);
+  const priorHeartbeat = state.lastHeartbeat;
   state.stateKey = normalizeStateKey(state.stateKey);
 
   // Session-resume detection (H7 fix, S332 + 2026-04-27 Task 1):
@@ -324,8 +351,8 @@ function resolveExpression(stdin, eventHint) {
   // Apply idle animation overlays
   applyIdleAnimation(result, state, now);
 
-  // Persist state for next tick
-  saveState(state);
+  // Persist state for next tick, skipping a tick that moved only the heartbeat
+  saveTickState(state, before, priorHeartbeat, now);
 
   // Include stateKey and lastToolAt so downstream consumers (orb, shimmer)
   // can detect active states and suppress idle animations.
@@ -577,4 +604,5 @@ module.exports = {
   get CONTEXT_SLEEPY_PCT() { return cc().contextSleepyPct; },
   get HIGH_TOOL_COUNT() { return cc().highToolCount; },
   STATE_PATH,
+  HEARTBEAT_WRITE_INTERVAL_MS,
 };

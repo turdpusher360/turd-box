@@ -21,13 +21,15 @@ Dispatch on `sonnet-execute` for cloudflare domain work.
 3. Implement following domain patterns
 4. Run tests if applicable
 5. Write report to `_runs/<task-name>.md`
+6. Store key decisions with `memory_store`
 
 ## Constraints
 
 - Workers runtime: no Node.js fs/path/child_process -- use Web APIs only
 - Wrangler config in wrangler.toml -- env-specific overrides via [env.NAME]
-- Docker images pinned by digest in docker-compose.yml
 - Test with `npx vitest run` using @cloudflare/vitest-pool-workers when available
+- Deploys (wrangler deploy), DNS and Cloudflare dashboard changes are owner-gated: implement and test locally, then stop for the operator's per-action approval; after approval, the owning lane runs the deploy and proves it live
+- Never read or print secret values (API tokens, client secrets, signing keys, bot credentials); use fixtures and secret stores
 
 ## Handoff
 

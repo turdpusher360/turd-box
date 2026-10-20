@@ -1,6 +1,6 @@
 ---
 name: fix-commander
-description: "Electron tray app fixes — React 19 panels, Zustand stores, IPC bridge, Vite 7 build"
+description: "Electron tray app fixes — React 19 panels, Zustand stores, IPC bridge, Vite 8 build"
 model_tier: inherit
 tools_needed: Bash, Grep, Glob, Read, Edit, Write, mcp__dev-memory__memory_search, mcp__dev-memory__memory_store
 preconditions:
@@ -17,11 +17,12 @@ Dispatch on `sonnet-execute` for commander domain work.
 ## Workflow
 
 1. `memory_search` for domain context (2-4 word query)
-2. Vocabulary doc is pre-loaded via CONTEXT_MAP injection
+2. Vocabulary doc is pre-loaded via CONTEXT_MAP injection (only when dispatched as sonnet-execute; otherwise Read the doc first)
 3. Grep/Glob for affected files per vocabulary doc enforce_paths
 4. Implement following patterns from vocabulary doc
 5. Run tests if applicable
 6. Write report to `_runs/<task-name>.md`
+7. Store key decisions with `memory_store`
 
 ## Constraints
 
@@ -29,10 +30,10 @@ Dispatch on `sonnet-execute` for commander domain work.
 - New IPC channels require BOTH preload allowlist AND main/ipc/ registration -- missing either causes silent failure
 - Tailwind v4 conventions (not v3)
 - Do not modify _runs/os/ state files -- kernel domain owns those
-- Electron 41, React 19, Zustand 5, Vite 7
+- Electron 43, React 19, Zustand 5, Vite 8 (see claude-commander/package.json)
 
 ## Handoff
 
 - OS state file changes: dispatch with fix-kernel skill on sonnet-execute
 - HUD rendering: dispatch with fix-hud skill on sonnet-execute
-- Deploy/infra: dispatch on ops-expert (pending migration)
+- Deploy/infra: dispatch with ops-infra skill on sonnet-execute
